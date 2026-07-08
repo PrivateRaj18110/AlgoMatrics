@@ -18,6 +18,7 @@ import type {
   AuditEntry,
   AuditFilters,
   BrokerCatalogEntry,
+  FeatureFlag,
   BrokerConnection,
   BuiltinManifest,
   CheckoutResponse,
@@ -498,6 +499,35 @@ export function useAuditEvents(filters: AuditFilters = {}) {
           occurred_to: occurredTo,
         },
       }),
+  });
+}
+
+/* ------------------------------ feature flags ------------------------------- */
+
+export function useFeatureFlags() {
+  return useQuery({
+    queryKey: ["feature-flags", orgKey()],
+    queryFn: () => api<Record<string, boolean>>("/feature-flags"),
+    staleTime: 60_000,
+  });
+}
+
+export function useAdminFeatureFlags() {
+  return useQuery({
+    queryKey: ["admin-feature-flags"],
+    queryFn: () => api<FeatureFlag[]>("/admin/feature-flags"),
+  });
+}
+
+export function useUpsertFeatureFlag() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key, ...body }: FeatureFlag) =>
+      api<FeatureFlag>(`/admin/feature-flags/${key}`, { method: "PUT", body }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["admin-feature-flags"] });
+      client.invalidateQueries({ queryKey: ["feature-flags"] });
+    },
   });
 }
 

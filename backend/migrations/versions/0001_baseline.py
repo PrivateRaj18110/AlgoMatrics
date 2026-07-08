@@ -50,6 +50,8 @@ def upgrade() -> None:
         "billing_webhook_events",
         "email_outbox",
         "notification_reads",
+        "feature_flags",
+        "feature_flag_overrides",
     }
     baseline_tables = [
         table for table in Base.metadata.sorted_tables if table.name not in later_revision_tables

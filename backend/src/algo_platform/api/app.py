@@ -141,6 +141,12 @@ def _include_routers(app: FastAPI) -> None:
     from algo_platform.modules.brokerage.presentation.router import (
         router as brokerage_router,
     )
+    from algo_platform.modules.feature_flags.presentation.router import (
+        admin_router as feature_flags_admin_router,
+    )
+    from algo_platform.modules.feature_flags.presentation.router import (
+        router as feature_flags_router,
+    )
     from algo_platform.modules.identity.presentation.auth_router import (
         router as auth_router,
     )
@@ -194,6 +200,8 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(strategies_router, prefix=prefix)
     app.include_router(portfolio_router, prefix=prefix)
     app.include_router(audit_router, prefix=prefix)
+    app.include_router(feature_flags_router, prefix=prefix)
+    app.include_router(feature_flags_admin_router, prefix=prefix)
     app.include_router(admin_router, prefix=prefix)
     app.include_router(ws_router, prefix=prefix)
 

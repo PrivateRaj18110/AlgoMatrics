@@ -567,6 +567,14 @@ export interface AuditFilters {
   occurredTo?: string;
 }
 
+export interface FeatureFlag {
+  key: string;
+  description: string;
+  enabled: boolean;
+  kill_switch: boolean;
+  rollout_percentage: number;
+}
+
 export interface AdminUser {
   id: string;
   email: string;
