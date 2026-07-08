@@ -550,9 +550,21 @@ export interface AuditEntry {
   resource_type: string;
   resource_id: string;
   request_id: string | null;
+  correlation_id: string | null;
+  session_id: string | null;
   before_state: Record<string, unknown> | null;
   after_state: Record<string, unknown> | null;
+  sequence: number | null;
+  entry_hash: string | null;
   occurred_at: string;
+}
+
+export interface AuditFilters {
+  actionPrefix?: string;
+  correlationId?: string;
+  resourceType?: string;
+  occurredFrom?: string;
+  occurredTo?: string;
 }
 
 export interface AdminUser {

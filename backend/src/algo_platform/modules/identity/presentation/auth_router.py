@@ -88,6 +88,7 @@ async def register(
         organization_id=organization.id,
         actor_user_id=user.id,
         request_id=getattr(request.state, "request_id", None),
+        correlation_id=getattr(request.state, "correlation_id", None),
         ip_hash=hash_ip(request.client.host if request.client else None),
     )
     return RegisterResponse(
@@ -123,6 +124,7 @@ async def login(
             resource_id=str(result.tokens.user.id),
             actor_user_id=result.tokens.user.id,
             request_id=getattr(request.state, "request_id", None),
+            correlation_id=getattr(request.state, "correlation_id", None),
             ip_hash=hash_ip(request.client.host if request.client else None),
         )
         return LoginResponse(kind="tokens", tokens=_browser_tokens(result.tokens))

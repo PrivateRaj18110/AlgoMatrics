@@ -30,8 +30,12 @@ class AuditEntryResponse(BaseModel):
     resource_type: str
     resource_id: str
     request_id: str | None
+    correlation_id: str | None
+    session_id: str | None
     before_state: dict[str, Any] | None
     after_state: dict[str, Any] | None
+    sequence: int | None
+    entry_hash: str | None
     occurred_at: datetime
 
 
@@ -47,11 +51,19 @@ async def list_audit_events(
     page: PageDep,
     action_prefix: Annotated[str | None, Query(max_length=60)] = None,
     actor_user_id: Annotated[UUID | None, Query()] = None,
+    correlation_id: Annotated[str | None, Query(max_length=64)] = None,
+    resource_type: Annotated[str | None, Query(max_length=60)] = None,
+    occurred_from: Annotated[datetime | None, Query()] = None,
+    occurred_to: Annotated[datetime | None, Query()] = None,
 ) -> PagedAuditResponse:
     entries, total = await AuditService(session).search(
         organization_id=tenant.organization_id,
         action_prefix=action_prefix,
         actor_user_id=actor_user_id,
+        correlation_id=correlation_id,
+        resource_type=resource_type,
+        occurred_from=occurred_from,
+        occurred_to=occurred_to,
         limit=page.limit,
         offset=page.offset,
     )

@@ -16,6 +16,7 @@ import type {
   AdminUser,
   AppNotification,
   AuditEntry,
+  AuditFilters,
   BrokerCatalogEntry,
   BrokerConnection,
   BuiltinManifest,
@@ -474,12 +475,28 @@ export function useMarkAllNotificationsRead() {
 
 /* ---------------------------------- audit ----------------------------------- */
 
-export function useAuditEvents(actionPrefix?: string) {
+export function useAuditEvents(filters: AuditFilters = {}) {
+  const { actionPrefix, correlationId, resourceType, occurredFrom, occurredTo } = filters;
   return useQuery({
-    queryKey: ["audit", orgKey(), actionPrefix ?? ""],
+    queryKey: [
+      "audit",
+      orgKey(),
+      actionPrefix ?? "",
+      correlationId ?? "",
+      resourceType ?? "",
+      occurredFrom ?? "",
+      occurredTo ?? "",
+    ],
     queryFn: () =>
       api<{ items: AuditEntry[]; total: number }>("/audit-events", {
-        query: { limit: 100, action_prefix: actionPrefix },
+        query: {
+          limit: 100,
+          action_prefix: actionPrefix,
+          correlation_id: correlationId,
+          resource_type: resourceType,
+          occurred_from: occurredFrom,
+          occurred_to: occurredTo,
+        },
       }),
   });
 }
