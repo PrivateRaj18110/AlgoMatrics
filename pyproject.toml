@@ -9,6 +9,7 @@ dependencies = [
   "cryptography>=44.0",
   "fastapi>=0.115",
   "httpx>=0.28",
+  "prometheus-client>=0.21",
   "pydantic-settings>=2.7",
   "pydantic[email]>=2.10",
   "pyjwt[crypto]>=2.10",
@@ -75,5 +76,5 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["asyncpg.*", "testcontainers.*", "MetaTrader5.*"]
+module = ["asyncpg.*", "testcontainers.*", "MetaTrader5.*", "prometheus_client.*"]
 ignore_missing_imports = true
