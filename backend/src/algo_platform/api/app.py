@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from algo_platform.api.middleware.errors import register_exception_handlers
+from algo_platform.api.middleware.rate_limit import RateLimitMiddleware
 from algo_platform.api.middleware.request_context import RequestContextMiddleware
 from algo_platform.api.routes.health import router as health_router
 from algo_platform.api.routes.metrics import router as metrics_router
@@ -24,6 +25,8 @@ from algo_platform.shared.infrastructure.jwt_service import JwtService
 from algo_platform.shared.infrastructure.metrics import MetricsRecorder
 from algo_platform.shared.infrastructure.metrics_sampler import run_infra_sampler
 from algo_platform.shared.infrastructure.prometheus import PrometheusMetrics
+from algo_platform.shared.infrastructure.rate_limiting import RateLimiter, RateLimitRule
+from algo_platform.shared.infrastructure.rate_limiting.redis_store import RedisWindowStore
 from algo_platform.shared.infrastructure.redis_gateway import RedisGateway
 from algo_platform.shared.infrastructure.secrets import (
     SecretsResolver,
@@ -59,6 +62,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         app.state.email_sender = create_email_sender(resolved)
         app.state.metrics = MetricsRecorder(redis)
+        if resolved.rate_limit_enabled:
+            app.state.rate_limiter = RateLimiter(RedisWindowStore(redis))
         sampler_stop = asyncio.Event()
         sampler_task: asyncio.Task[None] | None = None
         if resolved.metrics_enabled:
@@ -93,6 +98,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/openapi.json",
     )
 
+    # Added before RequestContextMiddleware so, given Starlette's last-added-runs-
+    # first ordering, the request context (request_id) is bound before the limit
+    # check runs and is available on any 429 problem response.
+    if resolved.rate_limit_enabled:
+        app.add_middleware(
+            RateLimitMiddleware,
+            rule=RateLimitRule(
+                limit=resolved.ip_rate_limit_per_minute,
+                window_seconds=60,
+                burst_limit=resolved.ip_rate_limit_burst_per_second,
+                burst_window_seconds=1,
+            ),
+        )
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(
         CORSMiddleware,
