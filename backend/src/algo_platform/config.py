@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -85,6 +86,8 @@ class Settings(BaseSettings):
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
     billing_currency: str = "INR"
+    # GST rate (percent) applied to INR invoices; 0 disables tax.
+    gst_rate_percent: Decimal = Decimal("18")
 
     market_data_source: Literal["simulated"] = "simulated"
     market_tick_interval_ms: int = Field(default=1000, ge=100, le=60_000)

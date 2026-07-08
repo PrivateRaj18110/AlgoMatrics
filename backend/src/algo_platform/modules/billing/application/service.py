@@ -50,6 +50,15 @@ from algo_platform.shared.infrastructure.outbox import enqueue_event
 logger = structlog.get_logger(__name__)
 
 
+def _gst_rate_for(currency: str) -> Decimal:
+    """GST rate applied to a currency; India (INR) is taxed, others are not."""
+    from algo_platform.config import get_settings
+
+    if currency.upper() == "INR":
+        return get_settings().gst_rate_percent
+    return Decimal("0")
+
+
 @dataclass(frozen=True, slots=True)
 class SubscriptionSummaryDTO:
     id: UUID
@@ -337,6 +346,7 @@ class SubscriptionService:
             currency=plan.currency,
             subtotal=subtotal,
             discount=discount,
+            tax_rate=_gst_rate_for(plan.currency),
             line_items=[
                 {
                     "description": f"{plan.name} plan ({cycle.value})",
@@ -602,6 +612,7 @@ class SubscriptionService:
             currency=plan.currency,
             subtotal=expected,
             discount=Decimal("0"),
+            tax_rate=_gst_rate_for(plan.currency),
             line_items=[
                 {
                     "description": (

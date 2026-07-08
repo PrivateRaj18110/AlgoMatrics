@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
+from algo_platform.modules.billing.domain.tax import compute_tax
 from algo_platform.shared.domain.errors import ConflictError
 from algo_platform.shared.domain.types import TenantId, utc_now
 
@@ -35,6 +36,8 @@ class Invoice:
     currency: str
     subtotal: Decimal
     discount: Decimal
+    tax: Decimal
+    tax_rate: Decimal
     total: Decimal
     line_items: list[dict[str, Any]]
     period_start: datetime
@@ -60,10 +63,12 @@ class Invoice:
         period_start: datetime,
         period_end: datetime,
         coupon_code: str | None,
+        tax_rate: Decimal = Decimal("0"),
     ) -> Invoice:
-        total = subtotal - discount
-        if total < 0:
-            total = Decimal("0")
+        taxable = subtotal - discount
+        if taxable < 0:
+            taxable = Decimal("0")
+        tax = compute_tax(taxable, tax_rate)
         return cls(
             id=uuid4(),
             organization_id=organization_id,
@@ -73,7 +78,9 @@ class Invoice:
             currency=currency.upper(),
             subtotal=subtotal,
             discount=discount,
-            total=total,
+            tax=tax,
+            tax_rate=tax_rate,
+            total=taxable + tax,
             line_items=line_items,
             period_start=period_start,
             period_end=period_end,

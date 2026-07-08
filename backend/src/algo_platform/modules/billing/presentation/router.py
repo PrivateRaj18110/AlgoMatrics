@@ -146,6 +146,8 @@ class InvoiceResponse(BaseModel):
     currency: str
     subtotal: Decimal
     discount: Decimal
+    tax: Decimal
+    tax_rate: Decimal
     total: Decimal
     line_items: list[dict[str, Any]]
     period_start: datetime

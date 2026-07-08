@@ -96,6 +96,8 @@ class InvoiceModel(Base):
     currency: Mapped[str] = mapped_column(String(3))
     subtotal: Mapped[Decimal]
     discount: Mapped[Decimal]
+    tax: Mapped[Decimal] = mapped_column(default=Decimal("0"))
+    tax_rate: Mapped[Decimal] = mapped_column(default=Decimal("0"))
     total: Mapped[Decimal]
     line_items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
