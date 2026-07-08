@@ -1,0 +1,68 @@
+# Separated worker roles for Algo Matrics.
+#
+# Run alongside the base stack to split the single worker into independently
+# scalable services (scale any with `--scale worker-analytics=3`):
+#   docker compose -f docker-compose.yml -f docker-compose.workers.yml up -d
+#
+# The base `worker` is narrowed to the outbox relay + e-mail delivery; each
+# domain consumer runs as its own service with its own WORKER_ROLES.
+name: algo-matrics
+
+x-worker-base: &worker-base
+  build:
+    context: ../..
+    dockerfile: deploy/docker/backend.Dockerfile
+  image: algo-matrics/backend:local
+  command: ["worker"]
+  env_file: ../../.env
+  read_only: true
+  tmpfs: ["/tmp"]
+  security_opt: ["no-new-privileges:true"]
+  volumes:
+    - secrets:/run/secrets:ro
+    - app_var:/app/var
+  depends_on:
+    migrate: {condition: service_completed_successfully}
+    redis: {condition: service_healthy}
+  restart: unless-stopped
+
+services:
+  # Narrow the base worker to the outbox relay + e-mail delivery.
+  worker:
+    environment:
+      WORKER_ROLES: '["relay","email"]'
+
+  worker-notification:
+    <<: *worker-base
+    environment:
+      WORKER_ROLES: '["notification"]'
+
+  worker-analytics:
+    <<: *worker-base
+    environment:
+      WORKER_ROLES: '["analytics"]'
+
+  worker-audit:
+    <<: *worker-base
+    environment:
+      WORKER_ROLES: '["audit"]'
+
+  worker-report:
+    <<: *worker-base
+    environment:
+      WORKER_ROLES: '["report"]'
+
+  worker-billing:
+    <<: *worker-base
+    environment:
+      WORKER_ROLES: '["billing"]'
+
+  worker-settlement:
+    <<: *worker-base
+    environment:
+      WORKER_ROLES: '["settlement"]'
+
+  worker-trading:
+    <<: *worker-base
+    environment:
+      WORKER_ROLES: '["trading"]'

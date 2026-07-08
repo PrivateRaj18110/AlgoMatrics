@@ -5,6 +5,26 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — worker separation (Master Spec Phase 7)
+
+The single worker becomes a set of independently deployable roles hosted by one
+thin, supervised process. See `docs/operations/workers.md`.
+
+- **Framework**: WorkerContext + WorkerRole contract, a runner that supervises
+  roles (restart-on-crash with backoff, graceful stop), and a registry selected
+  by `WORKER_ROLES` (default `["all"]`).
+- **Behaviour-preserving split**: the outbox relay and e-mail delivery are
+  extracted into `OutboxRelayWorker` / `EmailWorker`.
+- **Domain workers**: notification, analytics, audit, report, billing,
+  settlement, and trading each consume the `events` stream via their own
+  consumer group (Phase 6 StreamConsumer) with inbox dedupe and event-type
+  prefix routing. analytics aggregates per-day counters; notification fans events
+  out to organization notifications; the rest are observable per-domain seams.
+- **Orchestration**: `docker-compose.workers.yml` narrows the base worker to
+  relay+email and runs each domain consumer as its own scalable service.
+- 17 new unit tests (supervision, restart, role selection, prefix routing,
+  analytics counters); ruff + strict mypy clean; 245 backend unit/arch tests pass.
+
 ### Added — event-driven architecture (Master Spec Phase 6)
 
 A transport-agnostic event bus so the messaging backend (Redis Streams today;
