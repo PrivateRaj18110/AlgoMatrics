@@ -107,6 +107,12 @@ class Settings(BaseSettings):
     login_rate_limit_per_minute: int = Field(default=10, ge=1)
     api_rate_limit_per_minute: int = Field(default=600, ge=10)
 
+    # Global per-IP sliding-window limit applied by RateLimitMiddleware (coarse
+    # protection in front of per-route limits). Burst caps short spikes.
+    rate_limit_enabled: bool = True
+    ip_rate_limit_per_minute: int = Field(default=600, ge=10)
+    ip_rate_limit_burst_per_second: int = Field(default=30, ge=1)
+
     def load_jwt_private_key(self) -> str:
         return self._load_key(self.jwt_private_key_pem, self.jwt_private_key_file, "JWT private")
 

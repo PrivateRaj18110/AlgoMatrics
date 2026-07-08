@@ -66,6 +66,24 @@ class RedisGateway:
         results = await pipe.execute()
         return int(results[0])
 
+    async def sliding_window_hit(
+        self, key: str, *, window_ms: int, now_ms: int, member: str
+    ) -> int:
+        """Record a hit and return the number of hits within the sliding window.
+
+        Implemented as a sorted-set log: expired entries are trimmed, this hit is
+        added scored by timestamp, and the current cardinality is returned. One
+        pipeline round-trip per call.
+        """
+        cutoff = now_ms - window_ms
+        pipe = self._client.pipeline()
+        pipe.zremrangebyscore(key, 0, cutoff)
+        pipe.zadd(key, {member: now_ms})
+        pipe.zcard(key)
+        pipe.pexpire(key, window_ms)
+        results = await pipe.execute()
+        return int(results[2])
+
     async def hset_json(self, key: str, field: str, value: dict[str, Any]) -> None:
         await cast(Awaitable[Any], self._client.hset(key, field, json.dumps(value, default=str)))
 

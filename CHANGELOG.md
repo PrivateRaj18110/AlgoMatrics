@@ -5,6 +5,28 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — enterprise rate limiting (Master Spec Phase 5)
+
+Redis-backed sliding-window rate limiting across six scopes with burst control
+and runtime admin overrides, replacing fixed windows. Additive; no schema or
+API-contract change. See `docs/operations/rate-limiting.md`.
+
+- **Sliding window** (`shared/infrastructure/rate_limiting`): a sorted-set log
+  (`RedisGateway.sliding_window_hit`, one pipeline per check); `RateLimitRule`
+  supports an optional short burst window; decision logic is pure and unit
+  tested via an in-memory store.
+- **Scopes**: tenant, user, api_key, ip, broker, route — a request is denied if
+  any applies. Global per-IP `RateLimitMiddleware` (429 + Retry-After +
+  X-RateLimit-* headers, health/metrics exempt, fail-open); `rate_limit()` route
+  dependency refactored onto the sliding window (same signature); new
+  `scoped_rate_limit()` dependency for multi-scope route limits.
+- **Admin overrides** (`/admin/rate-limits`): retune a named limit or bypass a
+  `{scope, subject}` at runtime; each change is audited.
+- Settings: RATE_LIMIT_ENABLED, IP_RATE_LIMIT_PER_MINUTE,
+  IP_RATE_LIMIT_BURST_PER_SECOND.
+- 16 new unit tests (limiter, middleware, scopes, overrides); ruff + strict mypy
+  clean; 223 backend unit/arch tests pass.
+
 ### Added — enterprise feature flags (Master Spec Phase 4)
 
 Runtime-configurable feature flags with no deployment required. New
