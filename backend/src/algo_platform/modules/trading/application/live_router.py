@@ -45,6 +45,9 @@ from algo_platform.modules.trading.infrastructure.brokers.binance import (
 from algo_platform.modules.trading.infrastructure.brokers.delta import (
     DeltaExecutionAdapter,
 )
+from algo_platform.modules.trading.infrastructure.brokers.ibkr import (
+    IbkrExecutionAdapter,
+)
 from algo_platform.modules.trading.infrastructure.brokers.indian import VenueInstrument
 from algo_platform.modules.trading.infrastructure.brokers.mt5 import (
     Mt5AgentExecutionAdapter,
@@ -189,6 +192,12 @@ class LiveRouter:
             adapter = BinanceExecutionAdapter(
                 api_key=credentials.get("api_key", ""),
                 api_secret=credentials.get("api_secret", ""),
+                symbol_resolver=resolver,
+            )
+        elif connection.broker_code == "interactive_brokers":
+            adapter = IbkrExecutionAdapter(
+                gateway_url=credentials.get("gateway_url", ""),
+                account_id=credentials.get("account_id", ""),
                 symbol_resolver=resolver,
             )
         elif connection.broker_code == "mt5":

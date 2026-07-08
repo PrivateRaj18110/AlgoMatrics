@@ -30,6 +30,10 @@ from algo_platform.modules.trading.infrastructure.brokers.binance import (
     BinanceExecutionAdapter,
 )
 from algo_platform.modules.trading.infrastructure.brokers.delta import DeltaExecutionAdapter
+from algo_platform.modules.trading.infrastructure.brokers.ibkr import (
+    IbkrExecutionAdapter,
+    _validate_gateway_url,
+)
 from algo_platform.modules.trading.infrastructure.brokers.indian import VenueInstrument
 from algo_platform.modules.trading.infrastructure.brokers.mt5 import Mt5AgentExecutionAdapter
 from algo_platform.modules.trading.infrastructure.brokers.paper import (
@@ -42,7 +46,7 @@ from algo_platform.modules.trading.infrastructure.brokers.registry import (
 from algo_platform.modules.trading.infrastructure.brokers.zerodha import (
     ZerodhaExecutionAdapter,
 )
-from algo_platform.shared.domain.errors import ConflictError
+from algo_platform.shared.domain.errors import ConflictError, ValidationFailed
 from algo_platform.shared.domain.types import AccountId, Side, StrategyRunId, TenantId
 
 pytestmark = pytest.mark.contract
@@ -820,3 +824,90 @@ class TestBinanceAdapter:
         _attach(adapter, handler, "https://api.binance.com")
         balances = await adapter.get_balances()
         assert balances == {"USDT": Decimal("500")}
+
+
+# ----------------------------- Interactive Brokers --------------------------
+
+
+class TestIbkrAdapter:
+    def _adapter(self) -> IbkrExecutionAdapter:
+        return IbkrExecutionAdapter(
+            gateway_url="https://localhost:5000", account_id="DU123", symbol_resolver=_venue
+        )
+
+    def test_gateway_url_validation(self) -> None:
+        assert _validate_gateway_url("https://gw.example.com/") == "https://gw.example.com"
+        assert _validate_gateway_url("http://localhost:5000") == "http://localhost:5000"
+        with pytest.raises(ValidationFailed):
+            _validate_gateway_url("http://evil.example.com")
+        with pytest.raises(ValidationFailed):
+            _validate_gateway_url("ftp://localhost")
+
+    async def test_submit_walks_reply_confirmation(self) -> None:
+        captured: list[httpx.Request] = []
+        handler = _router(
+            {
+                ("POST", "/v1/api/iserver/account/DU123/orders"): (
+                    200,
+                    [{"id": "reply1", "message": ["Confirm order?"]}],
+                ),
+                ("POST", "/v1/api/iserver/reply/reply1"): (200, [{"order_id": "o777"}]),
+            },
+            captured,
+        )
+        adapter = self._adapter()
+        _attach(adapter, handler, "https://localhost:5000")
+        ack = await adapter.submit_order(_intent(order_type=OrderType.LIMIT,
+                                                 limit_price=Decimal("2950")))
+        assert ack.broker_order_id == "o777"
+        assert adapter._tracked["o777"] == "cid-1"
+        import json as _json
+        body = _json.loads(captured[0].content.decode())
+        assert body["orders"][0]["conid"] == 2885
+        assert body["orders"][0]["orderType"] == "LMT"
+
+    async def test_submit_direct_order_id(self) -> None:
+        handler = _router(
+            {("POST", "/v1/api/iserver/account/DU123/orders"): (200, [{"order_id": "o1"}])}, []
+        )
+        adapter = self._adapter()
+        _attach(adapter, handler, "https://localhost:5000")
+        ack = await adapter.submit_order(_intent())
+        assert ack.broker_order_id == "o1"
+
+    async def test_rejected_submit_raises(self) -> None:
+        handler = _router(
+            {("POST", "/v1/api/iserver/account/DU123/orders"): (400, {"error": "no"})}, []
+        )
+        adapter = self._adapter()
+        _attach(adapter, handler, "https://localhost:5000")
+        with pytest.raises(ConflictError):
+            await adapter.submit_order(_intent())
+
+    async def test_stream_normalizes_partial_fill(self) -> None:
+        adapter = self._adapter()
+        adapter._tracked["o9"] = "cid-9"
+        handler = _router(
+            {("GET", "/v1/api/iserver/account/orders"): (
+                200,
+                {"orders": [{"orderId": "o9", "status": "Submitted",
+                             "filledQuantity": 4, "avgPrice": 100.25}]},
+            )},
+            [],
+        )
+        _attach(adapter, handler, "https://localhost:5000")
+        update = await _first_update(adapter)
+        assert update.status is OrderStatus.PARTIALLY_FILLED
+        assert update.filled_quantity == Decimal("4")
+
+    async def test_balances_from_ledger(self) -> None:
+        handler = _router(
+            {("GET", "/v1/api/portfolio/DU123/ledger"): (
+                200, {"USD": {"cashbalance": 12500.5}, "BASE": {"cashbalance": 12500.5}},
+            )},
+            [],
+        )
+        adapter = self._adapter()
+        _attach(adapter, handler, "https://localhost:5000")
+        balances = await adapter.get_balances()
+        assert balances["USD"] == Decimal("12500.5")
