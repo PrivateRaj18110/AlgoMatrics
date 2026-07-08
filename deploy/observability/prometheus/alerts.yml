@@ -1,0 +1,114 @@
+# Alerting rules for the Algo Matrics platform.
+#
+# Thresholds are deliberately conservative starting points; tune them against
+# the capacity baseline established under load testing (Phase 20).
+groups:
+  - name: availability
+    rules:
+      - alert: ProcessDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} target is down"
+          description: "Prometheus cannot scrape {{ $labels.instance }} ({{ $labels.job }})."
+
+      - alert: NoApiTraffic
+        expr: sum(rate(algo_http_requests_total[5m])) == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API is serving no requests"
+          description: "No HTTP requests recorded for 10 minutes; ingress or API may be broken."
+
+  - name: latency-errors
+    rules:
+      - alert: HighApiErrorRate
+        expr: >
+          sum(rate(algo_http_requests_total{status=~"5.."}[5m]))
+          / clamp_min(sum(rate(algo_http_requests_total[5m])), 1e-9) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API 5xx error rate above 5%"
+          description: "5xx responses exceed 5% of traffic over the last 5 minutes."
+
+      - alert: HighApiLatencyP95
+        expr: >
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(algo_http_request_duration_seconds_bucket[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p95 latency above 1s"
+          description: "95th percentile request latency has exceeded 1s for 10 minutes."
+
+  - name: trading
+    rules:
+      - alert: OrderRejectionSpike
+        expr: >
+          sum(rate(algo_orders_rejected_total[5m]))
+          / clamp_min(sum(rate(algo_orders_submitted_total[5m])), 1e-9) > 0.2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Order rejection ratio above 20%"
+          description: "More than 20% of submitted orders are being rejected."
+
+      - alert: BrokerDown
+        expr: algo_broker_up == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Broker {{ $labels.broker }} unhealthy"
+          description: "Broker connection health has reported down for 3 minutes."
+
+      - alert: EngineTickStalled
+        expr: sum(rate(algo_market_ticks_total[5m])) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Trading engine is processing no market ticks"
+          description: "No market ticks processed for 5 minutes; the engine may be stalled."
+
+  - name: queues
+    rules:
+      - alert: StreamBacklogGrowing
+        expr: algo_stream_depth > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Stream {{ $labels.stream }} backlog above 1000"
+          description: "A consumer group is falling behind; investigate consumer health."
+
+  - name: infrastructure
+    rules:
+      - alert: RedisDown
+        expr: algo_redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis reported unhealthy"
+          description: "The API readiness probe has reported Redis down for 2 minutes."
+
+      - alert: DbPoolExhausted
+        expr: >
+          algo_db_pool_connections{state="checked_out"}
+          >= clamp_min(algo_db_pool_connections{state="size"}, 1)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool exhausted"
+          description: "All pooled connections are checked out; requests may be queuing."

@@ -1,0 +1,36 @@
+# Alertmanager routing. Receivers are placeholders wired via environment so no
+# secrets live in the repo; set ALERT_SLACK_WEBHOOK_URL (or replace with your
+# provider) in the deployment environment.
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: ["alertname", "service"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity = "critical"
+      receiver: critical
+      repeat_interval: 1h
+
+receivers:
+  - name: default
+    # No-op receiver; alerts are still visible in the Alertmanager UI.
+  - name: critical
+    slack_configs:
+      - api_url: "${ALERT_SLACK_WEBHOOK_URL}"
+        channel: "#alerts"
+        send_resolved: true
+        title: "[{{ .Status | toUpper }}] {{ .Commonlabels.alertname }}"
+        text: >-
+          {{ range .Alerts }}{{ .Annotations.summary }}
+          — {{ .Annotations.description }}
+          {{ end }}
+
+inhibit_rules:
+  - source_matchers: [severity = "critical"]
+    target_matchers: [severity = "warning"]
+    equal: ["service", "alertname"]

@@ -33,6 +33,15 @@ export function connectAuthBridge(next: AuthBridge): void {
   bridge = next;
 }
 
+// Stable per-tab correlation id so every request in a browsing session can be
+// traced across services and joined to logs/metrics by the backend.
+const CORRELATION_ID: string =
+  globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+export function correlationId(): string {
+  return CORRELATION_ID;
+}
+
 let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshTokens(): Promise<boolean> {
@@ -90,7 +99,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     if (encoded) url += `?${encoded}`;
   }
 
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { "X-Correlation-ID": CORRELATION_ID };
   if (!formData && body !== undefined) headers["Content-Type"] = "application/json";
   if (!skipAuth) {
     const token = bridge?.getAccessToken();

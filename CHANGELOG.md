@@ -5,6 +5,35 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — production observability (Master Spec Phase 1)
+
+Enterprise observability delivered end to end, additively and behind
+`METRICS_ENABLED`. No database migration or API-contract change; see
+`docs/operations/observability.md`.
+
+- **Prometheus metrics foundation** (`shared/infrastructure/prometheus.py`): a
+  process-local metric catalogue on an isolated registry covering HTTP,
+  trading/orders/P&L, brokers, streams, market data, DB pool, Redis, WebSocket,
+  and frontend RUM. API exposes it at the root `/metrics`; background processes
+  serve it on `METRICS_PORT` (default 9100).
+- **Fixed** the audited defect where request metrics were never recorded — the
+  request middleware now resolves the Redis recorder and Prometheus metrics
+  lazily from `app.state` and records HTTP count/latency by route template.
+- **Correlation IDs**: `X-Correlation-ID` accepted/propagated across services
+  and bound into structured logs; the SPA sends a stable per-tab value.
+- **Instrumentation** at infrastructure boundaries: outbox worker derives order
+  submitted/filled/rejected counters from relayed domain events, market-data and
+  engine emit tick metrics, the API samples DB pool + Redis health, and the
+  WebSocket hub tracks connections and frames.
+- **Observability stack** (`deploy/observability` + compose override):
+  Prometheus (with alert rules), Alertmanager (Slack), Loki + Promtail JSON log
+  shipping, Grafana with auto-provisioned datasources and three reproducibly
+  generated dashboards, plus cAdvisor/node-exporter for container health.
+- **Browser RUM**: dependency-free frontend Web Vitals + client-error reporter
+  posting to a bounded, allowlisted `/api/v1/rum` intake.
+- Tests: 20 new backend unit tests (Prometheus, instrumentation, RUM); ruff +
+  strict mypy clean; frontend lint/build/tests green.
+
 ### Added — backend test coverage (production-validation Phase 1 & 2)
 
 Increased backend line coverage from **35% → 41%** (10,533 stmts; missed

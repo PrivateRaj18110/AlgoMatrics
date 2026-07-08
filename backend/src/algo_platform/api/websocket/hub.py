@@ -69,6 +69,9 @@ async def websocket_endpoint(
         return
 
     await websocket.accept()
+    prometheus = getattr(websocket.app.state, "prometheus", None)
+    if prometheus is not None:
+        prometheus.ws_connections.inc()
     send_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=_SEND_QUEUE_SIZE)
     subscriptions: dict[str, str] = {}
     pump_task: asyncio.Task[None] | None = None
@@ -106,11 +109,15 @@ async def websocket_endpoint(
             message.setdefault("type", "event")
             message["seq"] = sequence
             await websocket.send_text(json.dumps(message, default=str))
+            if prometheus is not None:
+                prometheus.ws_messages_total.labels(direction="outbound").inc()
 
     sender_task = asyncio.create_task(sender())
     try:
         while True:
             raw = await websocket.receive_text()
+            if prometheus is not None:
+                prometheus.ws_messages_total.labels(direction="inbound").inc()
             try:
                 command = json.loads(raw)
             except json.JSONDecodeError:
@@ -145,6 +152,8 @@ async def websocket_endpoint(
     except WebSocketDisconnect:
         pass
     finally:
+        if prometheus is not None:
+            prometheus.ws_connections.dec()
         sender_task.cancel()
         if pump_task is not None:
             pump_task.cancel()

@@ -1,0 +1,63 @@
+# Prometheus scrape configuration for the Algo Matrics platform.
+#
+# The API exposes /metrics over its normal HTTP port. Background processes
+# (worker, trading-engine, market-data, scheduler) expose a dedicated metrics
+# HTTP server on METRICS_PORT (default 9100) started via prometheus_client.
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    platform: algo-matrics
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: algo-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000"]
+        labels:
+          service: algo-api
+
+  - job_name: algo-worker
+    static_configs:
+      - targets: ["worker:9100"]
+        labels:
+          service: algo-worker
+
+  - job_name: algo-trading-engine
+    static_configs:
+      - targets: ["trading-engine:9100"]
+        labels:
+          service: algo-trading-engine
+
+  - job_name: algo-market-data
+    static_configs:
+      - targets: ["market-data:9100"]
+        labels:
+          service: algo-market-data
+
+  - job_name: algo-scheduler
+    static_configs:
+      - targets: ["scheduler:9100"]
+        labels:
+          service: algo-scheduler
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["node-exporter:9100"]

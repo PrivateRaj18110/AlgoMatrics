@@ -26,6 +26,7 @@ from algo_platform.shared.infrastructure.database import (
     create_engine,
     create_session_factory,
 )
+from algo_platform.shared.infrastructure.metrics_server import start_process_metrics
 from algo_platform.shared.infrastructure.redis_gateway import RedisGateway
 from algo_platform.shared.infrastructure.telemetry import configure_logging
 
@@ -40,6 +41,7 @@ async def run() -> None:
     engine = create_engine(settings.database_url, pool_size=4)
     session_factory = create_session_factory(engine)
     redis = RedisGateway.from_url(settings.redis_url)
+    start_process_metrics(settings, "algo-scheduler")
     stop_event = asyncio.Event()
     _install_signal_handlers(stop_event)
     logger.info("scheduler.started", interval=settings.scheduler_interval_seconds)

@@ -29,6 +29,7 @@ from algo_platform.shared.infrastructure.database import (
     create_engine,
     create_session_factory,
 )
+from algo_platform.shared.infrastructure.metrics_server import start_process_metrics
 from algo_platform.shared.infrastructure.redis_gateway import RedisGateway
 from algo_platform.shared.infrastructure.telemetry import configure_logging
 
@@ -66,6 +67,7 @@ async def run() -> None:
     if not instruments:
         logger.warning("market_data.no_instruments_seeded")
     source = SimulatedMarketDataSource(instruments, seed=settings.market_data_seed)
+    metrics = start_process_metrics(settings, "algo-market-data")
     accumulators: dict[tuple[str, str], CandleAccumulator] = {}
     candle_cache: dict[tuple[str, str], list[dict[str, str]]] = {}
 
@@ -82,6 +84,10 @@ async def run() -> None:
         while not stop_event.is_set():
             started = asyncio.get_event_loop().time()
             ticks = source.next_ticks()
+            if metrics is not None and ticks:
+                metrics.market_ticks_total.labels(source=settings.market_data_source).inc(
+                    len(ticks)
+                )
             for tick in ticks:
                 payload = {
                     "channel": "ticks",

@@ -26,6 +26,8 @@ from algo_platform.shared.infrastructure.email_outbox import (
     mark_email_failed,
     mark_email_sent,
 )
+from algo_platform.shared.infrastructure.metrics_events import record_business_event
+from algo_platform.shared.infrastructure.metrics_server import start_process_metrics
 from algo_platform.shared.infrastructure.outbox import fetch_unpublished, mark_published
 from algo_platform.shared.infrastructure.redis_gateway import RedisGateway
 from algo_platform.shared.infrastructure.telemetry import configure_logging
@@ -43,6 +45,7 @@ async def run() -> None:
     session_factory = create_session_factory(engine)
     redis = RedisGateway.from_url(settings.redis_url)
     email_sender = create_email_sender(settings)
+    metrics = start_process_metrics(settings, "algo-worker")
     stop_event = asyncio.Event()
     _install_signal_handlers(stop_event)
     logger.info("worker.started")
@@ -75,9 +78,20 @@ async def run() -> None:
                                     "engine:commands",
                                     {"command_id": str(row.event_id), **row.payload},
                                 )
+                                if metrics is not None:
+                                    metrics.events_published_total.labels(
+                                        stream="engine:commands"
+                                    ).inc()
                             else:
                                 await redis.xadd_json(EVENTS_STREAM, envelope)
                                 await redis.publish_json(f"events:{row.event_type}", envelope)
+                                if metrics is not None:
+                                    metrics.events_published_total.labels(
+                                        stream=EVENTS_STREAM
+                                    ).inc()
+                                    record_business_event(
+                                        metrics, row.event_type, row.payload
+                                    )
                         await mark_published(session, [r.event_id for r in rows])
                         await session.commit()
                         published = len(rows)

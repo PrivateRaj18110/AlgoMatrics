@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -9,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from algo_platform.api.middleware.errors import register_exception_handlers
 from algo_platform.api.middleware.request_context import RequestContextMiddleware
 from algo_platform.api.routes.health import router as health_router
+from algo_platform.api.routes.metrics import router as metrics_router
+from algo_platform.api.routes.rum import router as rum_router
 from algo_platform.config import Settings, get_settings
 from algo_platform.modules.billing.application.ports import PaymentProvider
 from algo_platform.modules.billing.infrastructure.providers.razorpay import RazorpayProvider
@@ -18,6 +22,8 @@ from algo_platform.shared.infrastructure.email import create_email_sender
 from algo_platform.shared.infrastructure.encryption import CredentialCipher
 from algo_platform.shared.infrastructure.jwt_service import JwtService
 from algo_platform.shared.infrastructure.metrics import MetricsRecorder
+from algo_platform.shared.infrastructure.metrics_sampler import run_infra_sampler
+from algo_platform.shared.infrastructure.prometheus import PrometheusMetrics
 from algo_platform.shared.infrastructure.redis_gateway import RedisGateway
 from algo_platform.shared.infrastructure.telemetry import configure_logging
 
@@ -47,10 +53,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         app.state.email_sender = create_email_sender(resolved)
         app.state.metrics = MetricsRecorder(redis)
+        sampler_stop = asyncio.Event()
+        sampler_task: asyncio.Task[None] | None = None
+        if resolved.metrics_enabled:
+            prometheus = PrometheusMetrics(
+                namespace=resolved.metrics_namespace,
+                service=resolved.service_name,
+                version=app.version,
+                env=resolved.app_env,
+            )
+            app.state.prometheus = prometheus
+            sampler_task = asyncio.create_task(
+                run_infra_sampler(
+                    prometheus, engine, redis, interval_seconds=15.0, stop=sampler_stop
+                )
+            )
         app.state.payment_providers = build_payment_providers(resolved)
         try:
             yield
         finally:
+            sampler_stop.set()
+            if sampler_task is not None:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await sampler_task
             await redis.close()
             await engine.dispose()
 
@@ -138,8 +163,12 @@ def _include_routers(app: FastAPI) -> None:
         router as trading_router,
     )
 
+    # Prometheus scrape endpoint is mounted at the root, not under /api/v1.
+    app.include_router(metrics_router)
+
     prefix = "/api/v1"
     app.include_router(health_router, prefix=prefix)
+    app.include_router(rum_router, prefix=prefix)
     app.include_router(auth_router, prefix=prefix)
     app.include_router(users_router, prefix=prefix)
     app.include_router(api_keys_router, prefix=prefix)

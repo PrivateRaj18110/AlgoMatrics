@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     service_name: str = "algo-api"
 
+    # Observability. The Prometheus scrape endpoint is exposed at /metrics and is
+    # expected to be reachable only from the metrics network / scraper, never the
+    # public internet (enforced at the ingress/compose layer).
+    metrics_enabled: bool = True
+    metrics_namespace: str = "algo"
+    # HTTP port on which background processes expose their Prometheus registry.
+    metrics_port: int = Field(default=9100, ge=1, le=65535)
+
     database_url: str
     database_pool_size: int = Field(default=10, ge=1, le=100)
     redis_url: str
