@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # canonical secret names, and the region (blank => boto3 default resolution).
     aws_secrets_id: str = ""
     aws_region: str = ""
+    # Encrypted-file backend for local development: the encrypted document and
+    # the Fernet key (inline or a file kept outside the repo).
+    secrets_encrypted_file: Path | None = None
+    secrets_encryption_key: str | None = None
+    secrets_encryption_key_file: Path | None = None
 
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:8080"]
     cookie_secure: bool = False
@@ -107,6 +112,13 @@ class Settings(BaseSettings):
 
     def load_jwt_public_key(self) -> str:
         return self._load_key(self.jwt_public_key_pem, self.jwt_public_key_file, "JWT public")
+
+    def load_secrets_encryption_key(self) -> str:
+        return self._load_key(
+            self.secrets_encryption_key,
+            self.secrets_encryption_key_file,
+            "secrets encryption",
+        )
 
     def load_broker_kek_b64(self) -> str:
         if self.broker_credential_kek_b64:

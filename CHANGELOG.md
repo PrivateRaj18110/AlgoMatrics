@@ -5,6 +5,27 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — secrets management (Master Spec Phase 2)
+
+Pluggable secrets management with a safe `.env` fallback and log redaction. Fully
+additive; `SECRETS_BACKEND=env` (default) preserves prior behaviour exactly. No
+database migration or API-contract change. See `docs/operations/secrets.md`.
+
+- **Provider abstraction** (`shared/infrastructure/secrets`): a `SecretsResolver`
+  layers a backend over the existing settings loaders — a missing or failed
+  managed secret always falls back to `.env`, so enabling a backend cannot
+  regress a working deployment. JWT keys, broker KEK, and payment secrets are
+  resolved through it in the API app and trading engine.
+- **Backends**: `env` (optional `ALGO_SECRET_<NAME>` overrides), `aws` (AWS
+  Secrets Manager, lazy boto3 `aws` extra, TTL cache that picks up rotation on
+  expiry with stale-cache-on-outage resilience), and `encrypted` (Fernet
+  document for local development with a `secrets_cli` keygen/encrypt/decrypt CLI).
+- **Never expose secrets to logs**: a structlog processor masks secret-looking
+  keys (password/secret/token/authorization/api_key/private_key/kek/credential/
+  passphrase) including nested structures.
+- `.gitignore` blocks plaintext secret documents and key files.
+- 22 new unit tests; ruff + strict mypy clean; 192 unit/arch tests pass.
+
 ### Added — production observability (Master Spec Phase 1)
 
 Enterprise observability delivered end to end, additively and behind

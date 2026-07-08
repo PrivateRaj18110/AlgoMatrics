@@ -14,6 +14,12 @@ node_modules/
 *.log
 data/
 secrets/
+# Local secrets management: never commit plaintext or encryption keys. The
+# encrypted document itself (secrets.enc) is safe but the key must stay out.
+secrets.plain.json
+*.secrets.plain.json
+.secrets-key
+secrets-key*
 var/
 .idea/
 .vscode/
