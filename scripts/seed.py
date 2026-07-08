@@ -249,6 +249,42 @@ BROKERS: list[dict[str, Any]] = [
             {"name": "mt5_login", "label": "MT5 login", "secret": False},
         ],
     },
+    {
+        "code": "binance",
+        "name": "Binance",
+        "description": "Global crypto spot exchange.",
+        "supports_paper": False,
+        "supports_live": True,
+        "capabilities": {
+            "order_types": ["market", "limit", "stop", "stop_limit"],
+            "asset_classes": ["crypto"],
+            "sessions": "24x7",
+        },
+        "credential_fields": [
+            {"name": "api_key", "label": "API key", "secret": False},
+            {"name": "api_secret", "label": "API secret", "secret": True},
+        ],
+    },
+    {
+        "code": "interactive_brokers",
+        "name": "Interactive Brokers",
+        "description": "Global multi-asset broker via the Client Portal gateway.",
+        "supports_paper": False,
+        "supports_live": True,
+        "capabilities": {
+            "order_types": ["market", "limit", "stop", "stop_limit"],
+            "asset_classes": ["equity", "options", "futures", "forex"],
+        },
+        "credential_fields": [
+            {
+                "name": "gateway_url",
+                "label": "Gateway URL",
+                "secret": False,
+                "help_text": "HTTPS URL of your IBKR Client Portal gateway.",
+            },
+            {"name": "account_id", "label": "Account ID", "secret": False},
+        ],
+    },
 ]
 
 # SEED DATA: starter instrument universe for the paper simulator.

@@ -166,7 +166,9 @@ def api_dashboard() -> dict:
             '{service="api"} | json | level=~"error|warning"',
         ),
     ]
-    return dashboard("algo-api-overview", "Algo Matrics — API Latency & Errors", ["algo", "api"], panels)
+    return dashboard(
+        "algo-api-overview", "Algo Matrics — API Latency & Errors", ["algo", "api"], panels
+    )
 
 
 def trading_dashboard() -> dict:
@@ -230,7 +232,9 @@ def trading_dashboard() -> dict:
             h=6,
         ),
     ]
-    return dashboard("algo-trading", "Algo Matrics — Trading, Orders & P&L", ["algo", "trading"], panels)
+    return dashboard(
+        "algo-trading", "Algo Matrics — Trading, Orders & P&L", ["algo", "trading"], panels
+    )
 
 
 def infra_dashboard() -> dict:
