@@ -1,0 +1,124 @@
+"""Typed facade over redis.asyncio.
+
+Keeps redis-py's loosely typed API out of application code and centralizes
+serialization. Redis holds only disposable coordination/cache state.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import AsyncIterator, Awaitable
+from typing import Any, cast
+
+import redis.asyncio as aioredis
+
+
+class RedisGateway:
+    def __init__(self, client: aioredis.Redis) -> None:
+        self._client = client
+
+    @classmethod
+    def from_url(cls, url: str) -> RedisGateway:
+        return cls(aioredis.Redis.from_url(url, decode_responses=True))
+
+    @property
+    def raw(self) -> aioredis.Redis:
+        return self._client
+
+    async def ping(self) -> bool:
+        try:
+            await self._client.ping()
+        except Exception:
+            return False
+        return True
+
+    async def close(self) -> None:
+        await self._client.aclose()
+
+    async def get_str(self, key: str) -> str | None:
+        value = await cast(Awaitable[str | None], self._client.get(key))
+        return value
+
+    async def set_str(self, key: str, value: str, *, ttl_seconds: int | None = None) -> None:
+        await cast(Awaitable[Any], self._client.set(key, value, ex=ttl_seconds))
+
+    async def delete(self, *keys: str) -> None:
+        if keys:
+            await cast(Awaitable[Any], self._client.delete(*keys))
+
+    async def get_json(self, key: str) -> dict[str, Any] | None:
+        raw = await self.get_str(key)
+        if raw is None:
+            return None
+        loaded = json.loads(raw)
+        return cast(dict[str, Any], loaded)
+
+    async def set_json(
+        self, key: str, value: dict[str, Any], *, ttl_seconds: int | None = None
+    ) -> None:
+        await self.set_str(key, json.dumps(value, default=str), ttl_seconds=ttl_seconds)
+
+    async def incr_fixed_window(self, key: str, window_seconds: int) -> int:
+        """Fixed-window counter used for rate limiting."""
+        pipe = self._client.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, window_seconds, nx=True)
+        results = await pipe.execute()
+        return int(results[0])
+
+    async def hset_json(self, key: str, field: str, value: dict[str, Any]) -> None:
+        await cast(Awaitable[Any], self._client.hset(key, field, json.dumps(value, default=str)))
+
+    async def hget_json(self, key: str, field: str) -> dict[str, Any] | None:
+        raw = await cast(Awaitable[str | None], self._client.hget(key, field))
+        if raw is None:
+            return None
+        return cast(dict[str, Any], json.loads(raw))
+
+    async def hgetall_json(self, key: str) -> dict[str, dict[str, Any]]:
+        raw = await cast(Awaitable[dict[str, str]], self._client.hgetall(key))
+        return {field: cast(dict[str, Any], json.loads(value)) for field, value in raw.items()}
+
+    async def hincrby(self, key: str, field: str, amount: int = 1) -> int:
+        return int(await self._client.hincrby(key, field, amount))
+
+    async def hgetall_int(self, key: str) -> dict[str, int]:
+        raw = await cast(Awaitable[dict[str, str]], self._client.hgetall(key))
+        return {field: int(value) for field, value in raw.items()}
+
+    async def expire(self, key: str, ttl_seconds: int) -> None:
+        await cast(Awaitable[Any], self._client.expire(key, ttl_seconds))
+
+    async def publish_json(self, channel: str, payload: dict[str, Any]) -> None:
+        await cast(Awaitable[Any], self._client.publish(channel, json.dumps(payload, default=str)))
+
+    async def xadd_json(
+        self, stream: str, payload: dict[str, Any], *, maxlen: int = 100_000
+    ) -> None:
+        await cast(
+            Awaitable[Any],
+            self._client.xadd(
+                stream,
+                {"payload": json.dumps(payload, default=str)},
+                maxlen=maxlen,
+                approximate=True,
+            ),
+        )
+
+    async def subscribe_json(self, *channels: str) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+        """Yield (channel, payload) tuples for pattern-free channel subscriptions."""
+        pubsub = self._client.pubsub()
+        await pubsub.subscribe(*channels)
+        try:
+            async for message in pubsub.listen():
+                if message.get("type") != "message":
+                    continue
+                channel = str(message.get("channel"))
+                try:
+                    payload = cast(dict[str, Any], json.loads(str(message.get("data"))))
+                except json.JSONDecodeError:
+                    continue
+                yield channel, payload
+        finally:
+            await pubsub.unsubscribe()
+            await pubsub.aclose()  # type: ignore[no-untyped-call]

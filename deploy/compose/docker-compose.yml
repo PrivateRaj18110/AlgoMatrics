@@ -1,0 +1,169 @@
+name: algo-matrics
+
+x-backend-image: &backend-image
+  build:
+    context: ../..
+    dockerfile: deploy/docker/backend.Dockerfile
+  image: algo-matrics/backend:local
+
+# Hardened runtime shared by every backend process: read-only root filesystem
+# (writes go to the app_var volume and tmpfs), no privilege escalation.
+x-backend-env: &backend-env
+  env_file: ../../.env
+  environment:
+    JWT_PRIVATE_KEY_FILE: /run/secrets/jwt_private_key
+    JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+    BROKER_CREDENTIAL_KEK_FILE: /run/secrets/broker_kek
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+  volumes:
+    - secrets:/run/secrets:ro
+    - app_var:/app/var
+
+services:
+  # One-shot: generate JWT keypair + broker KEK into the shared secrets volume.
+  secrets-init:
+    image: python:3.13-slim
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        pip install --quiet cryptography
+        python - <<'PY'
+        import base64, os, secrets
+        from pathlib import Path
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        out = Path("/secrets")
+        out.mkdir(parents=True, exist_ok=True)
+        if not (out / "jwt_private_key").exists():
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            (out / "jwt_private_key").write_bytes(
+                key.private_bytes(
+                    serialization.Encoding.PEM,
+                    serialization.PrivateFormat.PKCS8,
+                    serialization.NoEncryption(),
+                )
+            )
+            (out / "jwt_public_key").write_bytes(
+                key.public_key().public_bytes(
+                    serialization.Encoding.PEM,
+                    serialization.PublicFormat.SubjectPublicKeyInfo,
+                )
+            )
+            print("generated JWT keypair")
+        if not (out / "broker_kek").exists():
+            (out / "broker_kek").write_text(base64.b64encode(secrets.token_bytes(32)).decode())
+            print("generated broker KEK")
+        print("secrets ready")
+        PY
+    volumes:
+      - secrets:/secrets
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: algo
+      POSTGRES_USER: algo
+      POSTGRES_PASSWORD: algo
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U algo -d algo"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: ["redis_data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # One-shot: run migrations and seed reference data, then exit 0.
+  migrate:
+    <<: [*backend-image, *backend-env]
+    command: ["migrate"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      secrets-init: {condition: service_completed_successfully}
+    restart: "no"
+
+  api:
+    <<: [*backend-image, *backend-env]
+    command: ["api"]
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/live')"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+  worker:
+    <<: [*backend-image, *backend-env]
+    command: ["worker"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+
+  market-data:
+    <<: [*backend-image, *backend-env]
+    command: ["market-data"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+
+  trading-engine:
+    <<: [*backend-image, *backend-env]
+    command: ["engine"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+
+  scheduler:
+    <<: [*backend-image, *backend-env]
+    command: ["scheduler"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/frontend.Dockerfile
+    image: algo-matrics/frontend:local
+    ports: ["8080:8080"]
+    depends_on:
+      api: {condition: service_started}
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  secrets:
+  app_var:

@@ -1,0 +1,79 @@
+[project]
+name = "algo-matrics-platform"
+version = "0.1.0"
+description = "Production-grade algorithmic trading platform foundation"
+requires-python = ">=3.13"
+dependencies = [
+  "alembic>=1.14",
+  "asyncpg>=0.30",
+  "cryptography>=44.0",
+  "fastapi>=0.115",
+  "httpx>=0.28",
+  "pydantic-settings>=2.7",
+  "pydantic[email]>=2.10",
+  "pyjwt[crypto]>=2.10",
+  "python-multipart>=0.0.20",
+  "redis>=5.2",
+  "sqlalchemy[asyncio]>=2.0.36",
+  "structlog>=24.4",
+  "uvicorn[standard]>=0.34",
+]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.14",
+  "pytest-asyncio>=0.25",
+  "pytest-cov>=6.0",
+  "pytest>=8.3",
+  "ruff>=0.9",
+  "testcontainers[postgres,redis]>=4.9",
+]
+
+[tool.uv]
+package = true
+
+[tool.hatch.build.targets.wheel]
+packages = [
+  "backend/src/algo_platform",
+  "packages/python-sdk/src/algo_sdk",
+  "packages/strategy-sdk/src/algo_strategy_sdk",
+  "agents/vps-agent/src/algo_agent",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["backend/src", "packages", "agents"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "S", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S311"]
+"backend/src/algo_platform/processes/*" = ["S104"]
+"agents/vps-agent/src/algo_agent/main.py" = ["S104"]
+"scripts/**" = ["S105", "S106"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests", "agents/vps-agent/tests"]
+addopts = "--strict-markers --strict-config"
+markers = [
+  "integration: requires infrastructure",
+  "contract: verifies a public port or schema",
+  "e2e: exercises a deployed stack",
+]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["asyncpg.*", "testcontainers.*", "MetaTrader5.*"]
+ignore_missing_imports = true
