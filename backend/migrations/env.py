@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # Import every module that declares tables so Base.metadata is complete.
 import algo_platform.modules.audit.infrastructure.models
 import algo_platform.modules.billing.infrastructure.models
+import algo_platform.modules.feature_flags.infrastructure.models
 import algo_platform.modules.brokerage.infrastructure.models
 import algo_platform.modules.identity.infrastructure.models
 import algo_platform.modules.instruments.infrastructure.models
