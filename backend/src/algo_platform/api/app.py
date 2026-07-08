@@ -149,6 +149,7 @@ def build_payment_providers(
 def _include_routers(app: FastAPI) -> None:
     from algo_platform.api.routes.admin import router as admin_router
     from algo_platform.api.routes.audit import router as audit_router
+    from algo_platform.api.routes.rate_limits import router as rate_limits_router
     from algo_platform.api.websocket.hub import router as ws_router
     from algo_platform.modules.billing.presentation.router import (
         router as billing_router,
@@ -220,6 +221,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(audit_router, prefix=prefix)
     app.include_router(feature_flags_router, prefix=prefix)
     app.include_router(feature_flags_admin_router, prefix=prefix)
+    app.include_router(rate_limits_router, prefix=prefix)
     app.include_router(admin_router, prefix=prefix)
     app.include_router(ws_router, prefix=prefix)
 

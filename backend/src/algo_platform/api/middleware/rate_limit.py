@@ -21,6 +21,8 @@ from starlette.types import ASGIApp
 
 from algo_platform.api.middleware.errors import problem_response
 from algo_platform.shared.infrastructure.rate_limiting import RateLimiter, RateLimitRule
+from algo_platform.shared.infrastructure.rate_limiting.overrides import RateLimitOverrides
+from algo_platform.shared.infrastructure.rate_limiting.scopes import Scope
 
 logger = structlog.get_logger("rate_limit")
 
@@ -43,9 +45,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
+        redis = getattr(request.app.state, "redis", None)
         try:
+            if redis is not None:
+                overrides = RateLimitOverrides(redis)
+                if await overrides.is_bypassed(Scope.IP, client_ip):
+                    return await call_next(request)
+                rule = await overrides.rule_for("ip", self._rule)
+            else:
+                rule = self._rule
             result = await limiter.check(
-                f"rl:ip:{client_ip}", self._rule, now_ms=int(time.time() * 1000)
+                f"rl:ip:{client_ip}", rule, now_ms=int(time.time() * 1000)
             )
         except Exception:
             logger.warning("rate_limit.ip_check_failed")
