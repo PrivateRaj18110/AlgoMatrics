@@ -5,6 +5,22 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — broker integrations (Master Spec Phase 8)
+
+Binance and Interactive Brokers join the shared broker abstraction, completing
+the spec's venue set (Angel, Zerodha, Delta, Binance, IBKR, Paper, MT5). See
+`docs/operations/brokers.md`.
+
+- **BinanceExecutionAdapter**: HMAC-signed Spot REST (submit/cancel/cancelReplace,
+  openOrders polling with status normalization, balances).
+- **IbkrExecutionAdapter**: Client Portal gateway REST with the reply-confirmation
+  order flow, modify, live-order polling, ledger balances/positions; user-supplied
+  gateway URL restricted to HTTPS-or-loopback (SSRF guard).
+- `BrokerCode.BINANCE` / `INTERACTIVE_BROKERS`, `LiveRouter` wiring, and seeded
+  catalog entries with their credential schemas.
+- 11 new contract tests via `httpx.MockTransport`; ruff + strict mypy clean; 301
+  unit/arch/contract tests pass.
+
 ### Added — worker separation (Master Spec Phase 7)
 
 The single worker becomes a set of independently deployable roles hosted by one
