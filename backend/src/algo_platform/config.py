@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     broker_credential_kek_b64: str | None = None
     credential_key_version: int = 1
 
+    # Secrets management. "env" resolves secrets from .env/environment exactly as
+    # before; "aws" and "encrypted" are opt-in managed backends. A missing
+    # managed secret always falls back to the settings value below.
+    secrets_backend: Literal["env", "aws", "encrypted"] = "env"
+    secrets_env_prefix: str = "ALGO_SECRET_"
+    # Managed-backend cache TTL; on expiry the value is refetched, which is how
+    # rotation is picked up without a restart.
+    secrets_cache_ttl_seconds: int = Field(default=300, ge=0, le=86_400)
+
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:8080"]
     cookie_secure: bool = False
     cookie_domain: str | None = None

@@ -25,6 +25,10 @@ from algo_platform.shared.infrastructure.metrics import MetricsRecorder
 from algo_platform.shared.infrastructure.metrics_sampler import run_infra_sampler
 from algo_platform.shared.infrastructure.prometheus import PrometheusMetrics
 from algo_platform.shared.infrastructure.redis_gateway import RedisGateway
+from algo_platform.shared.infrastructure.secrets import (
+    SecretsResolver,
+    build_secrets_provider,
+)
 from algo_platform.shared.infrastructure.telemetry import configure_logging
 
 
@@ -37,19 +41,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Create shared pools/clients here; never connect at import time.
         engine = create_engine(resolved.database_url, pool_size=resolved.database_pool_size)
         redis = RedisGateway.from_url(resolved.redis_url)
+        secrets = SecretsResolver(build_secrets_provider(resolved), resolved)
         app.state.settings = resolved
+        app.state.secrets = secrets
         app.state.engine = engine
         app.state.session_factory = create_session_factory(engine)
         app.state.redis = redis
         app.state.jwt = JwtService(
-            private_key_pem=resolved.load_jwt_private_key(),
-            public_key_pem=resolved.load_jwt_public_key(),
+            private_key_pem=secrets.jwt_private_key(),
+            public_key_pem=secrets.jwt_public_key(),
             issuer=resolved.jwt_issuer,
             audience=resolved.jwt_audience,
             access_ttl_seconds=resolved.access_token_ttl_seconds,
         )
         app.state.cipher = CredentialCipher.from_base64(
-            resolved.load_broker_kek_b64(), key_version=resolved.credential_key_version
+            secrets.broker_credential_kek_b64(), key_version=resolved.credential_key_version
         )
         app.state.email_sender = create_email_sender(resolved)
         app.state.metrics = MetricsRecorder(redis)
@@ -68,7 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     prometheus, engine, redis, interval_seconds=15.0, stop=sampler_stop
                 )
             )
-        app.state.payment_providers = build_payment_providers(resolved)
+        app.state.payment_providers = build_payment_providers(resolved, secrets)
         try:
             yield
         finally:
@@ -102,18 +108,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-def build_payment_providers(settings: Settings) -> dict[str, PaymentProvider]:
+def build_payment_providers(
+    settings: Settings, secrets: SecretsResolver
+) -> dict[str, PaymentProvider]:
     providers: dict[str, PaymentProvider] = {}
-    if settings.razorpay_key_id and settings.razorpay_key_secret:
+    razorpay_key_secret = secrets.razorpay_key_secret()
+    if settings.razorpay_key_id and razorpay_key_secret:
         providers["razorpay"] = RazorpayProvider(
             key_id=settings.razorpay_key_id,
-            key_secret=settings.razorpay_key_secret,
-            webhook_secret=settings.razorpay_webhook_secret,
+            key_secret=razorpay_key_secret,
+            webhook_secret=secrets.razorpay_webhook_secret(),
         )
-    if settings.stripe_secret_key:
+    stripe_secret_key = secrets.stripe_secret_key()
+    if stripe_secret_key:
         providers["stripe"] = StripeProvider(
-            secret_key=settings.stripe_secret_key,
-            webhook_secret=settings.stripe_webhook_secret,
+            secret_key=stripe_secret_key,
+            webhook_secret=secrets.stripe_webhook_secret(),
         )
     return providers
 

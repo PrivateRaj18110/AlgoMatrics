@@ -54,6 +54,10 @@ from algo_platform.shared.infrastructure.database import (
 from algo_platform.shared.infrastructure.encryption import CredentialCipher
 from algo_platform.shared.infrastructure.metrics_server import start_process_metrics
 from algo_platform.shared.infrastructure.redis_gateway import RedisGateway
+from algo_platform.shared.infrastructure.secrets import (
+    SecretsResolver,
+    build_secrets_provider,
+)
 from algo_platform.shared.infrastructure.telemetry import configure_logging
 
 logger = structlog.get_logger("trading_engine")
@@ -69,6 +73,7 @@ RUN_HEARTBEAT_INTERVAL_SECONDS = 20.0
 class TradingEngineProcess:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        secrets = SecretsResolver(build_secrets_provider(settings), settings)
         self._db_engine = create_engine(settings.database_url, pool_size=8)
         self._session_factory = create_session_factory(self._db_engine)
         self._redis = RedisGateway.from_url(settings.redis_url)
@@ -82,7 +87,7 @@ class TradingEngineProcess:
             session_factory=self._session_factory,
             redis=self._redis,
             cipher=CredentialCipher.from_base64(
-                settings.load_broker_kek_b64(),
+                secrets.broker_credential_kek_b64(),
                 key_version=settings.credential_key_version,
             ),
             mt5_allowed_hosts=settings.mt5_agent_allowed_hosts,
