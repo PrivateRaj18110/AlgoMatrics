@@ -26,6 +26,7 @@ from algo_platform.shared.infrastructure.email_outbox import (
     mark_email_failed,
     mark_email_sent,
 )
+from algo_platform.shared.infrastructure.event_bus_factory import build_event_bus
 from algo_platform.shared.infrastructure.metrics_events import record_business_event
 from algo_platform.shared.infrastructure.metrics_server import start_process_metrics
 from algo_platform.shared.infrastructure.outbox import fetch_unpublished, mark_published
@@ -45,6 +46,7 @@ async def run() -> None:
     session_factory = create_session_factory(engine)
     redis = RedisGateway.from_url(settings.redis_url)
     email_sender = create_email_sender(settings)
+    event_bus = build_event_bus(settings, redis)
     metrics = start_process_metrics(settings, "algo-worker")
     stop_event = asyncio.Event()
     _install_signal_handlers(stop_event)
@@ -83,7 +85,7 @@ async def run() -> None:
                                         stream="engine:commands"
                                     ).inc()
                             else:
-                                await redis.xadd_json(EVENTS_STREAM, envelope)
+                                await event_bus.publish(EVENTS_STREAM, envelope)
                                 await redis.publish_json(f"events:{row.event_type}", envelope)
                                 if metrics is not None:
                                     metrics.events_published_total.labels(

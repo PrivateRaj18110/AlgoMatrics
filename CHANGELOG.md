@@ -5,6 +5,25 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — event-driven architecture (Master Spec Phase 6)
+
+A transport-agnostic event bus so the messaging backend (Redis Streams today;
+Kafka/NATS/RabbitMQ later) is pluggable with no business-logic rewrite. See
+`docs/operations/event-driven.md`.
+
+- **Ports** (`shared/application/event_bus.py`): EventPublisher / EventConsumer /
+  EventBus with consumer-group semantics (at-least-once, ack, stale reclaim, DLQ).
+- **Redis backend** (`RedisStreamsEventBus`) + typed gateway consumer-group
+  methods; `EVENT_BUS_BACKEND` setting and factory (others recognised, raise).
+- **StreamConsumer**: reusable runner (reclaim → read → handle → ack; dead-letter
+  after max attempts; optional inbox dedupe) — the building block for Phase 7's
+  per-domain workers.
+- **RedisInbox** (`set_if_absent` SET NX EX): at-least-once → effectively-once.
+- The worker relays the events stream through the publisher port
+  (behaviour-identical serialization; engine command path unchanged).
+- 17 new unit tests (bus mapping/DLQ, consumer retry/reclaim/dedupe); ruff +
+  strict mypy clean; 233 backend unit/arch tests pass.
+
 ### Added — enterprise rate limiting (Master Spec Phase 5)
 
 Redis-backed sliding-window rate limiting across six scopes with burst control

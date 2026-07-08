@@ -90,6 +90,10 @@ class Settings(BaseSettings):
     market_tick_interval_ms: int = Field(default=1000, ge=100, le=60_000)
     market_data_seed: int = 20_260_101
 
+    # Event transport behind the abstract EventBus. Redis Streams today; the
+    # other backends are recognised for forward compatibility and wired later.
+    event_bus_backend: Literal["redis", "kafka", "nats", "rabbitmq"] = "redis"
+
     engine_poll_seconds: float = Field(default=2.0, ge=0.2, le=60.0)
     outbox_poll_seconds: float = Field(default=1.0, ge=0.1, le=60.0)
     scheduler_interval_seconds: float = Field(default=60.0, ge=5.0, le=3600.0)
