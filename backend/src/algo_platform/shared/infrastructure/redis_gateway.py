@@ -193,6 +193,13 @@ class RedisGateway:
     async def xack(self, stream: str, group: str, message_id: str) -> None:
         await cast(Awaitable[Any], self._client.xack(stream, group, message_id))
 
+    async def set_if_absent(self, key: str, *, ttl_seconds: int) -> bool:
+        """Atomically set ``key`` only if absent; True when newly set (SET NX EX)."""
+        result = await cast(
+            Awaitable[Any], self._client.set(key, "1", nx=True, ex=ttl_seconds)
+        )
+        return bool(result)
+
     async def subscribe_json(self, *channels: str) -> AsyncIterator[tuple[str, dict[str, Any]]]:
         """Yield (channel, payload) tuples for pattern-free channel subscriptions."""
         pubsub = self._client.pubsub()
