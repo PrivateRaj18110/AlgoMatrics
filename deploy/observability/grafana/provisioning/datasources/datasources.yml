@@ -1,0 +1,23 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      # Click a log line's correlation_id to jump straight to related logs.
+      derivedFields:
+        - name: correlation_id
+          matcherRegex: '"correlation_id":"([^"]+)"'
+          url: ""

@@ -1,0 +1,38 @@
+# Promtail tails Docker container logs and ships them to Loki. The backend
+# emits JSON logs (structlog) in non-local environments, so the pipeline parses
+# JSON and promotes correlation/service fields to labels for fast querying.
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: container
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        target_label: service
+    pipeline_stages:
+      # Only structured JSON lines carry these fields; plain lines pass through.
+      - match:
+          selector: '{service=~"api|worker|trading-engine|market-data|scheduler"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+                  service: service
+                  correlation_id: correlation_id
+                  event: event
+            - labels:
+                level:
+                correlation_id:
