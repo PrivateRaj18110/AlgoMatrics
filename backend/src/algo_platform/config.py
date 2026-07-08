@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     # other backends are recognised for forward compatibility and wired later.
     event_bus_backend: Literal["redis", "kafka", "nats", "rabbitmq"] = "redis"
 
+    # Worker roles this process should run. ["all"] runs every registered role;
+    # scale a busy role independently by running a process with just its name.
+    worker_roles: list[str] = ["all"]
+
     engine_poll_seconds: float = Field(default=2.0, ge=0.2, le=60.0)
     outbox_poll_seconds: float = Field(default=1.0, ge=0.1, le=60.0)
     scheduler_interval_seconds: float = Field(default=60.0, ge=5.0, le=3600.0)
