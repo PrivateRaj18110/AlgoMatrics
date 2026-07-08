@@ -93,6 +93,11 @@ def test_default_backend_is_env() -> None:
 
 def test_unimplemented_backend_raises() -> None:
     with pytest.raises(ValueError, match="not available"):
+        build_secrets_provider(_settings(secrets_backend="encrypted"))
+
+
+def test_aws_backend_requires_secret_id() -> None:
+    with pytest.raises(ValueError, match="AWS_SECRETS_ID"):
         build_secrets_provider(_settings(secrets_backend="aws"))
 
 

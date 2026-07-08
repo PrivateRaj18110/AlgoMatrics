@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # Managed-backend cache TTL; on expiry the value is refetched, which is how
     # rotation is picked up without a restart.
     secrets_cache_ttl_seconds: int = Field(default=300, ge=0, le=86_400)
+    # AWS Secrets Manager backend: the secret id/ARN holding the JSON document of
+    # canonical secret names, and the region (blank => boto3 default resolution).
+    aws_secrets_id: str = ""
+    aws_region: str = ""
 
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:8080"]
     cookie_secure: bool = False
