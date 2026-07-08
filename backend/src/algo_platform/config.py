@@ -46,6 +46,24 @@ class Settings(BaseSettings):
     broker_credential_kek_b64: str | None = None
     credential_key_version: int = 1
 
+    # Secrets management. "env" resolves secrets from .env/environment exactly as
+    # before; "aws" and "encrypted" are opt-in managed backends. A missing
+    # managed secret always falls back to the settings value below.
+    secrets_backend: Literal["env", "aws", "encrypted"] = "env"
+    secrets_env_prefix: str = "ALGO_SECRET_"
+    # Managed-backend cache TTL; on expiry the value is refetched, which is how
+    # rotation is picked up without a restart.
+    secrets_cache_ttl_seconds: int = Field(default=300, ge=0, le=86_400)
+    # AWS Secrets Manager backend: the secret id/ARN holding the JSON document of
+    # canonical secret names, and the region (blank => boto3 default resolution).
+    aws_secrets_id: str = ""
+    aws_region: str = ""
+    # Encrypted-file backend for local development: the encrypted document and
+    # the Fernet key (inline or a file kept outside the repo).
+    secrets_encrypted_file: Path | None = None
+    secrets_encryption_key: str | None = None
+    secrets_encryption_key_file: Path | None = None
+
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:8080"]
     cookie_secure: bool = False
     cookie_domain: str | None = None
@@ -94,6 +112,13 @@ class Settings(BaseSettings):
 
     def load_jwt_public_key(self) -> str:
         return self._load_key(self.jwt_public_key_pem, self.jwt_public_key_file, "JWT public")
+
+    def load_secrets_encryption_key(self) -> str:
+        return self._load_key(
+            self.secrets_encryption_key,
+            self.secrets_encryption_key_file,
+            "secrets encryption",
+        )
 
     def load_broker_kek_b64(self) -> str:
         if self.broker_credential_kek_b64:

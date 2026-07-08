@@ -20,6 +20,10 @@ dependencies = [
   "uvicorn[standard]>=0.34",
 ]
 
+[project.optional-dependencies]
+# Only required when SECRETS_BACKEND=aws.
+aws = ["boto3>=1.35"]
+
 [dependency-groups]
 dev = [
   "mypy>=1.14",
@@ -76,5 +80,5 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["asyncpg.*", "testcontainers.*", "MetaTrader5.*", "prometheus_client.*"]
+module = ["asyncpg.*", "testcontainers.*", "MetaTrader5.*", "prometheus_client.*", "boto3.*"]
 ignore_missing_imports = true
