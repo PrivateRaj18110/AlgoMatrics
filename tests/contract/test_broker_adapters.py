@@ -26,6 +26,9 @@ from algo_platform.modules.trading.domain.orders import (
 from algo_platform.modules.trading.infrastructure.brokers.angelone import (
     AngelOneExecutionAdapter,
 )
+from algo_platform.modules.trading.infrastructure.brokers.binance import (
+    BinanceExecutionAdapter,
+)
 from algo_platform.modules.trading.infrastructure.brokers.delta import DeltaExecutionAdapter
 from algo_platform.modules.trading.infrastructure.brokers.indian import VenueInstrument
 from algo_platform.modules.trading.infrastructure.brokers.mt5 import Mt5AgentExecutionAdapter
@@ -739,3 +742,81 @@ class TestPaperBrokerContract:
         assert sim.stop_triggered(side=Side.BUY, stop_price=Decimal("100.05"), market=market)
         assert not sim.stop_triggered(side=Side.BUY, stop_price=Decimal("101"), market=market)
         assert sim.stop_triggered(side=Side.SELL, stop_price=Decimal("100.5"), market=market)
+
+
+# --------------------------------- Binance ----------------------------------
+
+
+class TestBinanceAdapter:
+    def _adapter(self) -> BinanceExecutionAdapter:
+        return BinanceExecutionAdapter(api_key="key", api_secret="secret", symbol_resolver=_venue)
+
+    async def test_submit_market_order_signs_and_tracks(self) -> None:
+        captured: list[httpx.Request] = []
+        handler = _router({("POST", "/api/v3/order"): (200, {"orderId": 555})}, captured)
+        adapter = self._adapter()
+        _attach(adapter, handler, "https://api.binance.com")
+
+        ack = await adapter.submit_order(_intent())
+        assert ack.broker_order_id == "555"
+        assert ack.status is OrderStatus.SUBMITTED
+        query = parse_qs(captured[0].url.query.decode())
+        assert query["side"] == ["BUY"]
+        assert query["type"] == ["MARKET"]
+        assert query["quantity"] == ["10"]
+        assert "signature" in query  # request was HMAC-signed
+
+    async def test_submit_limit_includes_price_and_tif(self) -> None:
+        captured: list[httpx.Request] = []
+        handler = _router({("POST", "/api/v3/order"): (200, {"orderId": 1})}, captured)
+        adapter = self._adapter()
+        _attach(adapter, handler, "https://api.binance.com")
+
+        await adapter.submit_order(
+            _intent(order_type=OrderType.LIMIT, limit_price=Decimal("100.5"),
+                    time_in_force=TimeInForce.IOC)
+        )
+        query = parse_qs(captured[0].url.query.decode())
+        assert query["price"] == ["100.5"]
+        assert query["timeInForce"] == ["IOC"]
+
+    async def test_rejected_order_raises_conflict(self) -> None:
+        handler = _router({("POST", "/api/v3/order"): (400, {"msg": "insufficient balance"})}, [])
+        adapter = self._adapter()
+        _attach(adapter, handler, "https://api.binance.com")
+        with pytest.raises(ConflictError):
+            await adapter.submit_order(_intent())
+
+    async def test_stream_normalizes_filled(self) -> None:
+        captured: list[httpx.Request] = []
+        handler = _router(
+            {
+                ("POST", "/api/v3/order"): (200, {"orderId": 9}),
+                ("GET", "/api/v3/openOrders"): (
+                    200,
+                    [{"orderId": 9, "status": "FILLED", "executedQty": "10",
+                      "cummulativeQuoteQty": "1000"}],
+                ),
+            },
+            captured,
+        )
+        adapter = self._adapter()
+        _attach(adapter, handler, "https://api.binance.com")
+        await adapter.submit_order(_intent())
+        update = await _first_update(adapter)
+        assert update.status is OrderStatus.FILLED
+        assert update.filled_quantity == Decimal("10")
+        assert update.average_price == Decimal("100")
+
+    async def test_balances_filters_zero(self) -> None:
+        handler = _router(
+            {("GET", "/api/v3/account"): (
+                200,
+                {"balances": [{"asset": "USDT", "free": "500"}, {"asset": "BTC", "free": "0"}]},
+            )},
+            [],
+        )
+        adapter = self._adapter()
+        _attach(adapter, handler, "https://api.binance.com")
+        balances = await adapter.get_balances()
+        assert balances == {"USDT": Decimal("500")}

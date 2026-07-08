@@ -19,6 +19,8 @@ class BrokerCode(StrEnum):
     ZERODHA = "zerodha"
     ANGELONE = "angelone"
     DELTA = "delta"
+    BINANCE = "binance"
+    INTERACTIVE_BROKERS = "interactive_brokers"
 
 
 @dataclass(frozen=True, slots=True)

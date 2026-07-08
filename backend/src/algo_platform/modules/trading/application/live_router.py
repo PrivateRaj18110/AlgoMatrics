@@ -39,6 +39,9 @@ from algo_platform.modules.trading.domain.positions import Execution
 from algo_platform.modules.trading.infrastructure.brokers.angelone import (
     AngelOneExecutionAdapter,
 )
+from algo_platform.modules.trading.infrastructure.brokers.binance import (
+    BinanceExecutionAdapter,
+)
 from algo_platform.modules.trading.infrastructure.brokers.delta import (
     DeltaExecutionAdapter,
 )
@@ -178,6 +181,12 @@ class LiveRouter:
             )
         elif connection.broker_code == "delta":
             adapter = DeltaExecutionAdapter(
+                api_key=credentials.get("api_key", ""),
+                api_secret=credentials.get("api_secret", ""),
+                symbol_resolver=resolver,
+            )
+        elif connection.broker_code == "binance":
+            adapter = BinanceExecutionAdapter(
                 api_key=credentials.get("api_key", ""),
                 api_secret=credentials.get("api_secret", ""),
                 symbol_resolver=resolver,
