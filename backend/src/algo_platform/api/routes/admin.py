@@ -524,8 +524,31 @@ async def admin_audit_events(
                 "resource_type": e.resource_type,
                 "resource_id": e.resource_id,
                 "request_id": e.request_id,
+                "correlation_id": e.correlation_id,
+                "sequence": e.sequence,
+                "entry_hash": e.entry_hash,
                 "occurred_at": e.occurred_at.isoformat(),
             }
             for e in entries
         ],
     }
+
+
+class AuditIntegrityResponse(BaseModel):
+    checked: int
+    intact: bool
+    first_bad_sequence: int | None
+
+
+@router.get("/audit-events/integrity", response_model=AuditIntegrityResponse)
+async def admin_audit_integrity(
+    admin: PlatformAdminDep,
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=100_000)] = 10_000,
+) -> AuditIntegrityResponse:
+    report = await AuditService(session).verify_integrity(limit=limit)
+    return AuditIntegrityResponse(
+        checked=report.checked,
+        intact=report.intact,
+        first_bad_sequence=report.first_bad_sequence,
+    )
