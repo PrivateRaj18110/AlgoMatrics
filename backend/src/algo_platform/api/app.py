@@ -12,6 +12,7 @@ from algo_platform.api.middleware.errors import register_exception_handlers
 from algo_platform.api.middleware.request_context import RequestContextMiddleware
 from algo_platform.api.routes.health import router as health_router
 from algo_platform.api.routes.metrics import router as metrics_router
+from algo_platform.api.routes.rum import router as rum_router
 from algo_platform.config import Settings, get_settings
 from algo_platform.modules.billing.application.ports import PaymentProvider
 from algo_platform.modules.billing.infrastructure.providers.razorpay import RazorpayProvider
@@ -167,6 +168,7 @@ def _include_routers(app: FastAPI) -> None:
 
     prefix = "/api/v1"
     app.include_router(health_router, prefix=prefix)
+    app.include_router(rum_router, prefix=prefix)
     app.include_router(auth_router, prefix=prefix)
     app.include_router(users_router, prefix=prefix)
     app.include_router(api_keys_router, prefix=prefix)
