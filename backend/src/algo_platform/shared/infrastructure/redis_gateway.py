@@ -13,6 +13,23 @@ from typing import Any, cast
 import redis.asyncio as aioredis
 
 
+def _decode_stream_entries(entries: Any) -> list[tuple[str, dict[str, Any]]]:
+    """Decode ``[(id, {"payload": json})]`` stream entries to ``[(id, payload)]``.
+
+    Malformed entries are surfaced with an empty payload so the consumer can ack
+    and dead-letter them rather than looping forever on a poison message.
+    """
+    decoded: list[tuple[str, dict[str, Any]]] = []
+    for entry_id, fields in entries:
+        raw = fields.get("payload") if isinstance(fields, dict) else None
+        try:
+            payload = cast(dict[str, Any], json.loads(raw)) if raw else {}
+        except (json.JSONDecodeError, TypeError):
+            payload = {}
+        decoded.append((str(entry_id), payload))
+    return decoded
+
+
 class RedisGateway:
     def __init__(self, client: aioredis.Redis) -> None:
         self._client = client
@@ -122,6 +139,59 @@ class RedisGateway:
                 approximate=True,
             ),
         )
+
+    async def xadd_event(
+        self, stream: str, payload: dict[str, Any], *, maxlen: int = 100_000
+    ) -> str:
+        """Append a payload-wrapped event and return its stream id."""
+        message_id = await cast(
+            Awaitable[Any],
+            self._client.xadd(
+                stream,
+                {"payload": json.dumps(payload, default=str)},
+                maxlen=maxlen,
+                approximate=True,
+            ),
+        )
+        return str(message_id)
+
+    async def xgroup_ensure(self, stream: str, group: str) -> None:
+        try:
+            await cast(
+                Awaitable[Any],
+                self._client.xgroup_create(stream, group, id="0-0", mkstream=True),
+            )
+        except Exception as error:
+            if "BUSYGROUP" not in str(error):
+                raise
+
+    async def xreadgroup_events(
+        self, *, stream: str, group: str, consumer: str, count: int, block_ms: int
+    ) -> list[tuple[str, dict[str, Any]]]:
+        response = await cast(
+            Awaitable[Any],
+            self._client.xreadgroup(
+                group, consumer, {stream: ">"}, count=count, block=block_ms
+            ),
+        )
+        if not response:
+            return []
+        return _decode_stream_entries(response[0][1])
+
+    async def xautoclaim_events(
+        self, *, stream: str, group: str, consumer: str, min_idle_ms: int, count: int
+    ) -> list[tuple[str, dict[str, Any]]]:
+        claimed = await cast(
+            Awaitable[Any],
+            self._client.xautoclaim(
+                stream, group, consumer, min_idle_time=min_idle_ms, start_id="0-0", count=count
+            ),
+        )
+        entries = claimed[1] if claimed and len(claimed) > 1 else []
+        return _decode_stream_entries(entries)
+
+    async def xack(self, stream: str, group: str, message_id: str) -> None:
+        await cast(Awaitable[Any], self._client.xack(stream, group, message_id))
 
     async def subscribe_json(self, *channels: str) -> AsyncIterator[tuple[str, dict[str, Any]]]:
         """Yield (channel, payload) tuples for pattern-free channel subscriptions."""
