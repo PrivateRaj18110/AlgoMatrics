@@ -319,13 +319,18 @@ export function Td({
   children,
   className,
   dense,
+  colSpan,
 }: {
   children: ReactNode;
   className?: string;
   dense?: boolean;
+  colSpan?: number;
 }) {
   return (
-    <td className={clsx(dense ? "px-2 py-1.5" : "px-3 py-2.5", "align-middle", className)}>
+    <td
+      colSpan={colSpan}
+      className={clsx(dense ? "px-2 py-1.5" : "px-3 py-2.5", "align-middle", className)}
+    >
       {children}
     </td>
   );

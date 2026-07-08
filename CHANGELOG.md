@@ -5,6 +5,29 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — immutable audit platform (Master Spec Phase 3)
+
+Turns the existing append-only audit trail into a tamper-evident, verifiable
+immutable log without changing its consumers. See `docs/operations/audit.md`.
+
+- **Hash chain** (`modules/audit/application/hashing.py`): each entry links to the
+  previous via SHA-256 (`prev_hash` → `entry_hash`); `verify_chain` pinpoints the
+  first tampered/broken/deleted entry. Pure and reused by the migration backfill.
+- **Immutable at the DB**: migration `0006` adds `correlation_id`, `session_id`,
+  `sequence`, `prev_hash`, `entry_hash` (baseline-compatible `ADD COLUMN IF NOT
+  EXISTS`), backfills the chain over existing rows, and installs a trigger that
+  makes `UPDATE`/`DELETE` on `audit_log` raise.
+- **Chained writes**: `AuditService.record` appends under a
+  `pg_advisory_xact_lock`; new correlation/session parameters are optional so
+  every existing caller is unchanged. `verify_integrity()` recomputes the chain.
+- **API**: audit search filters by correlation id, resource type, and date range
+  and returns the chain fields; new admin `GET /audit-events/integrity`.
+- **UI**: `/app/audit` gains resource/correlation filters, an expandable
+  before/after diff, and the entry hash.
+- 6 pure hashing/verification unit tests + updated frontend test; ruff + strict
+  mypy clean; 198 backend unit/arch tests and 17 frontend tests pass. DB-level
+  trigger/chain behaviour is covered by Docker-gated integration tests.
+
 ### Added — secrets management (Master Spec Phase 2)
 
 Pluggable secrets management with a safe `.env` fallback and log redaction. Fully
