@@ -22,6 +22,7 @@ import {
 import { ApiError, api } from "@/lib/api";
 import {
   useAdminCoupons,
+  useAdminFeatureFlags,
   useAdminOrganizations,
   useAdminPlans,
   useAdminUsers,
@@ -30,10 +31,11 @@ import {
   useBrokerMonitor,
   useInstruments,
   useSystemHealth,
+  useUpsertFeatureFlag,
 } from "@/lib/hooks";
 import { dateOnly, dateTime, money } from "@/lib/format";
 import { toastError, toastSuccess } from "@/stores/toast";
-import type { Plan } from "@/types/api";
+import type { FeatureFlag, Plan } from "@/types/api";
 
 const SECTIONS = [
   { key: "health", label: "System Health" },
@@ -42,6 +44,7 @@ const SECTIONS = [
   { key: "plans", label: "Plans" },
   { key: "coupons", label: "Coupons" },
   { key: "venue-instruments", label: "Venue Instruments" },
+  { key: "feature-flags", label: "Feature Flags" },
   { key: "grants", label: "Grants" },
 ];
 
@@ -61,8 +64,91 @@ export function AdminPage() {
       {section === "plans" && <PlansSection />}
       {section === "coupons" && <CouponsSection />}
       {section === "venue-instruments" && <VenueInstrumentsSection />}
+      {section === "feature-flags" && <FeatureFlagsSection />}
       {section === "grants" && <GrantsSection />}
     </div>
+  );
+}
+
+function FeatureFlagsSection() {
+  const { data: flags, isLoading } = useAdminFeatureFlags();
+
+  if (isLoading) return <SkeletonRows rows={8} cols={5} />;
+  if (!flags || flags.length === 0) return <EmptyState title="No feature flags" />;
+
+  return (
+    <Card>
+      <p className="mb-4 text-sm text-slate-500">
+        Changes apply at runtime — no deployment required. The kill switch forces a flag off
+        regardless of any override or rollout.
+      </p>
+      <Table headers={["Flag", "Enabled", "Kill switch", "Rollout %", ""]}>
+        {flags.map((flag) => (
+          <FeatureFlagRow key={flag.key} flag={flag} />
+        ))}
+      </Table>
+    </Card>
+  );
+}
+
+function FeatureFlagRow({ flag }: { flag: FeatureFlag }) {
+  const [draft, setDraft] = useState<FeatureFlag>(flag);
+  const upsert = useUpsertFeatureFlag();
+  const dirty = JSON.stringify(draft) !== JSON.stringify(flag);
+
+  const save = () =>
+    upsert.mutate(draft, {
+      onSuccess: () => toastSuccess(`${flag.key} updated`),
+      onError: (error) =>
+        toastError(error instanceof ApiError ? error.detail : "Could not update flag"),
+    });
+
+  return (
+    <tr>
+      <Td>
+        <div className="font-medium">{flag.key}</div>
+        <div className="max-w-64 truncate text-xs text-slate-500">{flag.description}</div>
+      </Td>
+      <Td>
+        <input
+          type="checkbox"
+          checked={draft.enabled}
+          onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
+        />
+      </Td>
+      <Td>
+        <input
+          type="checkbox"
+          checked={draft.kill_switch}
+          onChange={(event) => setDraft({ ...draft, kill_switch: event.target.checked })}
+        />
+        {draft.kill_switch && (
+          <Badge color="red" className="ml-2">
+            killed
+          </Badge>
+        )}
+      </Td>
+      <Td>
+        <Input
+          type="number"
+          min={0}
+          max={100}
+          value={String(draft.rollout_percentage)}
+          onChange={(event) =>
+            setDraft({
+              ...draft,
+              rollout_percentage: Math.max(0, Math.min(100, Number(event.target.value) || 0)),
+            })
+          }
+          className="w-20"
+        />
+      </Td>
+      <Td>
+        <Button size="sm" disabled={!dirty || upsert.isPending} onClick={save}>
+          Save
+        </Button>
+      </Td>
+    </tr>
   );
 }
 

@@ -5,6 +5,25 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — enterprise feature flags (Master Spec Phase 4)
+
+Runtime-configurable feature flags with no deployment required. New
+`feature_flags` module (Clean Architecture). See `docs/operations/feature-flags.md`.
+
+- **Evaluation** (`domain/flags.py`, pure/unit-tested): precedence kill-switch >
+  user > tenant > environment override > deterministic percentage rollout >
+  default. Scopes: environment, tenant, user.
+- **Storage/service**: `feature_flags` + `feature_flag_overrides` tables
+  (migration 0007, seeds marketplace/ai/paper_trading/live_trading and per-broker
+  gates); service with a short-TTL Redis snapshot cache invalidated on write.
+- **API**: `GET /feature-flags` evaluates all flags for the caller; admin
+  `/admin/feature-flags` CRUD for flags and scoped overrides (each mutation
+  audited); `require_feature(key)` dependency to gate routes.
+- **Frontend**: `useFeatureFlags`/`useFeatureEnabled` hooks and a `<Feature>`
+  gate; Admin → Feature Flags management UI (toggle enabled/kill switch, rollout).
+- 11 evaluation unit tests; ruff + strict mypy clean; 208 backend and 17 frontend
+  tests pass.
+
 ### Added — immutable audit platform (Master Spec Phase 3)
 
 Turns the existing append-only audit trail into a tamper-evident, verifiable
