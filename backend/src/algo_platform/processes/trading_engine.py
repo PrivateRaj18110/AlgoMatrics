@@ -52,6 +52,7 @@ from algo_platform.shared.infrastructure.database import (
     create_session_factory,
 )
 from algo_platform.shared.infrastructure.encryption import CredentialCipher
+from algo_platform.shared.infrastructure.metrics_server import start_process_metrics
 from algo_platform.shared.infrastructure.redis_gateway import RedisGateway
 from algo_platform.shared.infrastructure.telemetry import configure_logging
 
@@ -91,6 +92,7 @@ class TradingEngineProcess:
         self._loss_guard_tripped: set[str] = set()
         self._stop = asyncio.Event()
         self._consumer_name = f"{socket.gethostname()}-{os.getpid()}"
+        self._metrics = start_process_metrics(settings, "algo-trading-engine")
 
     def _billing_factory(self, session: AsyncSession) -> SubscriptionService:
         return SubscriptionService(
@@ -371,7 +373,14 @@ class TradingEngineProcess:
         while not self._stop.is_set():
             try:
                 async for _channel, tick in self._redis.subscribe_json("md:ticks"):
-                    await self._on_tick(tick)
+                    if self._metrics is not None:
+                        self._metrics.market_ticks_total.labels(
+                            source=self._settings.market_data_source
+                        ).inc()
+                        with self._metrics.engine_tick_duration_seconds.time():
+                            await self._on_tick(tick)
+                    else:
+                        await self._on_tick(tick)
                     if self._stop.is_set():
                         break
             except asyncio.CancelledError:
