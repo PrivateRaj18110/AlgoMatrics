@@ -15,6 +15,7 @@ from algo_platform.api.routes.health import router as health_router
 from algo_platform.api.routes.metrics import router as metrics_router
 from algo_platform.api.routes.rum import router as rum_router
 from algo_platform.config import Settings, get_settings
+from algo_platform.modules.ai.infrastructure.factory import build_llm_provider
 from algo_platform.modules.billing.application.ports import PaymentProvider
 from algo_platform.modules.billing.infrastructure.providers.razorpay import RazorpayProvider
 from algo_platform.modules.billing.infrastructure.providers.stripe import StripeProvider
@@ -61,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             secrets.broker_credential_kek_b64(), key_version=resolved.credential_key_version
         )
         app.state.email_sender = create_email_sender(resolved)
+        app.state.llm = build_llm_provider(resolved)
         app.state.metrics = MetricsRecorder(redis)
         if resolved.rate_limit_enabled:
             app.state.rate_limiter = RateLimiter(RedisWindowStore(redis))
@@ -151,6 +153,7 @@ def _include_routers(app: FastAPI) -> None:
     from algo_platform.api.routes.audit import router as audit_router
     from algo_platform.api.routes.rate_limits import router as rate_limits_router
     from algo_platform.api.websocket.hub import router as ws_router
+    from algo_platform.modules.ai.presentation.router import router as ai_router
     from algo_platform.modules.billing.presentation.router import (
         router as billing_router,
     )
@@ -225,6 +228,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(strategies_router, prefix=prefix)
     app.include_router(backtest_router, prefix=prefix)
     app.include_router(marketplace_router, prefix=prefix)
+    app.include_router(ai_router, prefix=prefix)
     app.include_router(portfolio_router, prefix=prefix)
     app.include_router(audit_router, prefix=prefix)
     app.include_router(feature_flags_router, prefix=prefix)
