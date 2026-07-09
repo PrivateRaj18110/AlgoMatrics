@@ -5,6 +5,7 @@ import { AppLayout } from "@/app/AppLayout";
 import { RequireAdmin, RequireAuth } from "@/app/guards";
 import { AdminPage } from "@/pages/AdminPage";
 import { AnalyticsPage } from "@/pages/AnalyticsPage";
+import { AssistantPage } from "@/pages/AssistantPage";
 import { AuditLogPage } from "@/pages/AuditLogPage";
 import { BacktestingPage } from "@/pages/BacktestingPage";
 import { BrokersPage } from "@/pages/BrokersPage";
@@ -58,6 +59,7 @@ export const router: RouteObject[] = [
       { path: "/app/strategies/:strategyId", element: <StrategyDetailPage /> },
       { path: "/app/marketplace", element: <MarketplacePage /> },
       { path: "/app/backtesting", element: <BacktestingPage /> },
+      { path: "/app/assistant", element: <AssistantPage /> },
       { path: "/app/brokers", element: <BrokersPage /> },
       { path: "/app/orders", element: <OrdersPage /> },
       { path: "/app/positions", element: <PositionsPage /> },

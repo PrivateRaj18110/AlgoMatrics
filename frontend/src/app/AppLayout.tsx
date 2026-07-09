@@ -38,6 +38,12 @@ const NAV: NavItem[] = [
   { to: "/app/backtesting", label: "Backtesting", icon: "M3 3v18h18M7 15l3-4 3 2 5-7" },
   { to: "/app/risk", label: "Risk", icon: "M12 3l9 4v6c0 5-4 8-9 9-5-1-9-4-9-9V7z" },
   { to: "/app/audit", label: "Audit log", icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
+  {
+    to: "/app/assistant",
+    label: "Assistant",
+    icon: "M12 3a5 5 0 015 5c0 2-1 3-2 4v2H9v-2c-1-1-2-2-2-4a5 5 0 015-5zM9 20h6",
+    flag: "ai",
+  },
   { to: "/app/subscription", label: "Subscription", icon: "M3 10h18M7 15h4M3 6h18v12H3z" },
   { to: "/app/settings", label: "Settings", icon: "M12 15a3 3 0 100-6 3 3 0 000 6z" },
 ];
