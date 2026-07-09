@@ -5,6 +5,25 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — strategy marketplace (Master Spec Phase 10)
+
+A store to publish, license, and review strategies, gated by the `marketplace`
+feature flag. New `modules/marketplace` (Clean Architecture). See
+`docs/operations/marketplace.md`.
+
+- **Domain**: Listing (pricing/revenue share, draft→published→unlisted), Review
+  (license-gated, one per org), License (grant/active/expiry/revoke), pure
+  `revenue_split`.
+- **Storage/service**: three tables (migration 0010) + repository; service for
+  publish, browse-with-stats, detail, acquire license, review, my licenses, and
+  per-currency revenue reporting.
+- **API** (`/marketplace`, `require_feature('marketplace')`): publish
+  (ownership-checked via a new `StrategyDirectory` read facade), browse, detail,
+  reviews, license, unlist, licenses, revenue.
+- **Frontend**: `/app/marketplace` browse+license page; nav entry shown only when
+  the flag is enabled (feature-driven nav filtering).
+- 10 domain unit tests; ruff + strict mypy clean; 266 backend + 17 frontend tests.
+
 ### Added — payments: tax & refunds (Master Spec Phase 9)
 
 Completed the billing surface with GST/tax on invoices and a provider refund

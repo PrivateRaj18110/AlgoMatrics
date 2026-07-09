@@ -6,6 +6,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Badge, Button, Field, Input, Modal } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
+import { useFeatureFlags } from "@/lib/hooks";
 import { liveChannel } from "@/lib/ws";
 import { activeOrg, useAuth } from "@/stores/auth";
 import { toastError, toastSuccess } from "@/stores/toast";
@@ -15,11 +16,18 @@ interface NavItem {
   to: string;
   label: string;
   icon: string;
+  flag?: string;
 }
 
 const NAV: NavItem[] = [
   { to: "/app/dashboard", label: "Dashboard", icon: "M3 12l9-9 9 9M5 10v10h14V10" },
   { to: "/app/strategies", label: "Strategies", icon: "M4 6h16M4 12h16M4 18h10" },
+  {
+    to: "/app/marketplace",
+    label: "Marketplace",
+    icon: "M3 9l1-4h16l1 4M4 9v11h16V9M9 13h6",
+    flag: "marketplace",
+  },
   { to: "/app/brokers", label: "Brokers", icon: "M3 7h18v13H3zM8 7V4h8v3" },
   { to: "/app/orders", label: "Orders", icon: "M9 5h6M9 9h6M9 13h4M5 3h14v18H5z" },
   { to: "/app/positions", label: "Positions", icon: "M3 3v18h18M7 14l4-4 3 3 5-6" },
@@ -47,6 +55,7 @@ export function AppLayout() {
   const activeOrgId = useAuth((state) => state.activeOrgId);
   const switchOrg = useAuth((state) => state.switchOrg);
   const setOrganizations = useAuth((state) => state.setOrganizations);
+  const { data: flags } = useFeatureFlags();
   const logout = useAuth((state) => state.logout);
   const navigate = useNavigate();
   const location = useLocation();
@@ -141,7 +150,7 @@ export function AppLayout() {
           <span className="font-semibold">Algo Matrics</span>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-          {NAV.map((item) => (
+          {NAV.filter((item) => !item.flag || flags?.[item.flag]).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

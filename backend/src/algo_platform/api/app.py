@@ -181,6 +181,9 @@ def _include_routers(app: FastAPI) -> None:
     from algo_platform.modules.instruments.presentation.router import (
         router as market_data_router,
     )
+    from algo_platform.modules.marketplace.presentation.router import (
+        router as marketplace_router,
+    )
     from algo_platform.modules.notifications.presentation.router import (
         router as notifications_router,
     )
@@ -217,6 +220,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(trading_router, prefix=prefix)
     app.include_router(risk_router, prefix=prefix)
     app.include_router(strategies_router, prefix=prefix)
+    app.include_router(marketplace_router, prefix=prefix)
     app.include_router(portfolio_router, prefix=prefix)
     app.include_router(audit_router, prefix=prefix)
     app.include_router(feature_flags_router, prefix=prefix)

@@ -567,6 +567,30 @@ export interface AuditFilters {
   occurredTo?: string;
 }
 
+export interface MarketplaceListing {
+  id: string;
+  strategy_id: string;
+  title: string;
+  summary: string;
+  status: string;
+  pricing_model: string;
+  price: string;
+  currency: string;
+  revenue_share_percent: string;
+  review_count: number;
+  average_rating: number;
+  license_count: number;
+}
+
+export interface MarketplaceLicense {
+  id: string;
+  listing_id: string;
+  kind: string;
+  status: string;
+  granted_at: string;
+  expires_at: string | null;
+}
+
 export interface FeatureFlag {
   key: string;
   description: string;
