@@ -5,6 +5,20 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — portfolio analytics (Master Spec Phase 11)
+
+Risk-adjusted performance metrics on top of the existing dashboard/equity/
+drawdown/exposure/allocation views. See `docs/operations/portfolio-analytics.md`.
+
+- **Metrics library** (`portfolio/domain/metrics.py`, pure/unit-tested): Sharpe,
+  Sortino, Calmar, max drawdown, annualized return, volatility, alpha/beta
+  (CAPM), returns_from_equity — defensive on short/degenerate inputs.
+- **Integration**: `performance_summary` computes Sharpe/Sortino/Calmar and
+  annualized return from the equity curve's periodic returns; the API
+  `PerformanceSummaryResponse` and the Analytics page expose them.
+- Alpha/beta are implemented and await a benchmark feed to be surfaced.
+- 12 metric unit tests; ruff + strict mypy clean; 278 backend + 17 frontend tests.
+
 ### Added — strategy marketplace (Master Spec Phase 10)
 
 A store to publish, license, and review strategies, gated by the `marketplace`

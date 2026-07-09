@@ -519,6 +519,10 @@ export interface PerformanceSummary {
   max_drawdown_pct: string;
   daily_return_volatility_pct: string;
   gross_exposure: string;
+  sharpe_ratio: string;
+  sortino_ratio: string;
+  calmar_ratio: string;
+  annualized_return_pct: string;
 }
 
 export interface Exposure {

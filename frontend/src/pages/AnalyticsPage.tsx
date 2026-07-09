@@ -142,6 +142,10 @@ export function AnalyticsPage() {
             <Metric label="Average win" value={money(performance.average_win)} />
             <Metric label="Average loss" value={money(performance.average_loss)} />
             <Metric label="Gross exposure" value={money(performance.gross_exposure)} />
+            <Metric label="Sharpe ratio" value={performance.sharpe_ratio} />
+            <Metric label="Sortino ratio" value={performance.sortino_ratio} />
+            <Metric label="Calmar ratio" value={performance.calmar_ratio} />
+            <Metric label="Annualized return" value={pct(performance.annualized_return_pct)} />
             <Metric
               label="Unrealized P&L"
               value={signed(performance.total_unrealized_pnl)}
