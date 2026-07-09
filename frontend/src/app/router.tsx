@@ -6,6 +6,7 @@ import { RequireAdmin, RequireAuth } from "@/app/guards";
 import { AdminPage } from "@/pages/AdminPage";
 import { AnalyticsPage } from "@/pages/AnalyticsPage";
 import { AuditLogPage } from "@/pages/AuditLogPage";
+import { BacktestingPage } from "@/pages/BacktestingPage";
 import { BrokersPage } from "@/pages/BrokersPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ForgotPasswordPage } from "@/pages/auth/ForgotPasswordPage";
@@ -56,6 +57,7 @@ export const router: RouteObject[] = [
       { path: "/app/strategies", element: <StrategiesPage /> },
       { path: "/app/strategies/:strategyId", element: <StrategyDetailPage /> },
       { path: "/app/marketplace", element: <MarketplacePage /> },
+      { path: "/app/backtesting", element: <BacktestingPage /> },
       { path: "/app/brokers", element: <BrokersPage /> },
       { path: "/app/orders", element: <OrdersPage /> },
       { path: "/app/positions", element: <PositionsPage /> },

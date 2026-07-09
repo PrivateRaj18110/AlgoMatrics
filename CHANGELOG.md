@@ -5,6 +5,24 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — backtesting engine (Master Spec Phase 12)
+
+A deterministic backtesting engine with Monte Carlo, optimization, and
+walk-forward, scored with the shared portfolio metrics. See
+`docs/operations/backtesting.md`.
+
+- **Engine** (`strategies/domain/backtest.py`, pure): bar replay with
+  fees/slippage → equity curve, trades, Sharpe/Sortino/Calmar/drawdown;
+  seeded `monte_carlo`; `grid_search` optimization; `walk_forward` evaluation.
+- **Signal registry**: pure bar-based builders for sma_crossover / rsi_reversion
+  / breakout.
+- **Service + API**: run/monte-carlo/optimize/list/get under `/backtests`
+  (permission-gated); runs persisted to `backtest_runs` (migration 0011).
+- **Frontend**: `/app/backtesting` runs a backtest over an editable price series
+  and shows the metric tiles.
+- 15 new unit tests (engine + signals); ruff + strict mypy clean; 293 backend +
+  17 frontend tests pass.
+
 ### Added — portfolio analytics (Master Spec Phase 11)
 
 Risk-adjusted performance metrics on top of the existing dashboard/equity/

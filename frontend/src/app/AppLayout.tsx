@@ -35,6 +35,7 @@ const NAV: NavItem[] = [
   { to: "/app/trades", label: "Trades", icon: "M4 17l6-6 4 4 6-8" },
   { to: "/app/watchlists", label: "Watchlists", icon: "M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7zm0 3a4 4 0 110 8 4 4 0 010-8z" },
   { to: "/app/analytics", label: "Analytics", icon: "M4 20V10M10 20V4M16 20v-8M22 20H2" },
+  { to: "/app/backtesting", label: "Backtesting", icon: "M3 3v18h18M7 15l3-4 3 2 5-7" },
   { to: "/app/risk", label: "Risk", icon: "M12 3l9 4v6c0 5-4 8-9 9-5-1-9-4-9-9V7z" },
   { to: "/app/audit", label: "Audit log", icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
   { to: "/app/subscription", label: "Subscription", icon: "M3 10h18M7 15h4M3 6h18v12H3z" },

@@ -504,6 +504,47 @@ export function useAuditEvents(filters: AuditFilters = {}) {
   });
 }
 
+/* ------------------------------- backtesting -------------------------------- */
+
+export interface BacktestBar {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
+
+export interface BacktestResult {
+  id: string;
+  total_return_pct: number;
+  max_drawdown_pct: number;
+  sharpe: number;
+  sortino: number;
+  calmar: number;
+  annualized_return_pct: number;
+  trades: number;
+  win_rate_pct: number;
+  ending_equity: number;
+}
+
+export function useSignalTypes() {
+  return useQuery({
+    queryKey: ["backtest-signal-types"],
+    queryFn: () => api<string[]>("/backtests/signal-types"),
+    staleTime: 300_000,
+  });
+}
+
+export function useRunBacktest() {
+  return useMutation({
+    mutationFn: (body: {
+      signal_type: string;
+      params: Record<string, number>;
+      bars: BacktestBar[];
+    }) => api<BacktestResult>("/backtests/run", { method: "POST", body }),
+  });
+}
+
 /* ------------------------------- marketplace -------------------------------- */
 
 export function useMarketplaceListings() {
