@@ -35,6 +35,7 @@ import type {
   KillSwitch,
   Member,
   MonthlyPnl,
+  NotificationPreference,
   Order,
   Paged,
   Payment,
@@ -473,6 +474,23 @@ export function useMarkAllNotificationsRead() {
   return useMutation({
     mutationFn: () => api<{ message: string }>("/notifications/read-all", { method: "POST" }),
     onSuccess: () => invalidateNotifications(client),
+  });
+}
+
+export function useNotificationPreferences() {
+  return useQuery({
+    queryKey: ["notification-preferences", orgKey()],
+    queryFn: () => api<NotificationPreference>("/notifications/preferences"),
+  });
+}
+
+export function useUpdateNotificationPreferences() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: NotificationPreference) =>
+      api<NotificationPreference>("/notifications/preferences", { method: "PUT", body }),
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: ["notification-preferences"] }),
   });
 }
 
