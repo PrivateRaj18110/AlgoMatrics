@@ -120,3 +120,36 @@ class BacktestRunModel(Base):
     config: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     result: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class StrategyVersionApprovalModel(Base):
+    __tablename__ = "strategy_version_approvals"
+    __table_args__ = (
+        UniqueConstraint("version_id", name="uq_strategy_version_approvals_version"),
+        Index("ix_strategy_version_approvals_org", "organization_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("strategy_versions.id", ondelete="CASCADE")
+    )
+    organization_id: Mapped[uuid.UUID]
+    status: Mapped[str] = mapped_column(String(20))
+    submitted_by: Mapped[uuid.UUID | None] = mapped_column(default=None)
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(default=None)
+    review_note: Mapped[str] = mapped_column(String(1000), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class StrategyDeploymentModel(Base):
+    __tablename__ = "strategy_deployments"
+    __table_args__ = (Index("ix_strategy_deployments_strategy", "strategy_id", "deployed_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    strategy_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("strategies.id", ondelete="CASCADE"))
+    organization_id: Mapped[uuid.UUID]
+    version_id: Mapped[uuid.UUID]
+    version_label: Mapped[str] = mapped_column(String(20))
+    action: Mapped[str] = mapped_column(String(20), default="deploy")
+    deployed_by: Mapped[uuid.UUID | None] = mapped_column(default=None)
+    deployed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

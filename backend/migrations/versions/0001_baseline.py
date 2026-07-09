@@ -56,6 +56,8 @@ def upgrade() -> None:
         "marketplace_reviews",
         "marketplace_licenses",
         "backtest_runs",
+        "strategy_version_approvals",
+        "strategy_deployments",
     }
     baseline_tables = [
         table for table in Base.metadata.sorted_tables if table.name not in later_revision_tables
