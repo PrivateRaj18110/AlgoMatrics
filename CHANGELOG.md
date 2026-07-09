@@ -5,6 +5,25 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — High availability (Master Spec Phase 18)
+
+Hardened health probes and a reusable circuit breaker. See
+`docs/operations/high-availability.md`.
+
+- **Circuit breaker** (`shared/application/circuit_breaker.py`, pure, clock-
+  injectable): closed → open → half-open state machine; `call()` short-circuits
+  with `CircuitOpenError` while open. Wired around the notification webhook
+  channel. Config `CIRCUIT_BREAKER_FAILURE_THRESHOLD` / `_RESET_SECONDS`.
+- **Readiness** (`shared/application/readiness.py`, pure): `overall_status` with
+  a critical-vs-optional distinction.
+- **`/health/ready`** now bounds each dependency probe by
+  `READINESS_TIMEOUT_SECONDS` and returns **503 when degraded** so a sick replica
+  is pulled from rotation; `/health/dependencies` stays 200 (introspection).
+- Settings: `READINESS_TIMEOUT_SECONDS`, `CIRCUIT_BREAKER_FAILURE_THRESHOLD`,
+  `CIRCUIT_BREAKER_RESET_SECONDS`.
+- 15 new unit tests; ruff + strict mypy clean; 368 backend tests pass. No
+  migration; no user-facing frontend (ops endpoints).
+
 ### Added — Enterprise security (Master Spec Phase 17)
 
 OWASP response headers on every response + a per-organization IP allowlist. See

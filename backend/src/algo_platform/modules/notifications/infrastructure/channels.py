@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 import httpx
 import structlog
 
+from algo_platform.shared.application.circuit_breaker import CircuitBreaker
 from algo_platform.shared.application.ports import EmailMessage, EmailSender
 from algo_platform.shared.domain.errors import ValidationFailed
 
@@ -73,25 +74,44 @@ class EmailNotificationChannel:
 
 
 class WebhookNotificationChannel:
-    """POSTs a JSON notification to an operator-configured HTTPS endpoint."""
+    """POSTs a JSON notification to an operator-configured HTTPS endpoint.
 
-    def __init__(self, client: httpx.AsyncClient, *, timeout_seconds: float = 5.0) -> None:
+    An optional circuit breaker stops repeated calls to a failing endpoint from
+    piling up; while it is open the send is rejected fast (surfaced as a channel
+    failure the dispatcher swallows).
+    """
+
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        timeout_seconds: float = 5.0,
+        breaker: CircuitBreaker | None = None,
+    ) -> None:
         self._client = client
         self._timeout = timeout_seconds
+        self._breaker = breaker
 
     async def send(self, notification: OutboundNotification, *, target: str) -> None:
         url = validate_webhook_url(target)
-        await self._client.post(
-            url,
-            json={
-                "type": notification.type,
-                "severity": notification.severity,
-                "title": notification.title,
-                "body": notification.body,
-                "payload": notification.payload,
-            },
-            timeout=self._timeout,
-        )
+
+        async def _post() -> None:
+            await self._client.post(
+                url,
+                json={
+                    "type": notification.type,
+                    "severity": notification.severity,
+                    "title": notification.title,
+                    "body": notification.body,
+                    "payload": notification.payload,
+                },
+                timeout=self._timeout,
+            )
+
+        if self._breaker is not None:
+            await self._breaker.call(_post)
+        else:
+            await _post()
 
 
 class NotificationDispatcher:
@@ -141,11 +161,14 @@ class NotificationDispatcher:
 
 
 def build_dispatcher(
-    email_sender: EmailSender, http_client: httpx.AsyncClient
+    email_sender: EmailSender,
+    http_client: httpx.AsyncClient,
+    *,
+    webhook_breaker: CircuitBreaker | None = None,
 ) -> NotificationDispatcher:
     """Assemble a dispatcher from the app's shared email + HTTP clients."""
 
     return NotificationDispatcher(
         email=EmailNotificationChannel(email_sender),
-        webhook=WebhookNotificationChannel(http_client),
+        webhook=WebhookNotificationChannel(http_client, breaker=webhook_breaker),
     )
