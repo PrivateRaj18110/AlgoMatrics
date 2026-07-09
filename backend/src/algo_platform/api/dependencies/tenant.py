@@ -11,6 +11,9 @@ from fastapi import Depends, Request
 
 from algo_platform.api.dependencies.auth import CurrentUser, CurrentUserDep
 from algo_platform.api.dependencies.core import SessionDep
+from algo_platform.modules.organizations.application.security_service import (
+    OrgSecurityService,
+)
 from algo_platform.modules.organizations.domain.organizations import MembershipStatus
 from algo_platform.modules.organizations.domain.roles import (
     Permission,
@@ -71,6 +74,11 @@ async def get_tenant_context(
     membership = await memberships.get_for_user(organization_id, user.user_id)
     if membership is None or membership.status != MembershipStatus.ACTIVE:
         raise PermissionDenied("you are not a member of this organization")
+
+    # Enterprise IP allowlist: a no-op unless the org configured entries.
+    client_ip = request.client.host if request.client else None
+    if not await OrgSecurityService(session).is_request_allowed(organization_id, client_ip):
+        raise PermissionDenied("your IP address is not allowed to access this organization")
 
     permissions = permissions_for(membership.role)
     if user.auth_kind == "api_key":

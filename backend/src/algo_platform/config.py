@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     cookie_domain: str | None = None
 
+    # OWASP security response headers (HSTS/CSP/frame options). On by default;
+    # HSTS is only emitted in staging/production where TLS is guaranteed.
+    security_headers_enabled: bool = True
+
     # Public frontend origin used to build e-mail verification / password reset links.
     app_base_url: str = "http://localhost:5173"
 

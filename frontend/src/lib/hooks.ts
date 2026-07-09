@@ -478,6 +478,27 @@ export function useMarkAllNotificationsRead() {
   });
 }
 
+/* ------------------------------ org security -------------------------------- */
+
+export function useIpAllowlist() {
+  return useQuery({
+    queryKey: ["ip-allowlist", orgKey()],
+    queryFn: () => api<{ entries: string[] }>("/organizations/current/ip-allowlist"),
+  });
+}
+
+export function useUpdateIpAllowlist() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (entries: string[]) =>
+      api<{ entries: string[] }>("/organizations/current/ip-allowlist", {
+        method: "PUT",
+        body: { entries },
+      }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["ip-allowlist"] }),
+  });
+}
+
 /* ------------------------------- mobile devices ----------------------------- */
 
 export function useMobileDevices() {
