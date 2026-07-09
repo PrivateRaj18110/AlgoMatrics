@@ -20,6 +20,7 @@ from algo_platform.modules.ai.infrastructure.factory import build_llm_provider
 from algo_platform.modules.billing.application.ports import PaymentProvider
 from algo_platform.modules.billing.infrastructure.providers.razorpay import RazorpayProvider
 from algo_platform.modules.billing.infrastructure.providers.stripe import StripeProvider
+from algo_platform.modules.mobile.infrastructure.factory import build_push_provider
 from algo_platform.modules.notifications.infrastructure.channels import (
     build_dispatcher as build_notification_dispatcher,
 )
@@ -72,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.email_sender, http_client
         )
         app.state.llm = build_llm_provider(resolved)
+        app.state.push_provider = build_push_provider(resolved)
         app.state.metrics = MetricsRecorder(redis)
         if resolved.rate_limit_enabled:
             app.state.rate_limiter = RateLimiter(RedisWindowStore(redis))
@@ -197,6 +199,9 @@ def _include_routers(app: FastAPI) -> None:
     from algo_platform.modules.marketplace.presentation.router import (
         router as marketplace_router,
     )
+    from algo_platform.modules.mobile.presentation.router import (
+        router as mobile_router,
+    )
     from algo_platform.modules.notifications.presentation.router import (
         router as notifications_router,
     )
@@ -233,6 +238,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(billing_router, prefix=prefix)
     app.include_router(billing_webhooks_router, prefix=prefix)
     app.include_router(notifications_router, prefix=prefix)
+    app.include_router(mobile_router, prefix=prefix)
     app.include_router(brokerage_router, prefix=prefix)
     app.include_router(market_data_router, prefix=prefix)
     app.include_router(venue_instruments_admin_router, prefix=prefix)

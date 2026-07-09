@@ -90,6 +90,7 @@ async def session_factory(_postgres_url: str) -> AsyncIterator[async_sessionmake
     import algo_platform.modules.identity.infrastructure.models
     import algo_platform.modules.instruments.infrastructure.models
     import algo_platform.modules.marketplace.infrastructure.models
+    import algo_platform.modules.mobile.infrastructure.models
     import algo_platform.modules.notifications.infrastructure.models
     import algo_platform.modules.organizations.infrastructure.models
     import algo_platform.modules.portfolio.infrastructure.models
