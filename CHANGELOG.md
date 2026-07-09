@@ -5,6 +5,28 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — Multi-channel notifications (Master Spec Phase 15)
+
+Email + outbound webhook delivery driven by per-recipient preferences, on top of
+the existing in-app + WebSocket path. See `docs/operations/notifications.md`.
+
+- **Routing** (`notifications/domain/delivery.py`, pure): `resolve_channels`
+  with a severity threshold and quiet-hours window (past-midnight wrap
+  supported); in-app is always on, email/webhook opt-in, `critical` can bypass
+  quiet hours.
+- **Channels** (`infrastructure/channels.py`): email + webhook adapters and a
+  `NotificationDispatcher` (failures logged, never propagated). Webhook targets
+  pass an SSRF guard (HTTPS only; loopback/private/reserved hosts rejected).
+  `NotificationService.notify(..., delivery=...)` opts into external fan-out —
+  default behaviour unchanged.
+- **Preferences** (`notification_preferences` table, migration `0013`):
+  `GET`/`PUT /notifications/preferences`, tenant-scoped; webhook URL revalidated
+  on write.
+- **Frontend**: Settings → Notifications "Delivery channels" card (toggles,
+  webhook URL, min severity, quiet hours).
+- 11 new domain unit tests; ruff + strict mypy clean; 327 backend + 17 frontend
+  tests pass.
+
 ### Added — Strategy versioning (Master Spec Phase 14)
 
 Semantic versioning, diff, validation, an approval workflow, and deployment

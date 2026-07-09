@@ -546,6 +546,16 @@ export interface AppNotification {
   created_at: string;
 }
 
+export interface NotificationPreference {
+  enabled_channels: string[];
+  muted_types: string[];
+  min_severity: "info" | "success" | "warning" | "critical";
+  quiet_start: string | null;
+  quiet_end: string | null;
+  critical_overrides_quiet: boolean;
+  webhook_url: string | null;
+}
+
 export interface AuditEntry {
   id: string;
   actor_user_id: string | null;
