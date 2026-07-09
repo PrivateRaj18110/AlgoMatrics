@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, time
 from typing import Any, Literal
 from uuid import UUID
 
@@ -11,6 +11,15 @@ from sqlalchemy import and_, func, not_, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from algo_platform.modules.notifications.domain.delivery import (
+    Channel,
+    DeliveryPreference,
+    resolve_channels,
+)
+from algo_platform.modules.notifications.infrastructure.channels import (
+    NotificationDispatcher,
+    OutboundNotification,
+)
 from algo_platform.modules.notifications.infrastructure.models import (
     NotificationModel,
     NotificationReadModel,
@@ -21,6 +30,21 @@ from algo_platform.shared.infrastructure.redis_gateway import RedisGateway
 Severity = Literal["info", "success", "warning", "critical"]
 
 NOTIFICATIONS_CHANNEL = "notifications"
+
+
+@dataclass(frozen=True, slots=True)
+class ExternalDelivery:
+    """Opt-in fan-out to external channels for a single ``notify`` call.
+
+    Absent (the default), ``notify`` behaves exactly as before: in-app record
+    plus Redis publish, no external side effects.
+    """
+
+    preference: DeliveryPreference
+    dispatcher: NotificationDispatcher
+    email_to: str | None = None
+    webhook_url: str | None = None
+    local_time: time | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +74,7 @@ class NotificationService:
         severity: Severity = "info",
         user_id: UUID | None = None,
         payload: dict[str, Any] | None = None,
+        delivery: ExternalDelivery | None = None,
     ) -> UUID:
         model = NotificationModel(
             organization_id=organization_id,
@@ -76,7 +101,33 @@ class NotificationService:
                     "created_at": model.created_at.isoformat(),
                 },
             )
+        if delivery is not None:
+            await self._dispatch_external(
+                delivery,
+                OutboundNotification(
+                    type=type_,
+                    severity=severity,
+                    title=title,
+                    body=body,
+                    payload=payload or {},
+                ),
+            )
         return model.id
+
+    @staticmethod
+    async def _dispatch_external(
+        delivery: ExternalDelivery, notification: OutboundNotification
+    ) -> None:
+        channels = resolve_channels(
+            delivery.preference,
+            type_=notification.type,
+            severity=notification.severity,
+            local_time=delivery.local_time,
+        )
+        if Channel.EMAIL in channels and delivery.email_to:
+            await delivery.dispatcher.send_email(notification, to=delivery.email_to)
+        if Channel.WEBHOOK in channels and delivery.webhook_url:
+            await delivery.dispatcher.send_webhook(notification, url=delivery.webhook_url)
 
     async def list_for_user(
         self,

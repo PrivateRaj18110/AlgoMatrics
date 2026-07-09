@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, time
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Time, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from algo_platform.shared.infrastructure.database import Base
@@ -44,3 +44,25 @@ class NotificationReadModel(Base):
     )
     user_id: Mapped[uuid.UUID]
     read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class NotificationPreferenceModel(Base):
+    """A recipient's multi-channel delivery policy (one row per user/org)."""
+
+    __tablename__ = "notification_preferences"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "user_id", name="uq_notification_prefs_org_user"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID]
+    user_id: Mapped[uuid.UUID]
+    # JSON string lists so the policy stays flexible without a migration per tweak.
+    enabled_channels: Mapped[list[str]] = mapped_column(default=lambda: ["in_app"])
+    muted_types: Mapped[list[str]] = mapped_column(default=list)
+    min_severity: Mapped[str] = mapped_column(String(10), default="info")
+    quiet_start: Mapped[time | None] = mapped_column(Time(), default=None)
+    quiet_end: Mapped[time | None] = mapped_column(Time(), default=None)
+    critical_overrides_quiet: Mapped[bool] = mapped_column(Boolean(), default=True)
+    webhook_url: Mapped[str | None] = mapped_column(String(500), default=None)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

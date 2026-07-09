@@ -5,6 +5,7 @@ import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -19,6 +20,9 @@ from algo_platform.modules.ai.infrastructure.factory import build_llm_provider
 from algo_platform.modules.billing.application.ports import PaymentProvider
 from algo_platform.modules.billing.infrastructure.providers.razorpay import RazorpayProvider
 from algo_platform.modules.billing.infrastructure.providers.stripe import StripeProvider
+from algo_platform.modules.notifications.infrastructure.channels import (
+    build_dispatcher as build_notification_dispatcher,
+)
 from algo_platform.shared.infrastructure.database import create_engine, create_session_factory
 from algo_platform.shared.infrastructure.email import create_email_sender
 from algo_platform.shared.infrastructure.encryption import CredentialCipher
@@ -62,6 +66,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             secrets.broker_credential_kek_b64(), key_version=resolved.credential_key_version
         )
         app.state.email_sender = create_email_sender(resolved)
+        http_client = httpx.AsyncClient()
+        app.state.http_client = http_client
+        app.state.notification_dispatcher = build_notification_dispatcher(
+            app.state.email_sender, http_client
+        )
         app.state.llm = build_llm_provider(resolved)
         app.state.metrics = MetricsRecorder(redis)
         if resolved.rate_limit_enabled:
@@ -89,6 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if sampler_task is not None:
                 with contextlib.suppress(asyncio.CancelledError):
                     await sampler_task
+            await http_client.aclose()
             await redis.close()
             await engine.dispose()
 
