@@ -1,0 +1,62 @@
+# Event-driven workers. Each role is its own Deployment so it scales
+# independently; worker-notification and worker-trading are the targets of the
+# KEDA ScaledObjects in deploy/autoscaling/keda-scaledobjects.yaml (Phase 19).
+# Add more roles (audit, report, billing, settlement, analytics, relay/email) by
+# copying a block and changing WORKER_ROLES + the name.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-notification
+  namespace: algo
+  labels: { app: worker-notification, role: notification }
+spec:
+  replicas: 1 # KEDA overrides this
+  selector:
+    matchLabels: { app: worker-notification }
+  template:
+    metadata:
+      labels: { app: worker-notification }
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/algo-matrics/backend:latest
+          args: ["worker"]
+          env:
+            - name: WORKER_ROLES
+              value: '["notification"]'
+          envFrom:
+            - configMapRef: { name: algo-config }
+            - secretRef: { name: algo-secrets }
+          resources:
+            requests: { cpu: "100m", memory: "192Mi" }
+            limits: { cpu: "500m", memory: "384Mi" }
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-trading
+  namespace: algo
+  labels: { app: worker-trading, role: trading }
+spec:
+  replicas: 1 # KEDA overrides this
+  selector:
+    matchLabels: { app: worker-trading }
+  template:
+    metadata:
+      labels: { app: worker-trading }
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/algo-matrics/backend:latest
+          args: ["worker"]
+          env:
+            - name: WORKER_ROLES
+              value: '["trading"]'
+          envFrom:
+            - configMapRef: { name: algo-config }
+            - secretRef: { name: algo-secrets }
+          resources:
+            requests: { cpu: "150m", memory: "192Mi" }
+            limits: { cpu: "750m", memory: "384Mi" }
+      terminationGracePeriodSeconds: 30

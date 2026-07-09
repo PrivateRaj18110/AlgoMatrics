@@ -28,9 +28,28 @@ class ReadinessResponse(BaseModel):
     dependencies: list[DependencyStatus]
 
 
+class InfoResponse(BaseModel):
+    service: str
+    version: str
+    build_sha: str
+    environment: str
+
+
 @router.get("/health/live", response_model=HealthResponse)
 async def liveness() -> HealthResponse:
     return HealthResponse(status="ok")
+
+
+@router.get("/health/info", response_model=InfoResponse)
+async def info(request: Request) -> InfoResponse:
+    """Non-sensitive release identity for deploy verification / support."""
+    settings = request.app.state.settings
+    return InfoResponse(
+        service=settings.service_name,
+        version=settings.app_version,
+        build_sha=settings.build_sha,
+        environment=settings.app_env,
+    )
 
 
 @router.get("/health/ready", response_model=ReadinessResponse)

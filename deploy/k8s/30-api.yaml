@@ -1,0 +1,57 @@
+# Stateless API tier. Scaled by deploy/autoscaling/hpa-api.yaml (Phase 19).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: algo-api
+  namespace: algo
+  labels: { app: algo-api }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: algo-api }
+  template:
+    metadata:
+      labels: { app: algo-api }
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/algo-matrics/backend:latest # pin to the release tag
+          args: ["api"]
+          ports:
+            - containerPort: 8000
+          # BUILD_SHA / APP_VERSION are injected by CI at deploy time (e.g. via
+          # `kubectl set env` or Helm values) so /health/info reports the release.
+          env:
+            - name: BUILD_SHA
+              value: "unknown"
+          envFrom:
+            - configMapRef: { name: algo-config }
+            - secretRef: { name: algo-secrets }
+          # Liveness = process up; readiness = safe to route (503 when a critical
+          # dependency is down, Phase 18) so a sick pod is pulled from the Service.
+          livenessProbe:
+            httpGet: { path: /api/v1/health/live, port: 8000 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /api/v1/health/ready, port: 8000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "250m", memory: "256Mi" }
+            limits: { cpu: "1", memory: "512Mi" }
+      # Give in-flight requests time to drain on rollout / scale-down.
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: algo-api
+  namespace: algo
+  labels: { app: algo-api }
+spec:
+  selector: { app: algo-api }
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000

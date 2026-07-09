@@ -5,6 +5,24 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — Production infrastructure (Master Spec Phase 20)
+
+Kubernetes deployment kit + runtime guardrails. See
+`docs/operations/production-infrastructure.md`.
+
+- **Startup self-check** (`shared/application/production_readiness.py`, pure):
+  `create_app` refuses to boot in production on unsafe config (insecure cookies,
+  CORS `*`/plain-http, security headers/rate limiting off, `env` secrets backend,
+  http app_base_url); warnings elsewhere. Fail-fast, 12-Factor.
+- **Release identity**: `GET /health/info` (service/version/build_sha/env);
+  `APP_VERSION` + `BUILD_SHA` settings; OpenAPI version derives from `APP_VERSION`.
+- **Manifests** (`deploy/k8s/`): namespace, config/secret template, migrate Job,
+  API Deployment+Service (health probes), KEDA-scaled worker Deployments,
+  singleton engine/market-data/scheduler (`Recreate`, replicas=1), TLS ingress.
+- Settings: `APP_VERSION`, `BUILD_SHA`.
+- 7 new unit tests; ruff + strict mypy clean; 386 backend tests pass. No
+  migration; no user-facing frontend (ops).
+
 ### Added — Auto scaling (Master Spec Phase 19)
 
 Backlog-driven horizontal scaling for the event workers + CPU-based HPA for the

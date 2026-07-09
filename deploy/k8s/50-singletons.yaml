@@ -1,0 +1,81 @@
+# Singleton processes. The trading engine, market-data feed, and scheduler are
+# NOT horizontally scalable — run exactly one replica each. The engine already
+# serializes work with pg advisory locks, but a single replica is the contract.
+# Use Recreate so a new pod never overlaps the old one during a rollout.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: algo-engine
+  namespace: algo
+  labels: { app: algo-engine }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: algo-engine }
+  template:
+    metadata:
+      labels: { app: algo-engine }
+    spec:
+      containers:
+        - name: engine
+          image: ghcr.io/algo-matrics/backend:latest
+          args: ["engine"]
+          envFrom:
+            - configMapRef: { name: algo-config }
+            - secretRef: { name: algo-secrets }
+          resources:
+            requests: { cpu: "250m", memory: "256Mi" }
+            limits: { cpu: "1", memory: "512Mi" }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: algo-market-data
+  namespace: algo
+  labels: { app: algo-market-data }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: algo-market-data }
+  template:
+    metadata:
+      labels: { app: algo-market-data }
+    spec:
+      containers:
+        - name: market-data
+          image: ghcr.io/algo-matrics/backend:latest
+          args: ["market-data"]
+          envFrom:
+            - configMapRef: { name: algo-config }
+            - secretRef: { name: algo-secrets }
+          resources:
+            requests: { cpu: "150m", memory: "192Mi" }
+            limits: { cpu: "500m", memory: "384Mi" }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: algo-scheduler
+  namespace: algo
+  labels: { app: algo-scheduler }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: algo-scheduler }
+  template:
+    metadata:
+      labels: { app: algo-scheduler }
+    spec:
+      containers:
+        - name: scheduler
+          image: ghcr.io/algo-matrics/backend:latest
+          args: ["scheduler"]
+          envFrom:
+            - configMapRef: { name: algo-config }
+            - secretRef: { name: algo-secrets }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits: { cpu: "250m", memory: "256Mi" }

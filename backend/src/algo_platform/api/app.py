@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import httpx
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -26,6 +27,11 @@ from algo_platform.modules.notifications.infrastructure.channels import (
     build_dispatcher as build_notification_dispatcher,
 )
 from algo_platform.shared.application.circuit_breaker import CircuitBreaker
+from algo_platform.shared.application.production_readiness import (
+    ProductionConfig,
+    blocking_issues,
+    check_readiness,
+)
 from algo_platform.shared.infrastructure.database import create_engine, create_session_factory
 from algo_platform.shared.infrastructure.email import create_email_sender
 from algo_platform.shared.infrastructure.encryption import CredentialCipher
@@ -43,9 +49,34 @@ from algo_platform.shared.infrastructure.secrets import (
 from algo_platform.shared.infrastructure.telemetry import configure_logging
 
 
+def _enforce_production_readiness(settings: Settings) -> None:
+    """Log configuration warnings; refuse to boot on blocking issues in prod."""
+
+    issues = check_readiness(
+        ProductionConfig(
+            app_env=settings.app_env,
+            cookie_secure=settings.cookie_secure,
+            cors_origins=settings.cors_origins,
+            security_headers_enabled=settings.security_headers_enabled,
+            rate_limit_enabled=settings.rate_limit_enabled,
+            metrics_enabled=settings.metrics_enabled,
+            secrets_backend=settings.secrets_backend,
+            app_base_url=settings.app_base_url,
+        )
+    )
+    log = structlog.get_logger("startup")
+    for issue in issues:
+        log.warning("config.readiness_issue", code=issue.code, severity=issue.severity.value)
+    blocking = blocking_issues(issues)
+    if blocking:
+        detail = "; ".join(f"{i.code}: {i.message}" for i in blocking)
+        raise RuntimeError(f"unsafe production configuration: {detail}")
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or get_settings()
     configure_logging(level=resolved.log_level, env=resolved.app_env, service=resolved.service_name)
+    _enforce_production_readiness(resolved)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -118,7 +149,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Algo Matrics API",
-        version="0.1.0",
+        version=resolved.app_version,
         lifespan=lifespan,
         docs_url="/docs" if resolved.app_env in {"local", "test"} else None,
         openapi_url="/openapi.json",

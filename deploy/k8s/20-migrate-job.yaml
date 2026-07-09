@@ -1,0 +1,24 @@
+# One-shot schema migration + reference-data seed. Run before rolling out a new
+# API/worker version:  kubectl apply -f deploy/k8s/20-migrate-job.yaml
+# The entrypoint's `migrate` command waits for the DB, runs `alembic upgrade
+# head`, then seeds. Delete + reapply (or use a unique name / Helm hook) per release.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: algo-migrate
+  namespace: algo
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels: { app: algo-migrate }
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: ghcr.io/algo-matrics/backend:latest # pin to the release tag
+          args: ["migrate"]
+          envFrom:
+            - configMapRef: { name: algo-config }
+            - secretRef: { name: algo-secrets }

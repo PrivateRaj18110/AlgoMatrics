@@ -1,0 +1,7 @@
+# Base namespace for the Algo Matrics platform (Master Spec Phase 20).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: algo
+  labels:
+    app.kubernetes.io/part-of: algo-matrics
