@@ -194,6 +194,9 @@ def _include_routers(app: FastAPI) -> None:
         router as portfolio_router,
     )
     from algo_platform.modules.risk.presentation.router import router as risk_router
+    from algo_platform.modules.strategies.presentation.backtest_router import (
+        router as backtest_router,
+    )
     from algo_platform.modules.strategies.presentation.router import (
         router as strategies_router,
     )
@@ -220,6 +223,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(trading_router, prefix=prefix)
     app.include_router(risk_router, prefix=prefix)
     app.include_router(strategies_router, prefix=prefix)
+    app.include_router(backtest_router, prefix=prefix)
     app.include_router(marketplace_router, prefix=prefix)
     app.include_router(portfolio_router, prefix=prefix)
     app.include_router(audit_router, prefix=prefix)

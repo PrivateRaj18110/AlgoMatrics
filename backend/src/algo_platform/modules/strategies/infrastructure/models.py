@@ -107,3 +107,16 @@ class StrategyLogModel(Base):
     message: Mapped[str] = mapped_column(String(1000))
     context: Mapped[dict[str, Any]] = mapped_column(default=dict)
     logged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BacktestRunModel(Base):
+    __tablename__ = "backtest_runs"
+    __table_args__ = (Index("ix_backtest_runs_org_time", "organization_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID]
+    signal_type: Mapped[str] = mapped_column(String(40))
+    params: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    result: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
