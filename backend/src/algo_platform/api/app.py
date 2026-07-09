@@ -25,6 +25,7 @@ from algo_platform.modules.mobile.infrastructure.factory import build_push_provi
 from algo_platform.modules.notifications.infrastructure.channels import (
     build_dispatcher as build_notification_dispatcher,
 )
+from algo_platform.shared.application.circuit_breaker import CircuitBreaker
 from algo_platform.shared.infrastructure.database import create_engine, create_session_factory
 from algo_platform.shared.infrastructure.email import create_email_sender
 from algo_platform.shared.infrastructure.encryption import CredentialCipher
@@ -70,8 +71,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.email_sender = create_email_sender(resolved)
         http_client = httpx.AsyncClient()
         app.state.http_client = http_client
+        webhook_breaker = CircuitBreaker(
+            name="notification-webhook",
+            failure_threshold=resolved.circuit_breaker_failure_threshold,
+            reset_timeout=resolved.circuit_breaker_reset_seconds,
+        )
         app.state.notification_dispatcher = build_notification_dispatcher(
-            app.state.email_sender, http_client
+            app.state.email_sender, http_client, webhook_breaker=webhook_breaker
         )
         app.state.llm = build_llm_provider(resolved)
         app.state.push_provider = build_push_provider(resolved)
