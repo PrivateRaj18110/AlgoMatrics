@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from algo_platform.api.middleware.errors import register_exception_handlers
 from algo_platform.api.middleware.rate_limit import RateLimitMiddleware
 from algo_platform.api.middleware.request_context import RequestContextMiddleware
+from algo_platform.api.middleware.security_headers import SecurityHeadersMiddleware
 from algo_platform.api.routes.health import router as health_router
 from algo_platform.api.routes.metrics import router as metrics_router
 from algo_platform.api.routes.rum import router as rum_router
@@ -134,6 +135,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["Authorization", "Content-Type", "X-Org-Id", "X-API-Key", "X-Request-ID"],
         expose_headers=["X-Request-ID"],
     )
+    # Added last so it is the outermost layer and stamps security headers on
+    # every response, including CORS preflights and error responses.
+    if resolved.security_headers_enabled:
+        app.add_middleware(SecurityHeadersMiddleware, app_env=resolved.app_env)
     register_exception_handlers(app)
 
     _include_routers(app)

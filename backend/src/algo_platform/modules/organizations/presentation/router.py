@@ -15,6 +15,9 @@ from algo_platform.api.dependencies.tenant import (
     require_permission,
 )
 from algo_platform.modules.audit.application.service import AuditService
+from algo_platform.modules.organizations.application.security_service import (
+    OrgSecurityService,
+)
 from algo_platform.modules.organizations.domain.roles import Permission, Role
 from algo_platform.modules.organizations.presentation.dependencies import (
     OrganizationServiceDep,
@@ -153,6 +156,47 @@ async def update_current_organization(
         after_state={"name": payload.name, "settings": payload.settings},
     )
     return OrganizationResponse.model_validate(dto)
+
+
+# -- security: IP allowlist ---------------------------------------------------------
+
+
+class IpAllowlistResponse(BaseModel):
+    entries: list[str]
+
+
+class IpAllowlistRequest(BaseModel):
+    entries: list[str] = Field(default_factory=list, max_length=100)
+
+
+@router.get("/organizations/current/ip-allowlist", response_model=IpAllowlistResponse)
+async def get_ip_allowlist(
+    tenant: OrgManageTenant, session: SessionDep
+) -> IpAllowlistResponse:
+    entries = await OrgSecurityService(session).get_ip_allowlist(tenant.organization_id)
+    return IpAllowlistResponse(entries=entries)
+
+
+@router.put("/organizations/current/ip-allowlist", response_model=IpAllowlistResponse)
+async def set_ip_allowlist(
+    payload: IpAllowlistRequest,
+    request: Request,
+    tenant: OrgManageTenant,
+    session: SessionDep,
+) -> IpAllowlistResponse:
+    entries = await OrgSecurityService(session).set_ip_allowlist(
+        tenant.organization_id, payload.entries
+    )
+    await AuditService(session).record(
+        action="organizations.ip_allowlist_updated",
+        resource_type="organization",
+        resource_id=str(tenant.organization_id),
+        organization_id=tenant.organization_id,
+        actor_user_id=tenant.user.user_id,
+        request_id=getattr(request.state, "request_id", None),
+        after_state={"ip_allowlist": entries},
+    )
+    return IpAllowlistResponse(entries=entries)
 
 
 # -- members ------------------------------------------------------------------------
