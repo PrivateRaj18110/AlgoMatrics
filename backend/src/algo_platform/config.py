@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     app_env: Literal["local", "test", "staging", "production"] = "local"
     log_level: str = "INFO"
     service_name: str = "algo-api"
+    # Release identity, injected at build/deploy time for verification and the
+    # /health/info endpoint. Defaults are safe placeholders for local runs.
+    app_version: str = "0.1.0"
+    build_sha: str = "unknown"
 
     # Observability. The Prometheus scrape endpoint is exposed at /metrics and is
     # expected to be reachable only from the metrics network / scraper, never the
