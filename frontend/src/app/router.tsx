@@ -10,6 +10,7 @@ import { BrokersPage } from "@/pages/BrokersPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ForgotPasswordPage } from "@/pages/auth/ForgotPasswordPage";
 import { LandingPage } from "@/pages/LandingPage";
+import { MarketplacePage } from "@/pages/MarketplacePage";
 import { LoginPage } from "@/pages/auth/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { NotificationsPage } from "@/pages/NotificationsPage";
@@ -54,6 +55,7 @@ export const router: RouteObject[] = [
       { path: "/app/dashboard", element: <DashboardPage /> },
       { path: "/app/strategies", element: <StrategiesPage /> },
       { path: "/app/strategies/:strategyId", element: <StrategyDetailPage /> },
+      { path: "/app/marketplace", element: <MarketplacePage /> },
       { path: "/app/brokers", element: <BrokersPage /> },
       { path: "/app/orders", element: <OrdersPage /> },
       { path: "/app/positions", element: <PositionsPage /> },

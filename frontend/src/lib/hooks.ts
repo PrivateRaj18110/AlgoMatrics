@@ -19,6 +19,8 @@ import type {
   AuditFilters,
   BrokerCatalogEntry,
   FeatureFlag,
+  MarketplaceLicense,
+  MarketplaceListing,
   BrokerConnection,
   BuiltinManifest,
   CheckoutResponse,
@@ -499,6 +501,34 @@ export function useAuditEvents(filters: AuditFilters = {}) {
           occurred_to: occurredTo,
         },
       }),
+  });
+}
+
+/* ------------------------------- marketplace -------------------------------- */
+
+export function useMarketplaceListings() {
+  return useQuery({
+    queryKey: ["marketplace", orgKey()],
+    queryFn: () => api<MarketplaceListing[]>("/marketplace/listings", { query: { limit: 100 } }),
+  });
+}
+
+export function useMyLicenses() {
+  return useQuery({
+    queryKey: ["marketplace-licenses", orgKey()],
+    queryFn: () => api<MarketplaceLicense[]>("/marketplace/licenses"),
+  });
+}
+
+export function useAcquireLicense() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (listingId: string) =>
+      api<MarketplaceLicense>(`/marketplace/listings/${listingId}/license`, { method: "POST" }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["marketplace-licenses"] });
+      client.invalidateQueries({ queryKey: ["marketplace"] });
+    },
   });
 }
 
