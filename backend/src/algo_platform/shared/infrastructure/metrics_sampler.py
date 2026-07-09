@@ -42,7 +42,11 @@ def sample_db_pool(metrics: PrometheusMetrics, engine: AsyncEngine) -> None:
 
 
 async def sample_once(
-    metrics: PrometheusMetrics, engine: AsyncEngine, redis: RedisGateway
+    metrics: PrometheusMetrics,
+    engine: AsyncEngine,
+    redis: RedisGateway,
+    *,
+    event_stream: str = "events",
 ) -> None:
     sample_db_pool(metrics, engine)
     try:
@@ -50,6 +54,12 @@ async def sample_once(
     except Exception:
         healthy = False
     metrics.redis_up.set(1.0 if healthy else 0.0)
+    # Publish the event stream backlog so an autoscaler can scale workers on it.
+    try:
+        depth = await redis.xlen(event_stream)
+        metrics.stream_depth.labels(stream=event_stream).set(float(depth))
+    except Exception:
+        logger.warning("metrics.stream_depth_sample_failed", stream=event_stream)
 
 
 async def run_infra_sampler(
@@ -59,11 +69,12 @@ async def run_infra_sampler(
     *,
     interval_seconds: float,
     stop: asyncio.Event,
+    event_stream: str = "events",
 ) -> None:
     logger.info("metrics.infra_sampler_started", interval=interval_seconds)
     while not stop.is_set():
         try:
-            await sample_once(metrics, engine, redis)
+            await sample_once(metrics, engine, redis, event_stream=event_stream)
         except Exception:
             logger.warning("metrics.infra_sample_failed")
         with contextlib.suppress(TimeoutError):

@@ -128,6 +128,15 @@ class Settings(BaseSettings):
     circuit_breaker_failure_threshold: int = Field(default=5, ge=1, le=100)
     circuit_breaker_reset_seconds: float = Field(default=30.0, ge=1.0, le=600.0)
 
+    # Auto scaling. The event stream and the consumer groups whose backlog an
+    # autoscaler (KEDA/HPA) should watch, plus the per-replica work target used
+    # to turn backlog into a desired replica count.
+    scaling_event_stream: str = "events"
+    scaling_consumer_groups: list[str] = []
+    scaling_target_backlog_per_replica: int = Field(default=100, ge=1, le=100_000)
+    scaling_min_replicas: int = Field(default=1, ge=0, le=1000)
+    scaling_max_replicas: int = Field(default=10, ge=1, le=1000)
+
     strategy_artifact_dir: Path = Path("var/artifacts")
     upload_dir: Path = Path("var/uploads")
     # Python source cannot be safely sandboxed in-process. Keep this disabled

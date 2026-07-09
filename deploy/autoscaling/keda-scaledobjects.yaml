@@ -1,0 +1,80 @@
+# KEDA autoscaling for the event-driven workers (Master Spec Phase 19).
+#
+# Each domain worker consumes the shared `events` Redis stream under its own
+# consumer group `worker:<role>`. KEDA's redis-streams scaler scales a
+# deployment on that group's pending backlog, matching the pure scaling policy
+# in the API (`shared/application/scaling.py`): ~pendingEntriesCount messages
+# per replica.
+#
+# Prerequisites:
+#   - KEDA installed in the cluster (https://keda.sh).
+#   - A Deployment per worker role (scaleTargetRef below) whose pods run
+#     `worker` with WORKER_ROLES set to the matching role, e.g.
+#     WORKER_ROLES='["notification"]'.
+#   - A Secret `algo-redis` with a `redis-address` key (host:port), referenced
+#     by the TriggerAuthentication.
+#
+# Apply:  kubectl apply -f deploy/autoscaling/keda-scaledobjects.yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: algo-redis
+  namespace: algo
+type: Opaque
+stringData:
+  # Replace with your managed Redis endpoint. For Redis AUTH, add a `redis-password` key.
+  redis-address: "redis:6379"
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: algo-redis-auth
+  namespace: algo
+spec:
+  secretTargetRef:
+    - parameter: address
+      name: algo-redis
+      key: redis-address
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-notification
+  namespace: algo
+spec:
+  scaleTargetRef:
+    name: worker-notification # the Deployment running WORKER_ROLES=["notification"]
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  cooldownPeriod: 60 # matches the API circuit-breaker/backoff posture
+  pollingInterval: 15 # aligns with the metrics sampler interval
+  triggers:
+    - type: redis-streams
+      metadata:
+        stream: events
+        consumerGroup: worker:notification
+        pendingEntriesCount: "100" # == SCALING_TARGET_BACKLOG_PER_REPLICA
+      authenticationRef:
+        name: algo-redis-auth
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-trading
+  namespace: algo
+spec:
+  scaleTargetRef:
+    name: worker-trading # the Deployment running WORKER_ROLES=["trading"]
+  minReplicaCount: 1
+  maxReplicaCount: 20
+  cooldownPeriod: 60
+  pollingInterval: 15
+  triggers:
+    - type: redis-streams
+      metadata:
+        stream: events
+        consumerGroup: worker:trading
+        pendingEntriesCount: "50" # trading is latency-sensitive: scale out sooner
+      authenticationRef:
+        name: algo-redis-auth

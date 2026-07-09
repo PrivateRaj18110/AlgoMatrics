@@ -1,0 +1,33 @@
+# Horizontal Pod Autoscaler for the stateless API tier (Master Spec Phase 19).
+#
+# The API is stateless (all shared state lives in Postgres/Redis), so it scales
+# horizontally on CPU. Readiness is gated by `/api/v1/health/ready` (returns 503
+# when a critical dependency is down — see Phase 18), so new replicas only
+# receive traffic once healthy.
+#
+# For backlog/latency-based scaling of the API, expose the `stream_depth`
+# Prometheus gauge via prometheus-adapter and add an External metric trigger.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: algo-api
+  namespace: algo
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: algo-api
+  minReplicas: 2
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 120
+    scaleUp:
+      stabilizationWindowSeconds: 30

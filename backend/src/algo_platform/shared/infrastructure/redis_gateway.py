@@ -193,6 +193,36 @@ class RedisGateway:
     async def xack(self, stream: str, group: str, message_id: str) -> None:
         await cast(Awaitable[Any], self._client.xack(stream, group, message_id))
 
+    async def xlen(self, stream: str) -> int:
+        """Number of entries currently retained in a stream (0 if absent)."""
+        try:
+            return int(await cast(Awaitable[Any], self._client.xlen(stream)))
+        except Exception:
+            return 0
+
+    async def consumer_group_lag(self, stream: str, group: str) -> int:
+        """Undelivered + unacked backlog for a consumer group.
+
+        Uses the ``lag`` reported by ``XINFO GROUPS`` (Redis 7+) when available,
+        falling back to the pending count. Returns 0 when the stream/group does
+        not exist yet so a cold system reports no backlog rather than erroring.
+        """
+        try:
+            groups = await cast(Awaitable[Any], self._client.xinfo_groups(stream))
+        except Exception:
+            return 0
+        for info in groups:
+            name = info.get("name")
+            if isinstance(name, bytes):
+                name = name.decode()
+            if name != group:
+                continue
+            lag = info.get("lag")
+            if lag is not None:
+                return max(0, int(lag))
+            return max(0, int(info.get("pending", 0)))
+        return 0
+
     async def set_if_absent(self, key: str, *, ttl_seconds: int) -> bool:
         """Atomically set ``key`` only if absent; True when newly set (SET NX EX)."""
         result = await cast(
