@@ -5,6 +5,26 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — Enterprise security (Master Spec Phase 17)
+
+OWASP response headers on every response + a per-organization IP allowlist. See
+`docs/operations/enterprise-security.md`.
+
+- **Security headers** (`shared/infrastructure/security_headers.py`, pure +
+  `SecurityHeadersMiddleware`): nosniff, `X-Frame-Options: DENY`, Referrer-Policy,
+  COOP/CORP, Permissions-Policy, CSP (relaxed for dev docs); HSTS only in
+  staging/production. Outermost layer, `SECURITY_HEADERS_ENABLED` (default true),
+  fills gaps without clobbering handler-set headers.
+- **Org IP allowlist** (`organizations/domain/ip_allowlist.py`, pure; stored in
+  `settings` JSON — no new table): validate/normalize IPv4+IPv6 addresses & CIDR;
+  empty = allow-all, fail-closed on unparseable IP when configured. Enforced in
+  the tenant dependency (→ 403). Admin `GET`/`PUT
+  /organizations/current/ip-allowlist` (owner/admin, audited).
+- **Frontend**: Settings → Organization "IP allowlist" card.
+- Settings: `SECURITY_HEADERS_ENABLED`.
+- 16 new unit tests (incl. middleware integration); ruff + strict mypy clean;
+  353 backend + 17 frontend tests pass.
+
 ### Added — Mobile backend (Master Spec Phase 16)
 
 A `modules/mobile` bounded context: device registry, push provider abstraction,
