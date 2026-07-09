@@ -5,6 +5,26 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — Strategy versioning (Master Spec Phase 14)
+
+Semantic versioning, diff, validation, an approval workflow, and deployment
+history over the existing immutable `StrategyVersion` records. See
+`docs/operations/strategy-versioning.md`.
+
+- **Domain** (`strategies/domain/versioning.py`, pure): `SemanticVersion`
+  (parse/compare/bump), `diff_versions` with `suggested_bump`,
+  `validate_manifest`, and an approval state machine (`draft → pending_review →
+  approved/rejected`, illegal transitions raise).
+- **Service/API**: approval workflow endpoints
+  (`/strategy-versions/{id}/{submit,approve,reject,withdraw}`), `/validate`,
+  `/diff`, `/strategies/{id}/deploy`, `/strategies/{id}/deployments` — permission-
+  gated (STRATEGIES_VIEW/MANAGE) and tenant-scoped. Approval syncs the version's
+  `approved_for_live` flag.
+- **Migration** `0012`: `strategy_version_approvals` + `strategy_deployments`
+  (additive; baseline exclusion pinned).
+- 13 new domain unit tests; ruff + strict mypy clean; 316 backend tests pass.
+  Versioning UI on the strategy detail page is a scoped follow-up.
+
 ### Added — AI platform (Master Spec Phase 13)
 
 A trading assistant plus domain explanations built on Claude behind a pluggable
