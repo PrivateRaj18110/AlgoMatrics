@@ -210,6 +210,39 @@ class SubscriptionService:
             quantity=quantity,
         )
 
+    async def refund_payment(
+        self,
+        organization_id: TenantId,
+        payment_id: UUID,
+        *,
+        amount: Decimal,
+        reason: str | None = None,
+    ) -> Payment:
+        """Refund (fully or partially) a captured payment via its provider."""
+        payment = await self._payments.get(payment_id)
+        if payment is None or payment.organization_id != organization_id:
+            raise NotFoundError("payment not found")
+        if amount <= 0 or amount > payment.amount - payment.refunded_amount:
+            raise ConflictError("refund amount exceeds the refundable balance")
+        provider = self._providers.get(payment.provider)
+        if provider is None:
+            raise ConflictError(f"payment provider '{payment.provider}' is not configured")
+        await provider.refund_payment(
+            payment.provider_payment_id,
+            amount=amount,
+            currency=payment.currency,
+            reason=reason,
+        )
+        payment.refund(amount)  # applies domain invariants and status transition
+        await self._payments.save(payment)
+        logger.info(
+            "billing.payment_refunded",
+            payment_id=str(payment.id),
+            amount=str(amount),
+            status=payment.status.value,
+        )
+        return payment
+
     async def orders_placed_today(self, organization_id: TenantId) -> int:
         return await self._usage.get_quantity(
             organization_id=organization_id,

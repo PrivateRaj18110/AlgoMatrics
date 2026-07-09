@@ -17,7 +17,11 @@ from uuid import UUID
 
 import httpx
 
-from algo_platform.modules.billing.application.ports import CheckoutSession, WebhookResult
+from algo_platform.modules.billing.application.ports import (
+    CheckoutSession,
+    RefundResult,
+    WebhookResult,
+)
 from algo_platform.modules.billing.domain.invoices import Invoice
 from algo_platform.shared.domain.errors import ConflictError, ValidationFailed
 
@@ -124,6 +128,38 @@ class StripeProvider:
                 "payment provider could not resume the subscription",
                 details={"provider": "stripe", "status": response.status_code},
             )
+
+    async def refund_payment(
+        self,
+        provider_payment_id: str,
+        *,
+        amount: Decimal,
+        currency: str,
+        reason: str | None = None,
+    ) -> RefundResult:
+        # Stripe amounts are in the smallest currency unit (e.g. paise/cents).
+        minor = int((amount * 100).to_integral_value())
+        data = {"payment_intent": provider_payment_id, "amount": str(minor)}
+        if reason in {"duplicate", "fraudulent", "requested_by_customer"}:
+            data["reason"] = reason
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            response = await client.post(
+                f"{_API_BASE}/refunds",
+                data=data,
+                headers={"Authorization": f"Bearer {self._secret_key}"},
+            )
+        if response.status_code >= 400:
+            raise ConflictError(
+                "payment provider could not process the refund",
+                details={"provider": "stripe", "status": response.status_code},
+            )
+        body = response.json()
+        return RefundResult(
+            provider_refund_id=str(body.get("id", "")),
+            amount=amount,
+            currency=currency.upper(),
+            status=str(body.get("status", "pending")),
+        )
 
     def verify_webhook(self, *, body: bytes, headers: Mapping[str, str]) -> WebhookResult:
         if not self._webhook_secret:

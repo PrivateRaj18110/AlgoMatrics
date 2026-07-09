@@ -121,8 +121,20 @@ class Payment:
     status: PaymentStatus
     method: str | None = None
     error: str | None = None
+    refunded_amount: Decimal = Decimal("0")
     captured_at: datetime | None = None
     created_at: datetime = field(default_factory=utc_now)
+
+    def refund(self, amount: Decimal) -> None:
+        if self.status is not PaymentStatus.CAPTURED:
+            raise ConflictError("only a captured payment can be refunded")
+        if amount <= 0:
+            raise ConflictError("refund amount must be positive")
+        if self.refunded_amount + amount > self.amount:
+            raise ConflictError("refund exceeds the captured amount")
+        self.refunded_amount += amount
+        if self.refunded_amount >= self.amount:
+            self.status = PaymentStatus.REFUNDED
 
     @classmethod
     def captured(

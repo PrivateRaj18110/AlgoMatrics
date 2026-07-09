@@ -28,6 +28,7 @@ from algo_platform.modules.billing.infrastructure.models import (
     SubscriptionModel,
     UsageRecordModel,
 )
+from algo_platform.shared.domain.errors import NotFoundError
 from algo_platform.shared.domain.types import TenantId, utc_now
 
 
@@ -348,6 +349,24 @@ class SqlInvoiceRepository:
         await self._session.flush()
 
 
+def _payment_to_entity(m: PaymentModel) -> Payment:
+    return Payment(
+        id=m.id,
+        invoice_id=m.invoice_id,
+        organization_id=TenantId(m.organization_id),
+        provider=m.provider,
+        provider_payment_id=m.provider_payment_id,
+        amount=m.amount,
+        currency=m.currency,
+        status=PaymentStatus(m.status),
+        method=m.method,
+        error=m.error,
+        refunded_amount=m.refunded_amount,
+        captured_at=m.captured_at,
+        created_at=m.created_at,
+    )
+
+
 class SqlPaymentRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -361,6 +380,7 @@ class SqlPaymentRepository:
                 provider=payment.provider,
                 provider_payment_id=payment.provider_payment_id,
                 amount=payment.amount,
+                refunded_amount=payment.refunded_amount,
                 currency=payment.currency,
                 status=payment.status.value,
                 method=payment.method,
@@ -369,6 +389,18 @@ class SqlPaymentRepository:
                 created_at=payment.created_at,
             )
         )
+        await self._session.flush()
+
+    async def get(self, payment_id: UUID) -> Payment | None:
+        model = await self._session.get(PaymentModel, payment_id)
+        return _payment_to_entity(model) if model is not None else None
+
+    async def save(self, payment: Payment) -> None:
+        model = await self._session.get(PaymentModel, payment.id)
+        if model is None:
+            raise NotFoundError("payment not found")
+        model.status = payment.status.value
+        model.refunded_amount = payment.refunded_amount
         await self._session.flush()
 
     async def exists_provider_payment(self, provider: str, provider_payment_id: str) -> bool:
@@ -392,23 +424,7 @@ class SqlPaymentRepository:
             .limit(limit)
             .offset(offset)
         )
-        return [
-            Payment(
-                id=m.id,
-                invoice_id=m.invoice_id,
-                organization_id=TenantId(m.organization_id),
-                provider=m.provider,
-                provider_payment_id=m.provider_payment_id,
-                amount=m.amount,
-                currency=m.currency,
-                status=PaymentStatus(m.status),
-                method=m.method,
-                error=m.error,
-                captured_at=m.captured_at,
-                created_at=m.created_at,
-            )
-            for m in result.scalars().all()
-        ]
+        return [_payment_to_entity(m) for m in result.scalars().all()]
 
 
 def _coupon_to_entity(model: CouponModel) -> Coupon:

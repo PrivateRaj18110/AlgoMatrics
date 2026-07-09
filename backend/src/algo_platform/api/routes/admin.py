@@ -427,6 +427,43 @@ async def grant_subscription(
     return MessageResponse(message="subscription granted")
 
 
+class RefundPaymentRequest(BaseModel):
+    organization_id: UUID
+    amount: Decimal = Field(gt=0)
+    reason: str | None = Field(default=None, max_length=255)
+
+
+@router.post("/payments/{payment_id}/refund", response_model=MessageResponse)
+async def refund_payment(
+    payment_id: UUID,
+    payload: RefundPaymentRequest,
+    request: Request,
+    admin: PlatformAdminDep,
+    session: SessionDep,
+    redis: RedisDep,
+    settings: SettingsDep,
+    providers: ProvidersDep,
+) -> MessageResponse:
+    billing = _billing(session, redis, settings, providers)
+    payment = await billing.refund_payment(
+        TenantId(payload.organization_id),
+        payment_id,
+        amount=payload.amount,
+        reason=payload.reason,
+    )
+    await AuditService(session).record(
+        action="admin.payment_refunded",
+        resource_type="payment",
+        resource_id=str(payment_id),
+        organization_id=payload.organization_id,
+        actor_user_id=admin.user_id,
+        actor_type="admin",
+        request_id=getattr(request.state, "request_id", None),
+        after_state={"amount": str(payload.amount), "status": payment.status.value},
+    )
+    return MessageResponse(message="refund processed")
+
+
 # -- system health / metrics / monitoring ----------------------------------------------------------
 
 

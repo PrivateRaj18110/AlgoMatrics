@@ -125,6 +125,7 @@ class PaymentModel(Base):
     provider: Mapped[str] = mapped_column(String(20))
     provider_payment_id: Mapped[str] = mapped_column(String(120))
     amount: Mapped[Decimal]
+    refunded_amount: Mapped[Decimal] = mapped_column(default=Decimal("0"))
     currency: Mapped[str] = mapped_column(String(3))
     status: Mapped[str] = mapped_column(String(15))
     method: Mapped[str | None] = mapped_column(String(30), default=None)

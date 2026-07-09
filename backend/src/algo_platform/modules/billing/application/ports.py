@@ -21,6 +21,14 @@ class CheckoutSession:
 
 
 @dataclass(frozen=True, slots=True)
+class RefundResult:
+    provider_refund_id: str
+    amount: Decimal
+    currency: str
+    status: str
+
+
+@dataclass(frozen=True, slots=True)
 class WebhookResult:
     kind: Literal[
         "payment_captured",
@@ -75,5 +83,14 @@ class PaymentProvider(Protocol):
     ) -> None: ...
 
     async def resume_subscription(self, provider_subscription_id: str) -> None: ...
+
+    async def refund_payment(
+        self,
+        provider_payment_id: str,
+        *,
+        amount: Decimal,
+        currency: str,
+        reason: str | None = None,
+    ) -> RefundResult: ...
 
     def verify_webhook(self, *, body: bytes, headers: Mapping[str, str]) -> WebhookResult: ...
