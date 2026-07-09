@@ -52,6 +52,9 @@ def upgrade() -> None:
         "notification_reads",
         "feature_flags",
         "feature_flag_overrides",
+        "marketplace_listings",
+        "marketplace_reviews",
+        "marketplace_licenses",
     }
     baseline_tables = [
         table for table in Base.metadata.sorted_tables if table.name not in later_revision_tables

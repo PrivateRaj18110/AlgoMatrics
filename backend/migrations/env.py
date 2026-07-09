@@ -18,6 +18,7 @@ import algo_platform.modules.brokerage.infrastructure.models
 import algo_platform.modules.feature_flags.infrastructure.models
 import algo_platform.modules.identity.infrastructure.models
 import algo_platform.modules.instruments.infrastructure.models
+import algo_platform.modules.marketplace.infrastructure.models
 import algo_platform.modules.notifications.infrastructure.models
 import algo_platform.modules.organizations.infrastructure.models
 import algo_platform.modules.portfolio.infrastructure.models
