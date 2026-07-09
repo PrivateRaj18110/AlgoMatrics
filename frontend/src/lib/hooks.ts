@@ -34,6 +34,7 @@ import type {
   Invoice,
   KillSwitch,
   Member,
+  MobileDevice,
   MonthlyPnl,
   NotificationPreference,
   Order,
@@ -474,6 +475,24 @@ export function useMarkAllNotificationsRead() {
   return useMutation({
     mutationFn: () => api<{ message: string }>("/notifications/read-all", { method: "POST" }),
     onSuccess: () => invalidateNotifications(client),
+  });
+}
+
+/* ------------------------------- mobile devices ----------------------------- */
+
+export function useMobileDevices() {
+  return useQuery({
+    queryKey: ["mobile-devices", orgKey()],
+    queryFn: () => api<MobileDevice[]>("/mobile/devices"),
+  });
+}
+
+export function useUnregisterDevice() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (deviceId: string) =>
+      api<{ message: string }>(`/mobile/devices/${deviceId}`, { method: "DELETE" }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["mobile-devices"] }),
   });
 }
 

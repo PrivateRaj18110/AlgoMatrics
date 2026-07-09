@@ -22,6 +22,7 @@ import algo_platform.modules.billing.infrastructure.models
 import algo_platform.modules.brokerage.infrastructure.models
 import algo_platform.modules.identity.infrastructure.models
 import algo_platform.modules.instruments.infrastructure.models
+import algo_platform.modules.mobile.infrastructure.models
 import algo_platform.modules.notifications.infrastructure.models
 import algo_platform.modules.organizations.infrastructure.models
 import algo_platform.modules.portfolio.infrastructure.models
@@ -59,6 +60,7 @@ def upgrade() -> None:
         "strategy_version_approvals",
         "strategy_deployments",
         "notification_preferences",
+        "mobile_devices",
     }
     baseline_tables = [
         table for table in Base.metadata.sorted_tables if table.name not in later_revision_tables

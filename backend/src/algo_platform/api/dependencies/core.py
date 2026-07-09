@@ -9,6 +9,7 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from algo_platform.config import Settings
+from algo_platform.modules.mobile.application.ports import PushProvider
 from algo_platform.shared.application.ports import EmailSender
 from algo_platform.shared.infrastructure.encryption import CredentialCipher
 from algo_platform.shared.infrastructure.jwt_service import JwtService
@@ -57,6 +58,11 @@ def get_metrics(request: Request) -> MetricsRecorder:
     return metrics
 
 
+def get_push_provider(request: Request) -> PushProvider:
+    provider: PushProvider = request.app.state.push_provider
+    return provider
+
+
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 RedisDep = Annotated[RedisGateway, Depends(get_redis)]
@@ -64,3 +70,4 @@ JwtDep = Annotated[JwtService, Depends(get_jwt_service)]
 EmailSenderDep = Annotated[EmailSender, Depends(get_email_sender)]
 CipherDep = Annotated[CredentialCipher, Depends(get_credential_cipher)]
 MetricsDep = Annotated[MetricsRecorder, Depends(get_metrics)]
+PushProviderDep = Annotated[PushProvider, Depends(get_push_provider)]

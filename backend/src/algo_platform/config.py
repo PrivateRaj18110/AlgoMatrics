@@ -96,6 +96,11 @@ class Settings(BaseSettings):
     ai_model: str = "claude-opus-4-8"
     ai_max_tokens: int = Field(default=2048, ge=64, le=64_000)
 
+    # Mobile push delivery. "null" (default) logs instead of calling out and
+    # keeps the platform hermetic; "fcm" uses Firebase Cloud Messaging.
+    push_provider: Literal["null", "fcm"] = "null"
+    fcm_credentials_json: str | None = None
+
     market_data_source: Literal["simulated"] = "simulated"
     market_tick_interval_ms: int = Field(default=1000, ge=100, le=60_000)
     market_data_seed: int = 20_260_101

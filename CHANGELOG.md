@@ -5,6 +5,25 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — Mobile backend (Master Spec Phase 16)
+
+A `modules/mobile` bounded context: device registry, push provider abstraction,
+and a bootstrap aggregate. See `docs/operations/mobile.md`.
+
+- **Device registry** (`mobile_devices` table, migration `0014`): register
+  (idempotent by push token), list, unregister — tenant + owner scoped. Push
+  tokens validated on write.
+- **Push** (`PushProvider` port + `NullPushProvider` default, `PUSH_PROVIDER`
+  setting): `DeviceService.push_to_user` fans a display-clamped `PushMessage` to
+  a user's devices and prunes provider-reported invalid tokens. Wired via
+  `app.state.push_provider` / `PushProviderDep`.
+- **Bootstrap** `GET /mobile/bootstrap`: profile + unread badge + evaluated
+  feature flags + device count in one cold-start round-trip.
+- **Frontend**: Settings → Security "Registered devices" card (list + unregister).
+- Settings: `PUSH_PROVIDER` / `FCM_CREDENTIALS_JSON`.
+- 10 new domain unit tests; ruff + strict mypy clean; 337 backend + 17 frontend
+  tests pass; architecture import rules green.
+
 ### Added — Multi-channel notifications (Master Spec Phase 15)
 
 Email + outbound webhook delivery driven by per-recipient preferences, on top of
