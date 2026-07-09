@@ -1,0 +1,32 @@
+# TLS ingress. Terminates HTTPS and routes the API. Assumes an ingress
+# controller (e.g. ingress-nginx) and cert-manager for certificates. The
+# frontend is served as static assets from its own Deployment/Service (or a CDN)
+# — wire it in under the same host at `/` if co-hosted.
+#
+# NOTE: the API's IP allowlist (Phase 17) uses the socket peer IP. Configure the
+# ingress controller to preserve the real client IP (externalTrafficPolicy:
+# Local, or trust X-Forwarded-For at a proxy the app sits behind) so the
+# allowlist evaluates the caller, not the ingress.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: algo-ingress
+  namespace: algo
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["api.algomatrics.com"]
+      secretName: algo-api-tls
+  rules:
+    - host: api.algomatrics.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: algo-api
+                port: { number: 80 }

@@ -1,0 +1,40 @@
+# Non-secret configuration. Secrets (DB URL, JWT keys, KEK, provider keys) live
+# in the Secret below — never here. Values shown are production-safe defaults
+# that satisfy the API's startup self-check (Phase 20).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: algo-config
+  namespace: algo
+data:
+  APP_ENV: "production"
+  LOG_LEVEL: "INFO"
+  SERVICE_NAME: "algo-api"
+  METRICS_ENABLED: "true"
+  RATE_LIMIT_ENABLED: "true"
+  SECURITY_HEADERS_ENABLED: "true"
+  COOKIE_SECURE: "true"
+  SECRETS_BACKEND: "aws"
+  CORS_ORIGINS: '["https://app.algomatrics.com"]'
+  APP_BASE_URL: "https://app.algomatrics.com"
+  # Auto scaling signals (Phase 19)
+  SCALING_EVENT_STREAM: "events"
+  SCALING_CONSUMER_GROUPS: '["worker:notification","worker:trading"]'
+  SCALING_TARGET_BACKLOG_PER_REPLICA: "100"
+  SCALING_MIN_REPLICAS: "1"
+  SCALING_MAX_REPLICAS: "10"
+---
+# Template ONLY — do not commit real secrets. Populate via your secret manager
+# (e.g. External Secrets Operator, sealed-secrets) at deploy time.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: algo-secrets
+  namespace: algo
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql+asyncpg://USER:PASSWORD@postgres:5432/algo"
+  REDIS_URL: "redis://redis:6379/0"
+  JWT_PRIVATE_KEY_PEM: "REPLACE_ME"
+  JWT_PUBLIC_KEY_PEM: "REPLACE_ME"
+  BROKER_CREDENTIAL_KEK_B64: "REPLACE_ME"
