@@ -14,7 +14,7 @@ import {
   Td,
 } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { useProfile } from "@/lib/hooks";
+import { useMobileDevices, useProfile, useUnregisterDevice } from "@/lib/hooks";
 import { dateTime, timeAgo } from "@/lib/format";
 import { useAuth } from "@/stores/auth";
 import { toastSuccess } from "@/stores/toast";
@@ -34,6 +34,7 @@ export function SecuritySettings() {
       <ChangePasswordCard />
       <MfaCard mfaEnabled={profile?.mfa_enabled ?? false} />
       <SessionsCard />
+      <MobileDevicesCard />
     </div>
   );
 }
@@ -269,6 +270,54 @@ function DisableMfaModal({ onClose, onDone }: { onClose: () => void; onDone: () 
         </Button>
       </div>
     </Modal>
+  );
+}
+
+function MobileDevicesCard() {
+  const { data: devices, isLoading } = useMobileDevices();
+  const unregister = useUnregisterDevice();
+
+  async function revoke(id: string) {
+    try {
+      await unregister.mutateAsync(id);
+      toastSuccess("Device unregistered");
+    } catch {
+      /* invalidation still refetches; surfacing is optional here */
+    }
+  }
+
+  return (
+    <Card title="Registered devices">
+      {isLoading ? (
+        <SkeletonRows rows={2} cols={3} />
+      ) : !devices || devices.length === 0 ? (
+        <EmptyState title="No mobile devices" body="Sign in on the mobile app to register a device." />
+      ) : (
+        <Table headers={["Device", "Platform", "Last seen", ""]}>
+          {devices.map((device) => (
+            <tr key={device.id}>
+              <Td>
+                <div className="max-w-xs truncate text-sm">
+                  {device.device_name || "Unknown device"}
+                  {device.app_version && (
+                    <span className="ml-2 text-xs text-slate-400">v{device.app_version}</span>
+                  )}
+                </div>
+              </Td>
+              <Td>
+                <Badge color="slate">{device.platform}</Badge>
+              </Td>
+              <Td className="text-xs text-slate-400">{timeAgo(device.last_seen_at)}</Td>
+              <Td>
+                <Button size="sm" variant="ghost" onClick={() => revoke(device.id)}>
+                  Unregister
+                </Button>
+              </Td>
+            </tr>
+          ))}
+        </Table>
+      )}
+    </Card>
   );
 }
 

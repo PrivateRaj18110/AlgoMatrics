@@ -546,6 +546,15 @@ export interface AppNotification {
   created_at: string;
 }
 
+export interface MobileDevice {
+  id: string;
+  platform: string;
+  app_version: string | null;
+  device_name: string | null;
+  created_at: string;
+  last_seen_at: string;
+}
+
 export interface NotificationPreference {
   enabled_channels: string[];
   muted_types: string[];
