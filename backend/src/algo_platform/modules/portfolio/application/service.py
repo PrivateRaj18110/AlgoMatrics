@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from algo_platform.modules.brokerage.infrastructure.models import TradingAccountModel
 from algo_platform.modules.instruments.application.directory import InstrumentDirectory
+from algo_platform.modules.portfolio.domain import metrics as perf_metrics
 from algo_platform.modules.portfolio.infrastructure.models import PortfolioSnapshotModel
 from algo_platform.modules.trading.infrastructure.models import (
     ExecutionModel,
@@ -62,6 +63,10 @@ class PerformanceSummaryDTO:
     max_drawdown_pct: Decimal
     daily_return_volatility_pct: Decimal
     gross_exposure: Decimal
+    sharpe_ratio: Decimal
+    sortino_ratio: Decimal
+    calmar_ratio: Decimal
+    annualized_return_pct: Decimal
 
 
 @dataclass(frozen=True, slots=True)
@@ -378,6 +383,13 @@ class PortfolioQueryService:
             if base_equity > 0:
                 volatility = Decimal(str(round(math.sqrt(variance) / base_equity * 100, 4)))
 
+        # Risk-adjusted ratios from the equity curve's periodic returns.
+        equity_levels = [float(p.equity) for p in curve]
+        period_returns = perf_metrics.returns_from_equity(equity_levels)
+
+        def _q(value: float) -> Decimal:
+            return Decimal(str(round(value, 4)))
+
         return PerformanceSummaryDTO(
             total_realized_pnl=total_realized,
             total_unrealized_pnl=unrealized,
@@ -391,6 +403,10 @@ class PortfolioQueryService:
             max_drawdown_pct=max_drawdown.quantize(Decimal("0.01")),
             daily_return_volatility_pct=volatility,
             gross_exposure=exposure,
+            sharpe_ratio=_q(perf_metrics.sharpe_ratio(period_returns)),
+            sortino_ratio=_q(perf_metrics.sortino_ratio(period_returns)),
+            calmar_ratio=_q(perf_metrics.calmar_ratio(period_returns, equity_levels)),
+            annualized_return_pct=_q(perf_metrics.annualized_return(period_returns) * 100),
         )
 
     async def exposure_breakdown(self, organization_id: TenantId) -> list[dict[str, Any]]:

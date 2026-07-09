@@ -84,6 +84,10 @@ class PerformanceSummaryResponse(BaseModel):
     max_drawdown_pct: Decimal
     daily_return_volatility_pct: Decimal
     gross_exposure: Decimal
+    sharpe_ratio: Decimal
+    sortino_ratio: Decimal
+    calmar_ratio: Decimal
+    annualized_return_pct: Decimal
 
 
 @router.get("/dashboard/summary", response_model=DashboardSummaryResponse)
