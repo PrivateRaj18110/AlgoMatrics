@@ -203,6 +203,9 @@ def _include_routers(app: FastAPI) -> None:
     from algo_platform.modules.strategies.presentation.router import (
         router as strategies_router,
     )
+    from algo_platform.modules.strategies.presentation.versioning_router import (
+        router as strategy_versioning_router,
+    )
     from algo_platform.modules.trading.presentation.router import (
         router as trading_router,
     )
@@ -227,6 +230,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(risk_router, prefix=prefix)
     app.include_router(strategies_router, prefix=prefix)
     app.include_router(backtest_router, prefix=prefix)
+    app.include_router(strategy_versioning_router, prefix=prefix)
     app.include_router(marketplace_router, prefix=prefix)
     app.include_router(ai_router, prefix=prefix)
     app.include_router(portfolio_router, prefix=prefix)
