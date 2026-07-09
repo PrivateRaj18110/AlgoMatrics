@@ -23,6 +23,8 @@ dependencies = [
 [project.optional-dependencies]
 # Only required when SECRETS_BACKEND=aws.
 aws = ["boto3>=1.35"]
+# Only required when AI_PROVIDER=anthropic.
+ai = ["anthropic>=0.40"]
 
 [dependency-groups]
 dev = [
@@ -80,5 +82,12 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["asyncpg.*", "testcontainers.*", "MetaTrader5.*", "prometheus_client.*", "boto3.*"]
+module = [
+  "asyncpg.*",
+  "testcontainers.*",
+  "MetaTrader5.*",
+  "prometheus_client.*",
+  "boto3.*",
+  "anthropic.*",
+]
 ignore_missing_imports = true

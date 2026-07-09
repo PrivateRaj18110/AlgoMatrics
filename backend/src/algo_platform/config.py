@@ -89,6 +89,13 @@ class Settings(BaseSettings):
     # GST rate (percent) applied to INR invoices; 0 disables tax.
     gst_rate_percent: Decimal = Decimal("18")
 
+    # AI platform. "null" (default) never calls out; "anthropic" uses Claude and
+    # requires ANTHROPIC_API_KEY. Gated at runtime by the "ai" feature flag too.
+    ai_provider: Literal["null", "anthropic"] = "null"
+    anthropic_api_key: str | None = None
+    ai_model: str = "claude-opus-4-8"
+    ai_max_tokens: int = Field(default=2048, ge=64, le=64_000)
+
     market_data_source: Literal["simulated"] = "simulated"
     market_tick_interval_ms: int = Field(default=1000, ge=100, le=60_000)
     market_data_seed: int = 20_260_101
