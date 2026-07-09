@@ -38,11 +38,61 @@ from algo_platform.modules.identity.infrastructure.repositories import SqlUserRe
 from algo_platform.modules.notifications.application.service import NotificationService
 from algo_platform.modules.organizations.infrastructure.models import OrganizationModel
 from algo_platform.modules.strategies.infrastructure.models import StrategyRunModel
+from algo_platform.shared.application.scaling import ScalingConfig
 from algo_platform.shared.domain.errors import NotFoundError, ValidationFailed
 from algo_platform.shared.domain.types import TenantId, UserId, utc_now
 from algo_platform.shared.infrastructure.outbox import OutboxEventModel
+from algo_platform.shared.infrastructure.scaling_reporter import ScalingReporter
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+class GroupBacklogResponse(BaseModel):
+    stream: str
+    group: str
+    backlog: int
+    desired_replicas: int
+
+
+class ScalingReport(BaseModel):
+    stream: str
+    stream_depth: int
+    groups: list[GroupBacklogResponse]
+
+
+@router.get("/scaling", response_model=ScalingReport)
+async def scaling_report(
+    admin: PlatformAdminDep, redis: RedisDep, settings: SettingsDep
+) -> ScalingReport:
+    """Queue backlog + desired-replica recommendation per worker consumer group.
+
+    Read by operators and available for autoscaler tooling; KEDA can also scale
+    directly on the underlying Redis stream via its redis-streams scaler.
+    """
+    reporter = ScalingReporter(
+        redis,
+        stream=settings.scaling_event_stream,
+        groups=settings.scaling_consumer_groups,
+        config=ScalingConfig(
+            target_backlog_per_replica=settings.scaling_target_backlog_per_replica,
+            min_replicas=settings.scaling_min_replicas,
+            max_replicas=settings.scaling_max_replicas,
+        ),
+    )
+    groups = await reporter.report()
+    return ScalingReport(
+        stream=settings.scaling_event_stream,
+        stream_depth=await reporter.stream_depth(),
+        groups=[
+            GroupBacklogResponse(
+                stream=g.stream,
+                group=g.group,
+                backlog=g.backlog,
+                desired_replicas=g.desired_replicas,
+            )
+            for g in groups
+        ],
+    )
 
 
 def _billing(

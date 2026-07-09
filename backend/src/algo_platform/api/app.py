@@ -96,7 +96,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.prometheus = prometheus
             sampler_task = asyncio.create_task(
                 run_infra_sampler(
-                    prometheus, engine, redis, interval_seconds=15.0, stop=sampler_stop
+                    prometheus,
+                    engine,
+                    redis,
+                    interval_seconds=15.0,
+                    stop=sampler_stop,
+                    event_stream=resolved.scaling_event_stream,
                 )
             )
         app.state.payment_providers = build_payment_providers(resolved, secrets)
