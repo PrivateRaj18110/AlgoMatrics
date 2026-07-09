@@ -5,6 +5,23 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — payments: tax & refunds (Master Spec Phase 9)
+
+Completed the billing surface with GST/tax on invoices and a provider refund
+flow (Stripe/Razorpay), on top of the existing subscriptions, coupons, trials,
+usage metering, and webhooks. See `docs/operations/payments.md`.
+
+- **Tax (GST)**: pure `domain/tax.py` (compute_tax + CGST/SGST/IGST breakdown);
+  `Invoice` gains `tax`/`tax_rate` and taxes the post-discount amount into the
+  total; migration 0008; `GST_RATE_PERCENT` (18% default) applied to INR
+  invoices at checkout and renewal.
+- **Refunds**: `PaymentProvider.refund_payment` + Stripe/Razorpay impls;
+  `Payment.refunded_amount` + `refund()` (full/partial, CAPTURED→REFUNDED,
+  balance-guarded); migration 0009; `SubscriptionService.refund_payment`; admin
+  `POST /admin/payments/{id}/refund` (audited).
+- 12 new unit tests (tax rounding/breakdown/invoice totals, refund invariants);
+  ruff + strict mypy clean; 313 unit/arch/contract tests pass.
+
 ### Added — broker integrations (Master Spec Phase 8)
 
 Binance and Interactive Brokers join the shared broker abstraction, completing

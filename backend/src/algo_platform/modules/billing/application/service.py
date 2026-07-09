@@ -50,6 +50,15 @@ from algo_platform.shared.infrastructure.outbox import enqueue_event
 logger = structlog.get_logger(__name__)
 
 
+def _gst_rate_for(currency: str) -> Decimal:
+    """GST rate applied to a currency; India (INR) is taxed, others are not."""
+    from algo_platform.config import get_settings
+
+    if currency.upper() == "INR":
+        return get_settings().gst_rate_percent
+    return Decimal("0")
+
+
 @dataclass(frozen=True, slots=True)
 class SubscriptionSummaryDTO:
     id: UUID
@@ -201,6 +210,39 @@ class SubscriptionService:
             quantity=quantity,
         )
 
+    async def refund_payment(
+        self,
+        organization_id: TenantId,
+        payment_id: UUID,
+        *,
+        amount: Decimal,
+        reason: str | None = None,
+    ) -> Payment:
+        """Refund (fully or partially) a captured payment via its provider."""
+        payment = await self._payments.get(payment_id)
+        if payment is None or payment.organization_id != organization_id:
+            raise NotFoundError("payment not found")
+        if amount <= 0 or amount > payment.amount - payment.refunded_amount:
+            raise ConflictError("refund amount exceeds the refundable balance")
+        provider = self._providers.get(payment.provider)
+        if provider is None:
+            raise ConflictError(f"payment provider '{payment.provider}' is not configured")
+        await provider.refund_payment(
+            payment.provider_payment_id,
+            amount=amount,
+            currency=payment.currency,
+            reason=reason,
+        )
+        payment.refund(amount)  # applies domain invariants and status transition
+        await self._payments.save(payment)
+        logger.info(
+            "billing.payment_refunded",
+            payment_id=str(payment.id),
+            amount=str(amount),
+            status=payment.status.value,
+        )
+        return payment
+
     async def orders_placed_today(self, organization_id: TenantId) -> int:
         return await self._usage.get_quantity(
             organization_id=organization_id,
@@ -337,6 +379,7 @@ class SubscriptionService:
             currency=plan.currency,
             subtotal=subtotal,
             discount=discount,
+            tax_rate=_gst_rate_for(plan.currency),
             line_items=[
                 {
                     "description": f"{plan.name} plan ({cycle.value})",
@@ -602,6 +645,7 @@ class SubscriptionService:
             currency=plan.currency,
             subtotal=expected,
             discount=Decimal("0"),
+            tax_rate=_gst_rate_for(plan.currency),
             line_items=[
                 {
                     "description": (

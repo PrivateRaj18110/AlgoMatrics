@@ -96,6 +96,8 @@ class InvoiceModel(Base):
     currency: Mapped[str] = mapped_column(String(3))
     subtotal: Mapped[Decimal]
     discount: Mapped[Decimal]
+    tax: Mapped[Decimal] = mapped_column(default=Decimal("0"))
+    tax_rate: Mapped[Decimal] = mapped_column(default=Decimal("0"))
     total: Mapped[Decimal]
     line_items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -123,6 +125,7 @@ class PaymentModel(Base):
     provider: Mapped[str] = mapped_column(String(20))
     provider_payment_id: Mapped[str] = mapped_column(String(120))
     amount: Mapped[Decimal]
+    refunded_amount: Mapped[Decimal] = mapped_column(default=Decimal("0"))
     currency: Mapped[str] = mapped_column(String(3))
     status: Mapped[str] = mapped_column(String(15))
     method: Mapped[str | None] = mapped_column(String(30), default=None)

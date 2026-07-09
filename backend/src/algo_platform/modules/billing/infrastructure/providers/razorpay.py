@@ -17,7 +17,11 @@ from typing import Any
 
 import httpx
 
-from algo_platform.modules.billing.application.ports import CheckoutSession, WebhookResult
+from algo_platform.modules.billing.application.ports import (
+    CheckoutSession,
+    RefundResult,
+    WebhookResult,
+)
 from algo_platform.modules.billing.domain.invoices import Invoice
 from algo_platform.shared.domain.errors import ConflictError, ValidationFailed
 
@@ -150,6 +154,38 @@ class RazorpayProvider:
                 "payment provider could not resume the subscription",
                 details={"provider": "razorpay", "status": response.status_code},
             )
+
+    async def refund_payment(
+        self,
+        provider_payment_id: str,
+        *,
+        amount: Decimal,
+        currency: str,
+        reason: str | None = None,
+    ) -> RefundResult:
+        # Razorpay amounts are in the smallest currency unit (paise).
+        minor = int((amount * 100).to_integral_value())
+        payload: dict[str, Any] = {"amount": minor}
+        if reason:
+            payload["notes"] = {"reason": reason[:255]}
+        async with httpx.AsyncClient(
+            timeout=_TIMEOUT, auth=(self._key_id, self._key_secret)
+        ) as client:
+            response = await client.post(
+                f"{_API_BASE}/payments/{provider_payment_id}/refund", json=payload
+            )
+        if response.status_code >= 400:
+            raise ConflictError(
+                "payment provider could not process the refund",
+                details={"provider": "razorpay", "status": response.status_code},
+            )
+        body = response.json()
+        return RefundResult(
+            provider_refund_id=str(body.get("id", "")),
+            amount=amount,
+            currency=currency.upper(),
+            status=str(body.get("status", "processed")),
+        )
 
     def verify_payment_signature(self, *, order_id: str, payment_id: str, signature: str) -> bool:
         message = f"{order_id}|{payment_id}".encode()
