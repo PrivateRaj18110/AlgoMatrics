@@ -504,6 +504,20 @@ export function useAuditEvents(filters: AuditFilters = {}) {
   });
 }
 
+/* ----------------------------------- ai ------------------------------------- */
+
+export interface AiAnswer {
+  answer: string;
+  provider: string;
+}
+
+export function useAiAssistant() {
+  return useMutation({
+    mutationFn: (question: string) =>
+      api<AiAnswer>("/ai/assistant", { method: "POST", body: { question } }),
+  });
+}
+
 /* ------------------------------- backtesting -------------------------------- */
 
 export interface BacktestBar {

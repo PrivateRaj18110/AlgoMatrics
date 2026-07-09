@@ -5,6 +5,25 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — AI platform (Master Spec Phase 13)
+
+A trading assistant plus domain explanations built on Claude behind a pluggable
+provider, gated by the `ai` feature flag. See `docs/operations/ai.md`.
+
+- **Provider abstraction** (`modules/ai`): `LLMProvider` port; `AnthropicProvider`
+  (official async SDK, `claude-opus-4-8`, adaptive thinking, lazy `ai` extra) and
+  a default `NullProvider` that never calls out (safe + hermetic tests).
+- **Prompts** (`domain/prompts.py`, pure): domain-scoped, no-fabrication builders
+  for the assistant, strategy/risk explanation, log analysis, NL analytics, and
+  broker diagnostics.
+- **API** (`/ai`, `require_feature('ai')`): assistant, explain-strategy,
+  explain-risk, analyze-logs, analytics, broker-diagnostics, prompt-templates —
+  each takes the domain object the caller already holds.
+- **Frontend**: `/app/assistant` chat page; nav entry shown only when the flag is on.
+- Settings: AI_PROVIDER / ANTHROPIC_API_KEY / AI_MODEL / AI_MAX_TOKENS.
+- 17 new unit tests (prompts, null provider offline, factory, service); ruff +
+  strict mypy clean; 306 backend + 17 frontend tests pass.
+
 ### Added — backtesting engine (Master Spec Phase 12)
 
 A deterministic backtesting engine with Monte Carlo, optimization, and
