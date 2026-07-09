@@ -13,7 +13,11 @@ node_modules/
 .vite/
 *.log
 data/
-secrets/
+# Local secret material only (repo-root dir). Anchored with a leading slash so
+# it never matches the source package
+# backend/src/algo_platform/shared/infrastructure/secrets/, which must be
+# committed. The encrypted document lives under var/ (ignored above).
+/secrets/
 # Local secrets management: never commit plaintext or encryption keys. The
 # encrypted document itself (secrets.enc) is safe but the key must stay out.
 secrets.plain.json
