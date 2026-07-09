@@ -5,6 +5,25 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — Auto scaling (Master Spec Phase 19)
+
+Backlog-driven horizontal scaling for the event workers + CPU-based HPA for the
+API. See `docs/operations/auto-scaling.md`.
+
+- **Scaling policy** (`shared/application/scaling.py`, pure): `desired_replicas`
+  (ceil(backlog/target), clamped) + `recommend` (up/down/hold).
+- **Signals**: Redis gateway `xlen` + `consumer_group_lag` (XINFO GROUPS lag →
+  pending fallback); `ScalingReporter`; admin `GET /admin/scaling` (stream depth
+  + per-`worker:<role>` backlog and recommendation); infra sampler now publishes
+  the `stream_depth` gauge for the event stream.
+- **Manifests**: `deploy/autoscaling/keda-scaledobjects.yaml` (KEDA redis-streams
+  scaler per worker) + `hpa-api.yaml` (API CPU HPA).
+- Settings: `SCALING_EVENT_STREAM`, `SCALING_CONSUMER_GROUPS`,
+  `SCALING_TARGET_BACKLOG_PER_REPLICA`, `SCALING_MIN_REPLICAS`,
+  `SCALING_MAX_REPLICAS`.
+- 11 new unit tests; ruff + strict mypy clean; 379 backend tests pass. No
+  migration; no user-facing frontend (ops).
+
 ### Added — High availability (Master Spec Phase 18)
 
 Hardened health probes and a reusable circuit breaker. See
