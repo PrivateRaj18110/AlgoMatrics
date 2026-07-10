@@ -1,0 +1,64 @@
+# Host-level (edge) nginx config for algomatrics.in — TLS termination,
+# canonical-host redirects, HSTS, and HTTP/2.
+#
+# Install on the VM as /etc/nginx/sites-available/algomatrics.in and symlink
+# into sites-enabled. Certificates via: certbot certonly --nginx \
+#   -d algomatrics.in -d www.algomatrics.in
+#
+# Why this file exists: the live host currently serves the SPA over HTTP/1.1
+# with no HSTS, and both www and apex return 200 with identical content
+# (duplicate-content risk; Google may index the wrong host). This config makes
+# https://algomatrics.in the single canonical origin.
+
+# 1) All HTTP → canonical HTTPS.
+server {
+  listen 80;
+  listen [::]:80;
+  server_name algomatrics.in www.algomatrics.in;
+  return 301 https://algomatrics.in$request_uri;
+}
+
+# 2) HTTPS www → canonical apex.
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  http2 on;
+  server_name www.algomatrics.in;
+
+  ssl_certificate /etc/letsencrypt/live/algomatrics.in/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/algomatrics.in/privkey.pem;
+
+  return 301 https://algomatrics.in$request_uri;
+}
+
+# 3) Canonical origin.
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  http2 on;
+  server_name algomatrics.in;
+
+  ssl_certificate /etc/letsencrypt/live/algomatrics.in/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/algomatrics.in/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_prefer_server_ciphers off;
+
+  server_tokens off;
+
+  # 6 months; extend to 2 years + preload once the redirect setup has soaked.
+  add_header Strict-Transport-Security "max-age=15768000; includeSubDomains" always;
+
+  # Everything (static + API) is served by the app container so the
+  # security headers and SPA fallback in deploy/nginx/nginx.conf apply.
+  location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $http_upgrade;
+    proxy_read_timeout 65s;
+  }
+}

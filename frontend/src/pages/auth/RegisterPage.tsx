@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { Link } from "react-router";
 import { z } from "zod";
 
+import { Seo } from "@/components/Seo";
 import { Button, Field, Input } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { AuthShell } from "@/pages/auth/AuthShell";
@@ -87,6 +88,11 @@ export function RegisterPage() {
         </>
       }
     >
+      <Seo
+        title="Create a free account — Algo Matrics"
+        description="Create a free Algo Matrics account and start with deterministic paper trading: one paper broker connection and one active strategy, at no cost."
+        canonicalPath="/register"
+      />
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         {formError && (
           <div className="rounded-lg border border-loss-500/40 bg-loss-500/10 px-3 py-2 text-sm text-loss-600 dark:text-loss-400">

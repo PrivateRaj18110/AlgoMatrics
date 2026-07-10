@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 
+import { Seo } from "@/components/Seo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Badge, Button } from "@/components/ui";
 import { usePlans } from "@/lib/hooks";
@@ -59,6 +60,16 @@ const FAQ = [
   },
 ];
 
+const FAQ_JSON_LD = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQ.map((item) => ({
+    "@type": "Question",
+    name: item.q,
+    acceptedAnswer: { "@type": "Answer", text: item.a },
+  })),
+});
+
 export function LandingPage() {
   const { data: plans } = usePlans();
   const status = useAuth((state) => state.status);
@@ -67,6 +78,12 @@ export function LandingPage() {
 
   return (
     <div className="min-h-screen bg-surface-50 text-slate-900 dark:bg-surface-950 dark:text-slate-100">
+      <Seo
+        title="Algo Matrics — Algorithmic Trading Platform for India"
+        description="Build, backtest, and deploy automated trading strategies on Zerodha, Angel One, Delta Exchange, and MT5 — with a real-time risk engine, live P&L, and free paper trading."
+        canonicalPath="/"
+      />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: FAQ_JSON_LD }} />
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur dark:border-surface-800 dark:bg-surface-950/80">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-2 font-semibold">
@@ -259,8 +276,8 @@ export function LandingPage() {
             <h3 className="font-semibold">Contact</h3>
             <p className="mt-1.5 text-sm text-slate-500">
               Questions? Reach us at{" "}
-              <a href="mailto:hello@algomatrics.local" className="text-accent-500 hover:underline">
-                hello@algomatrics.local
+              <a href="mailto:hello@algomatrics.in" className="text-accent-500 hover:underline">
+                hello@algomatrics.in
               </a>
               .
             </p>

@@ -1,0 +1,12 @@
+# https://algomatrics.in — crawl policy
+# The authenticated console lives under /app/ and is intentionally not crawlable.
+
+User-agent: *
+Allow: /
+Disallow: /app/
+Disallow: /api/
+Disallow: /invitations/
+Disallow: /reset-password
+Disallow: /verify-email
+
+Sitemap: https://algomatrics.in/sitemap.xml

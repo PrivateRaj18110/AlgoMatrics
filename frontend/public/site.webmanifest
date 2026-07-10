@@ -1,0 +1,13 @@
+{
+  "name": "Algo Matrics",
+  "short_name": "AlgoMatrics",
+  "description": "Algorithmic trading platform: build, backtest, and deploy automated strategies with hierarchical risk controls and real-time P&L.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0f1e",
+  "theme_color": "#0284c7",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

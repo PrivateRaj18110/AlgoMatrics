@@ -3,22 +3,100 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Algo Matrics — Algorithmic Trading Platform for India</title>
     <meta
       name="description"
-      content="Algo Matrics - multi-tenant algorithmic trading platform: strategies, brokers, risk, and live P&L in one console."
+      content="Build, backtest, and deploy automated trading strategies on Zerodha, Angel One, Delta Exchange, and MT5 — with a real-time risk engine, live P&L, and free paper trading."
     />
-    <title>Algo Matrics</title>
-    <script>
-      // Apply persisted theme before first paint to avoid a flash.
-      try {
-        var stored = localStorage.getItem("am-theme");
-        var dark =
-          stored === "dark" ||
-          ((stored === null || stored === "system") &&
-            window.matchMedia("(prefers-color-scheme: dark)").matches);
-        document.documentElement.classList.toggle("dark", dark);
-      } catch (e) {}
+    <link rel="canonical" href="https://algomatrics.in/" />
+
+    <!-- Icons & PWA -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0f1e" media="(prefers-color-scheme: dark)" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Algo Matrics" />
+    <meta property="og:url" content="https://algomatrics.in/" />
+    <meta property="og:title" content="Algo Matrics — Algorithmic Trading Platform for India" />
+    <meta
+      property="og:description"
+      content="Build, backtest, and deploy automated trading strategies on Zerodha, Angel One, Delta Exchange, and MT5 — with a real-time risk engine, live P&L, and free paper trading."
+    />
+    <meta property="og:image" content="https://algomatrics.in/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en_IN" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Algo Matrics — Algorithmic Trading Platform for India" />
+    <meta
+      name="twitter:description"
+      content="Build, backtest, and deploy automated trading strategies on Zerodha, Angel One, Delta Exchange, and MT5 — with a real-time risk engine, live P&L, and free paper trading."
+    />
+    <meta name="twitter:image" content="https://algomatrics.in/og.png" />
+
+    <!-- Structured data: organization + website + product -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://algomatrics.in/#organization",
+            "name": "Algo Matrics",
+            "alternateName": ["AlgoMatrics", "Algomatrics"],
+            "url": "https://algomatrics.in/",
+            "logo": "https://algomatrics.in/apple-touch-icon.png",
+            "contactPoint": {
+              "@type": "ContactPoint",
+              "contactType": "customer support",
+              "email": "hello@algomatrics.in"
+            }
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://algomatrics.in/#website",
+            "url": "https://algomatrics.in/",
+            "name": "Algo Matrics",
+            "alternateName": "AlgoMatrics",
+            "publisher": { "@id": "https://algomatrics.in/#organization" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "Algo Matrics",
+            "url": "https://algomatrics.in/",
+            "applicationCategory": "FinanceApplication",
+            "operatingSystem": "Web",
+            "description": "Multi-tenant algorithmic trading platform: build, backtest, and deploy automated strategies across Zerodha Kite, Angel One SmartAPI, Delta Exchange, and MetaTrader 5, with hierarchical risk controls, deterministic paper trading, and real-time P&L.",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "INR",
+              "description": "Free plan with one paper broker connection and one active strategy."
+            },
+            "featureList": [
+              "Broker-neutral order execution",
+              "Hierarchical risk engine with kill switches",
+              "Deterministic paper trading",
+              "Backtesting",
+              "Real-time P&L via WebSocket",
+              "Multi-tenant organizations with RBAC",
+              "Python strategy SDK and uploads"
+            ],
+            "publisher": { "@id": "https://algomatrics.in/#organization" }
+          }
+        ]
+      }
     </script>
+
+    <!-- Applies persisted theme before first paint; external file keeps CSP strict. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

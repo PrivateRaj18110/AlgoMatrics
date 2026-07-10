@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     app_base_url: str = "http://localhost:5173"
 
     email_backend: Literal["console", "smtp"] = "console"
-    email_from: str = "Algo Matrics <no-reply@algomatrics.local>"
+    email_from: str = "Algo Matrics <no-reply@algomatrics.in>"
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None

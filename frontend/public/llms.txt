@@ -1,0 +1,28 @@
+# Algo Matrics
+
+> Algo Matrics (algomatrics.in) is a multi-tenant algorithmic trading platform
+> for Indian and global markets. Users build, backtest, and deploy automated
+> trading strategies across Zerodha Kite, Angel One SmartAPI, Delta Exchange,
+> and MetaTrader 5, governed by a hierarchical risk engine with kill switches,
+> deterministic paper trading, and real-time P&L over WebSocket.
+
+## Key facts
+
+- Product type: web-based algorithmic / systematic trading platform (SaaS)
+- Markets: Indian equities and derivatives (NSE: Nifty, BankNifty), crypto
+  derivatives (Delta Exchange), and MT5-connected venues
+- Brokers supported: Zerodha Kite Connect, Angel One SmartAPI, Delta Exchange,
+  MetaTrader 5 (via VPS agent), built-in paper-trading simulator
+- Strategies: first-party (SMA crossover, RSI mean reversion, momentum
+  breakout) plus user-uploaded Python strategies (sandboxed, reviewed before
+  live use)
+- Risk management: pre-trade limits, continuous risk checks, and kill switches
+  at platform, account, and strategy scope; fail-closed by default
+- Plans: free tier with one paper broker connection and one active strategy;
+  paid plans enable live trading
+- Contact: hello@algomatrics.in
+
+## Pages
+
+- [Home](https://algomatrics.in/): product overview, features, pricing, FAQ
+- [Register](https://algomatrics.in/register): free account signup
