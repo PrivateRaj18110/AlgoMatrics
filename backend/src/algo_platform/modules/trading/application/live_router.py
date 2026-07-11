@@ -45,6 +45,9 @@ from algo_platform.modules.trading.infrastructure.brokers.binance import (
 from algo_platform.modules.trading.infrastructure.brokers.delta import (
     DeltaExecutionAdapter,
 )
+from algo_platform.modules.trading.infrastructure.brokers.flattrade import (
+    FlattradeExecutionAdapter,
+)
 from algo_platform.modules.trading.infrastructure.brokers.ibkr import (
     IbkrExecutionAdapter,
 )
@@ -180,6 +183,12 @@ class LiveRouter:
                 api_key=credentials.get("api_key", ""),
                 jwt_token=credentials.get("jwt_token", ""),
                 client_code=credentials.get("client_code", ""),
+                symbol_resolver=resolver,
+            )
+        elif connection.broker_code == "flattrade":
+            adapter = FlattradeExecutionAdapter(
+                client_code=credentials.get("client_code", ""),
+                session_token=credentials.get("session_token", ""),
                 symbol_resolver=resolver,
             )
         elif connection.broker_code == "delta":

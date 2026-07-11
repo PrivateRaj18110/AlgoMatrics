@@ -24,6 +24,7 @@ _TIMEOUT = httpx.Timeout(15.0)
 KITE_BASE = "https://api.kite.trade"
 ANGEL_BASE = "https://apiconnect.angelone.in"
 DELTA_BASE = "https://api.india.delta.exchange"
+FLATTRADE_BASE = "https://piconnect.flattrade.in/PiConnectTP"
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +135,39 @@ class AngelOneVerifier:
         )
 
 
+class FlattradeVerifier:
+    """Flattrade (Noren REST): POST UserDetails with jData/jKey envelope."""
+
+    async def verify(self, credentials: dict[str, str]) -> VerificationResult:
+        client_code = credentials.get("client_code", "")
+        session_token = credentials.get("session_token", "")
+        jdata = f'{{"uid":"{client_code}","actid":"{client_code}"}}'
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                response = await client.post(
+                    f"{FLATTRADE_BASE}/UserDetails",
+                    content=f"jData={jdata}&jKey={session_token}",
+                    headers={"Content-Type": "text/plain"},
+                )
+        except httpx.HTTPError as error:
+            return VerificationResult(ok=False, message=f"network error: {type(error).__name__}")
+        if response.status_code == 200:
+            body = response.json()
+            if body.get("stat") == "Ok":
+                return VerificationResult(
+                    ok=True,
+                    external_account_id=str(body.get("actid", client_code)),
+                    message="Flattrade profile fetched",
+                    base_currency="INR",
+                )
+            return VerificationResult(
+                ok=False, message=str(body.get("emsg", "Flattrade rejected the session"))
+            )
+        return VerificationResult(
+            ok=False, message=f"Flattrade returned HTTP {response.status_code}"
+        )
+
+
 class DeltaVerifier:
     """Delta Exchange: signed GET /v2/profile (HMAC-SHA256 of method+ts+path)."""
 
@@ -239,6 +273,7 @@ def build_verifier_registry(
         BrokerCode.PAPER.value: PaperVerifier(),
         BrokerCode.ZERODHA.value: ZerodhaVerifier(),
         BrokerCode.ANGELONE.value: AngelOneVerifier(),
+        BrokerCode.FLATTRADE.value: FlattradeVerifier(),
         BrokerCode.DELTA.value: DeltaVerifier(),
         BrokerCode.MT5.value: Mt5AgentVerifier(
             allowed_hosts=allowed,

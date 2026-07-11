@@ -18,6 +18,7 @@ class BrokerCode(StrEnum):
     MT5 = "mt5"
     ZERODHA = "zerodha"
     ANGELONE = "angelone"
+    FLATTRADE = "flattrade"
     DELTA = "delta"
     BINANCE = "binance"
     INTERACTIVE_BROKERS = "interactive_brokers"

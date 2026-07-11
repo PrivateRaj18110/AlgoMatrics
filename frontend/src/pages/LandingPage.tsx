@@ -11,7 +11,7 @@ import { useAuth } from "@/stores/auth";
 const FEATURES = [
   {
     title: "Broker-neutral execution",
-    body: "One canonical order model across paper, Zerodha, Angel One, Delta, and MT5. Strategies never touch a broker SDK.",
+    body: "One canonical order model across paper, Zerodha, Angel One, and Flattrade. Strategies never touch a broker SDK.",
     icon: "M4 7h16M4 12h16M4 17h10",
   },
   {
@@ -52,7 +52,7 @@ const FAQ = [
   },
   {
     q: "Which brokers are supported?",
-    a: "Zerodha Kite, Angel One SmartAPI, Delta Exchange, and MetaTrader 5 via a VPS agent, plus the built-in paper simulator.",
+    a: "Zerodha Kite, Angel One SmartAPI, and Flattrade, plus the built-in paper simulator.",
   },
   {
     q: "Can I bring my own strategies?",
@@ -80,7 +80,7 @@ export function LandingPage() {
     <div className="min-h-screen bg-surface-50 text-slate-900 dark:bg-surface-950 dark:text-slate-100">
       <Seo
         title="Algo Matrics — Algorithmic Trading Platform for India"
-        description="Build, backtest, and deploy automated trading strategies on Zerodha, Angel One, Delta Exchange, and MT5 — with a real-time risk engine, live P&L, and free paper trading."
+        description="Build, backtest, and deploy automated trading strategies on Zerodha, Angel One, and Flattrade — with a real-time risk engine, live P&L, and free paper trading."
         canonicalPath="/"
       />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: FAQ_JSON_LD }} />
