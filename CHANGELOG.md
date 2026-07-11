@@ -5,6 +5,29 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — Ops dashboard integration + intraday-India refocus
+
+- **Ops dashboard** (`ops/`, served at `/ops`): the Raj Quant OS monitoring
+  monorepo integrated as a separate app — React 19 frontend (subpath build),
+  FastAPI telemetry backend (`/ops/api/agent/*` ingest, websocket), and the
+  `raj-monitor` SDK/agent at `packages/raj_monitor`. The ops backend mirrors
+  live platform data via an org-scoped read API key with mock fallback.
+  Compose service `ops-api`, nginx `/ops` locations, CI jobs, docs:
+  `docs/operations/ops-dashboard.md`.
+- **Flattrade broker** (`flattrade`): Noren REST execution adapter +
+  connection verifier + catalog entry (intraday product default). 6 new
+  contract tests.
+- **Indian market info**: `GET /market-info/indices` + `/market-info/quotes`
+  (free Yahoo Finance chart API, 60 s cache, NSE/BSE only) + console
+  **Market** page. 4 new contract tests.
+- **Console**: orders/positions/trades/portfolio/risk consolidated into one
+  tabbed **Trading** page (`/app/trading/:tab`, old paths redirect);
+  Backtesting page unrouted for now (`/app/backtesting` → strategies).
+- **Broker catalog**: Delta, MT5, Binance, Interactive Brokers deactivated by
+  the seed (adapters retained); Flattrade added.
+- `scripts/send_test_email.py` + `docs/operations/go-live-checklist.md`
+  (Search Console verification, SMTP/SPF/DKIM steps).
+
 ### Added — Production infrastructure (Master Spec Phase 20)
 
 Kubernetes deployment kit + runtime guardrails. See

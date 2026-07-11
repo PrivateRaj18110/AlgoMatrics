@@ -28,8 +28,9 @@ per-capability operations guides live in [`docs/operations/`](docs/operations).
 2. Log in securely (with optional TOTP MFA) — on web or mobile (device registry + push).
 3. Subscribe to a plan (Free / Starter / Pro / Enterprise) via Razorpay or Stripe,
    with GST/tax and refunds.
-4. Connect a broker — Paper Trading, Zerodha, Angel One, Delta, **Binance**,
-   **Interactive Brokers**, or MT5.
+4. Connect a broker — Paper Trading, Zerodha, Angel One, or **Flattrade**
+   (Delta, Binance, Interactive Brokers, and MT5 adapters remain in the
+   codebase but are deactivated in the catalog for the intraday-India focus).
 5. Create, configure, **version**, validate, and get approvals for a strategy
    (SMA crossover, RSI reversion, momentum breakout, or an uploaded Python strategy).
 6. **Backtest** (bar replay, Monte Carlo, walk-forward) before deploying a run.
@@ -82,6 +83,8 @@ keypair and broker KEK, then a one-shot `migrate` job runs Alembic migrations an
 seeds plans, the broker catalog, and a starter instrument universe.
 
 - Frontend: <http://localhost:8080>
+- Ops dashboard: <http://localhost:8080/ops> (see
+  [docs/operations/ops-dashboard.md](docs/operations/ops-dashboard.md))
 - API docs: <http://localhost:8000/docs>
 - Health: `GET /api/v1/health/live`, `/health/ready` (503 when degraded),
   `/health/dependencies`, `/health/info` (service/version/build_sha/env)
@@ -151,7 +154,8 @@ and builds both Docker images.
 ```text
 backend/     FastAPI control plane, bounded-context modules, runtime processes, migrations
 frontend/    React + TS + Tailwind operations console
-packages/    strategy SDK, python SDK
+ops/         Ops dashboard (Raj Quant OS): monitoring frontend (served at /ops) + telemetry backend
+packages/    strategy SDK, python SDK, raj_monitor (host telemetry SDK + agent)
 agents/      VPS execution agent (MT5)
 deploy/
   compose/       core + observability + scaled-workers Docker Compose topologies
