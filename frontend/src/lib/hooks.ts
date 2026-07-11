@@ -19,6 +19,7 @@ import type {
   AuditFilters,
   BrokerCatalogEntry,
   FeatureFlag,
+  MarketInfo,
   MarketplaceLicense,
   MarketplaceListing,
   BrokerConnection,
@@ -207,6 +208,26 @@ export function useQuotes(instrumentIds: string[], enabled = true) {
       }),
     enabled: enabled && instrumentIds.length > 0,
     refetchInterval: 5000,
+  });
+}
+
+export function useMarketIndices() {
+  return useQuery({
+    queryKey: ["market-info", "indices", orgKey()],
+    queryFn: () => api<MarketInfo[]>("/market-info/indices"),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useMarketQuotes(symbols?: string) {
+  return useQuery({
+    queryKey: ["market-info", "quotes", orgKey(), symbols ?? "default"],
+    queryFn: () =>
+      api<MarketInfo[]>("/market-info/quotes", {
+        query: symbols ? { symbols } : {},
+      }),
+    placeholderData: keepPreviousData,
+    refetchInterval: 60_000,
   });
 }
 

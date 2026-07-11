@@ -29,14 +29,10 @@ const NAV: NavItem[] = [
     flag: "marketplace",
   },
   { to: "/app/brokers", label: "Brokers", icon: "M3 7h18v13H3zM8 7V4h8v3" },
-  { to: "/app/orders", label: "Orders", icon: "M9 5h6M9 9h6M9 13h4M5 3h14v18H5z" },
-  { to: "/app/positions", label: "Positions", icon: "M3 3v18h18M7 14l4-4 3 3 5-6" },
-  { to: "/app/portfolio", label: "Portfolio", icon: "M3 7h18v12H3zM3 11h18M9 7V4h6v3" },
-  { to: "/app/trades", label: "Trades", icon: "M4 17l6-6 4 4 6-8" },
+  { to: "/app/trading", label: "Trading", icon: "M3 3v18h18M7 14l4-4 3 3 5-6" },
+  { to: "/app/market", label: "Market", icon: "M4 20V10M10 20V4M16 20v-8M22 20H2M2 4l5 3 5-5 5 4 5-2" },
   { to: "/app/watchlists", label: "Watchlists", icon: "M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7zm0 3a4 4 0 110 8 4 4 0 010-8z" },
   { to: "/app/analytics", label: "Analytics", icon: "M4 20V10M10 20V4M16 20v-8M22 20H2" },
-  { to: "/app/backtesting", label: "Backtesting", icon: "M3 3v18h18M7 15l3-4 3 2 5-7" },
-  { to: "/app/risk", label: "Risk", icon: "M12 3l9 4v6c0 5-4 8-9 9-5-1-9-4-9-9V7z" },
   { to: "/app/audit", label: "Audit log", icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
   {
     to: "/app/assistant",
@@ -88,10 +84,11 @@ export function AppLayout() {
       d: "/app/dashboard",
       s: "/app/strategies",
       b: "/app/brokers",
-      o: "/app/orders",
-      p: "/app/positions",
+      t: "/app/trading",
+      o: "/app/trading/orders",
+      p: "/app/trading/positions",
       a: "/app/analytics",
-      r: "/app/risk",
+      r: "/app/trading/risk",
     };
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;

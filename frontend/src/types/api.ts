@@ -271,6 +271,18 @@ export interface ScannerRow {
   change_pct: string | null;
 }
 
+export interface MarketInfo {
+  symbol: string;
+  name: string;
+  yahoo_symbol: string;
+  price: string | null;
+  previous_close: string | null;
+  change: string | null;
+  change_pct: string | null;
+  currency: string;
+  as_of: string | null;
+}
+
 export interface Candle {
   timestamp: string;
   open: string;
