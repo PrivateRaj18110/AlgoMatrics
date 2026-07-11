@@ -1,5 +1,6 @@
 .PHONY: install dev-secrets lint format typecheck test test-integration test-e2e \
         frontend-install frontend-build frontend-test frontend-lint \
+        ops-frontend-install ops-frontend-build ops-backend-test \
         compose-up compose-down compose-logs migrate seed verify
 
 install:
@@ -40,8 +41,23 @@ frontend-test:
 frontend-lint:
 	cd frontend && npm run lint
 
+# --- Ops dashboard (ops/) ---------------------------------------------------
+ops-frontend-install:
+	cd ops/frontend && npm install
+
+ops-frontend-build:
+	cd ops/frontend && npm run build
+
+# The ops backend + raj-monitor SDK keep their own lightweight test setup.
+# raj-monitor is flat-layout (its types.py shadows the stdlib if the package
+# dir itself lands on sys.path), so install it and run pytest from the root.
+ops-backend-test:
+	cd ops/backend && python -m pip install -q -r requirements.txt -r requirements-dev.txt && python -m pytest -q
+	python -m pip install -q ./packages/raj_monitor
+	python -m pytest -q packages/raj_monitor/tests
+
 # Full local quality gate (matches CI).
-verify: lint typecheck test frontend-build frontend-test
+verify: lint typecheck test frontend-build frontend-test ops-frontend-build
 
 compose-up:
 	docker compose -f deploy/compose/docker-compose.yml up --build

@@ -150,6 +150,35 @@ services:
       redis: {condition: service_healthy}
     restart: unless-stopped
 
+  # Ops dashboard backend: raj_monitor telemetry ingest + live platform data
+  # proxied from the control plane with a read-scope API key.
+  ops-api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/ops-api.Dockerfile
+    image: algo-matrics/ops-api:local
+    env_file: ../../.env
+    environment:
+      # The platform DATABASE_URL must not leak into the ops service — its
+      # telemetry store stays in-memory unless configured on its own terms.
+      DATABASE_URL: ""
+      APP_NAME: "AlgoMatrics Ops API"
+      ALGOMATRICS_API_URL: http://api:8000/api/v1
+    depends_on:
+      api: {condition: service_started}
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
   frontend:
     build:
       context: ../..
@@ -158,6 +187,7 @@ services:
     ports: ["8080:8080"]
     depends_on:
       api: {condition: service_started}
+      ops-api: {condition: service_started}
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped

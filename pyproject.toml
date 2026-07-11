@@ -55,6 +55,10 @@ build-backend = "hatchling.build"
 target-version = "py313"
 line-length = 100
 src = ["backend/src", "packages", "agents"]
+# The ops dashboard (ops/) and the raj-monitor SDK were imported from the
+# standalone Raj Quant OS project and keep their own tooling for now
+# (follow-up: bring them up to the platform gates).
+extend-exclude = ["ops", "packages/raj_monitor"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "S", "RUF"]
@@ -80,6 +84,7 @@ markers = [
 python_version = "3.13"
 strict = true
 plugins = ["pydantic.mypy"]
+exclude = ["^ops/", "^packages/raj_monitor/"]
 
 [[tool.mypy.overrides]]
 module = [
