@@ -1,0 +1,16 @@
+# Runtime artifacts produced by the Local Agent
+*.db
+*.db-wal
+*.db-shm
+logs/
+queue_*.db
+
+# Local operator config (copy config.yaml -> config.local.yaml and edit)
+config.local.yaml
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/

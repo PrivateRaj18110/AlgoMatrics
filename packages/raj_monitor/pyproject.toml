@@ -1,0 +1,39 @@
+# Raj Monitor — installable monitoring SDK + Local Agent.
+#
+# Install (from the directory that CONTAINS this folder):
+#     pip install ./raj_monitor
+# or, with agent extras (psutil + PyYAML):
+#     pip install "./raj_monitor[agent]"
+#
+# After install the agent is available as a console command:
+#     raj-agent --config config.yaml
+#
+# NOTE: this file lives inside the package directory for convenience. The build
+# backend treats `raj_monitor` as the importable package; if you prefer a clean
+# src layout, move this file one level up and adjust `packages`.
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raj-monitor"
+version = "4.0.0"
+description = "Safe, production-grade strategy monitoring: SDK + Local Agent for Raj Quant OS."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "Raj Quant OS" }]
+dependencies = []  # the SDK is pure standard library
+
+[project.optional-dependencies]
+agent = ["psutil>=5.9,<8.0", "PyYAML>=6.0,<7.0"]
+
+[project.scripts]
+raj-agent = "raj_monitor.agent:main"
+
+[tool.setuptools]
+# The repo lays the modules out flat inside raj_monitor/, so when installing
+# from the parent directory setuptools discovers the `raj_monitor` package.
+packages = ["raj_monitor"]
+package-dir = { "raj_monitor" = "." }

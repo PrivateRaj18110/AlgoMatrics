@@ -1,0 +1,63 @@
+# =============================================================================
+# Raj Monitor — Local Agent configuration
+# -----------------------------------------------------------------------------
+# This is the ONLY file an operator needs to edit. One copy per machine.
+# Every value can also be overridden by an environment variable (handy for
+# containers / systemd) — see the keys noted as "env: ..." below.
+# =============================================================================
+
+backend:
+  # Where the FastAPI Operations Center runs. Use https:// in production.   env: RAJ_BACKEND_URL
+  url: "http://127.0.0.1:8000/api"
+  # Auth token the backend expects from this agent (set a strong value).    env: RAJ_BACKEND_TOKEN
+  token: "CHANGE_ME_BACKEND_TOKEN"
+  # Verify TLS certificates. Set false ONLY for self-signed dev backends.
+  verify_ssl: true
+  # Per-request timeout in seconds.
+  timeout_sec: 10
+
+machine:
+  # Friendly name shown on the dashboard. Must be unique per host.          env: RAJ_MACHINE
+  name: "London VPS"
+  location: "London · Equinix LD4"
+  provider: "Beeks Financial Cloud"
+
+agent:
+  # The Local Agent binds here; the SDK posts to it. Keep it on localhost.  env: RAJ_AGENT_HOST / RAJ_AGENT_PORT
+  host: "127.0.0.1"
+  port: 8765
+  # Shared token between the SDK and this agent (set the same RAJ_LOCAL_TOKEN
+  # in the strategy environment).                                          env: RAJ_LOCAL_TOKEN
+  local_token: "CHANGE_ME_LOCAL_TOKEN"
+
+intervals:
+  # Heartbeat cadence (the platform target is every 5s).
+  heartbeat_sec: 5
+  # Full host metrics snapshot cadence.
+  metrics_sec: 10
+  # How often the uploader flushes the queue to the backend.
+  upload_sec: 3
+
+queue:
+  # Max items kept on disk. On overflow the OLDEST are dropped.
+  max_size: 100000
+  # Items uploaded per batch.
+  batch_size: 200
+  # SQLite file backing the durable queue (survives reboots/crashes).
+  db_path: "raj_agent_queue.db"
+
+retry:
+  # Upload retry attempts per batch (exponential backoff with jitter).
+  count: 5
+  backoff_base_sec: 0.5
+  backoff_max_sec: 30
+  # Circuit breaker: trip open after this many consecutive failures...
+  breaker_threshold: 5
+  # ...and refuse uploads for this cooldown before probing again.
+  breaker_cooldown_sec: 30
+
+logging:
+  level: "INFO"           # DEBUG | INFO | WARNING | ERROR
+  dir: "logs"
+  max_bytes: 10485760     # 10 MB per file before rotation
+  backup_count: 5

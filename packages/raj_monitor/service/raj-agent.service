@@ -1,0 +1,33 @@
+# systemd unit for the Raj Local Agent (Linux / Google Cloud / VPS).
+#
+# Install:
+#   1. Put the raj_monitor package + config.yaml under /opt/raj-monitor
+#   2. python3 -m venv /opt/raj-monitor/.venv
+#      /opt/raj-monitor/.venv/bin/pip install psutil PyYAML
+#   3. sudo cp service/raj-agent.service /etc/systemd/system/raj-agent.service
+#   4. sudo systemctl daemon-reload && sudo systemctl enable --now raj-agent
+#   5. journalctl -u raj-agent -f          # follow logs
+#
+# Adjust User, WorkingDirectory and ExecStart paths for your host.
+
+[Unit]
+Description=Raj Local Agent (Raj Quant OS monitoring)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=raj
+Group=raj
+WorkingDirectory=/opt/raj-monitor
+# Identity can live here instead of config.yaml if preferred:
+Environment=RAJ_CONFIG=/opt/raj-monitor/config.yaml
+ExecStart=/opt/raj-monitor/.venv/bin/python -m raj_monitor.agent --config /opt/raj-monitor/config.yaml
+Restart=always
+RestartSec=5
+# Hardening (optional but recommended):
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
