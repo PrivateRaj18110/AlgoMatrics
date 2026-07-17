@@ -89,6 +89,24 @@ AICIO_DB_PATH=/path/to/aicio.duckdb python run_market_intel.py
 AICIO_DB_PATH=/path/to/aicio.duckdb python run_news.py
 ```
 
+## Kubernetes
+
+Manifests live in `deploy/k8s/` (apply in numeric order):
+
+- `15-aicio-storage.yaml` — a **ReadWriteMany** PVC (`algo-aicio-data`) for the
+  shared DuckDB. RWX is required because the API runs multiple replicas that read
+  it alongside the engine; set `storageClassName` to your cluster's RWX class
+  (EFS / Azure Files / Filestore / NFS / CephFS). Without RWX, either provision it
+  or skip AI-CIO — also remove the `aicio-data` volume blocks from `30-api.yaml`
+  and `50-singletons.yaml`, or those pods stay `Pending` waiting for the PVC.
+- `55-aicio-pipeline.yaml` — a daily **CronJob** that runs the pipeline once and
+  exits (the sole writer). Image `ghcr.io/algo-matrics/aicio:latest` — **CI must
+  build and push it** (it is not the backend image). Seed it immediately on first
+  deploy: `kubectl -n algo create job aicio-init --from=cronjob/algo-aicio-pipeline`.
+- `30-api.yaml` / `50-singletons.yaml` mount the PVC read-only and set
+  `AICIO_DUCKDB_PATH`; an empty/absent file degrades to empty, so the platform
+  runs fine before the first pipeline run.
+
 ## Shadow mode, and the road to live
 
 The strategy gate is **log-only** in this phase. At each run start the trading

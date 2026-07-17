@@ -39,9 +39,11 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 - **Pipeline deployment**: `deploy/docker/aicio.Dockerfile` + compose service
   `aicio-pipeline` (sole writer of a shared `aicio_data` volume, mounted read-only
   into `api`/`trading-engine`), synthetic-by-default so bring-up stays hermetic.
-  AI-CIO's `requirements.txt` corrected (added `hmmlearn` / `scikit-learn` /
-  `ruptures` / `datasketch`, which the code imports). New backend dependency:
-  `duckdb`. Config: `AICIO_DUCKDB_PATH`, `AICIO_SHADOW_GATE_ENABLED`.
+  Kubernetes: `deploy/k8s/15-aicio-storage.yaml` (RWX PVC) + `55-aicio-pipeline.yaml`
+  (daily CronJob), with the api/engine deployments mounting it read-only. AI-CIO's
+  `requirements.txt` corrected (added `hmmlearn` / `scikit-learn` / `ruptures` /
+  `datasketch`, which the code imports). New backend dependency: `duckdb`. Config:
+  `AICIO_DUCKDB_PATH`, `AICIO_SHADOW_GATE_ENABLED`.
 - **Tests**: `test_market_intel_favorability`, `test_shadow_gate` (asserts no
   run-state mutation), `test_market_intel_reader` (real temp DuckDB + graceful
   degradation + read-only handle), and `MarketIntelPage.test.tsx`.

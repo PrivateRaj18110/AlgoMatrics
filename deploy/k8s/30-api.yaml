@@ -24,6 +24,10 @@ spec:
           env:
             - name: BUILD_SHA
               value: "unknown"
+            # Read-only AI-CIO market-intel DuckDB (mounted below); an absent or
+            # empty file is tolerated — the /market-intel endpoints degrade to empty.
+            - name: AICIO_DUCKDB_PATH
+              value: /data/aicio.duckdb
           envFrom:
             - configMapRef: { name: algo-config }
             - secretRef: { name: algo-secrets }
@@ -40,6 +44,18 @@ spec:
           resources:
             requests: { cpu: "250m", memory: "256Mi" }
             limits: { cpu: "1", memory: "512Mi" }
+          volumeMounts:
+            - name: aicio-data
+              mountPath: /data
+              readOnly: true
+      # Read-only AI-CIO DuckDB, written by the aicio-pipeline CronJob
+      # (55-aicio-pipeline.yaml). RWX PVC — see 15-aicio-storage.yaml. Omit this
+      # volume (and the mount above) if you are not deploying AI-CIO.
+      volumes:
+        - name: aicio-data
+          persistentVolumeClaim:
+            claimName: algo-aicio-data
+            readOnly: true
       # Give in-flight requests time to drain on rollout / scale-down.
       terminationGracePeriodSeconds: 30
 ---

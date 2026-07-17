@@ -1,0 +1,28 @@
+# Shared storage for the AI-CIO market-intelligence DuckDB.
+#
+# The aicio-pipeline CronJob (55-aicio-pipeline.yaml) is the sole WRITER; the API
+# (30-api.yaml) and trading engine (50-singletons.yaml) mount it READ-ONLY. Because
+# the API runs multiple replicas (HPA) that may land on different nodes, this must
+# be ReadWriteMany — a single RWO volume can only attach to one node.
+#
+# IMPORTANT: requires an RWX-capable StorageClass (AWS EFS, Azure Files, GCP Filestore,
+#    NFS, CephFS, Longhorn, …). Set `storageClassName` to it below. If your
+#    cluster has no RWX storage, AI-CIO cannot use this shared-file design as-is:
+#    either provision RWX, or omit AI-CIO entirely (do not apply this file, the
+#    CronJob, or the aicio-data volume blocks in 30-api.yaml / 50-singletons.yaml —
+#    otherwise those pods will stay Pending waiting for this PVC to bind).
+#
+# This PVC must be applied BEFORE the API and engine (hence the 15- prefix), or
+# their pods will not schedule.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: algo-aicio-data
+  namespace: algo
+  labels: { app: algo-aicio }
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 2Gi
+  # storageClassName: efs-sc   # <-- set to your cluster's RWX StorageClass
