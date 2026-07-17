@@ -28,6 +28,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from algo_platform.config import Settings, get_settings
 from algo_platform.modules.billing.application.service import SubscriptionService
 from algo_platform.modules.brokerage.infrastructure.models import TradingAccountModel
+from algo_platform.modules.market_intel.application.client import AicioClient
+from algo_platform.modules.market_intel.application.shadow_gate import ShadowGate
+from algo_platform.modules.market_intel.infrastructure.duckdb_reader import get_aicio_reader
 from algo_platform.modules.notifications.application.service import NotificationService
 from algo_platform.modules.risk.application.service import RiskService
 from algo_platform.modules.strategies.application.runtime import (
@@ -98,6 +101,13 @@ class TradingEngineProcess:
         self._stop = asyncio.Event()
         self._consumer_name = f"{socket.gethostname()}-{os.getpid()}"
         self._metrics = start_process_metrics(settings, "algo-trading-engine")
+        # Advisory market-intelligence gate. When AI-CIO is configured it logs,
+        # at each run start, what it *would* advise — it never changes execution.
+        self._shadow_gate: ShadowGate | None = None
+        if settings.aicio_shadow_gate_enabled and settings.aicio_duckdb_path is not None:
+            self._shadow_gate = ShadowGate(
+                AicioClient(get_aicio_reader(settings.aicio_duckdb_path))
+            )
 
     def _billing_factory(self, session: AsyncSession) -> SubscriptionService:
         return SubscriptionService(
@@ -176,6 +186,9 @@ class TradingEngineProcess:
                 apply_run(model, runtime.run)
                 self._runtimes[runtime.run_id] = runtime
             await session.commit()
+        for runtime in self._runtimes.values():
+            if runtime.run.state is RunState.RUNNING:
+                await self._shadow_evaluate(runtime)
 
     async def _shutdown_runtimes(self) -> None:
         for runtime in list(self._runtimes.values()):
@@ -327,6 +340,8 @@ class TradingEngineProcess:
             runtime.run.mark_running()
             self._runtimes[runtime.run_id] = runtime
         await self._persist_run(runtime)
+        if not runtime.failed_reason:
+            await self._shadow_evaluate(runtime)
         logger.info("engine.run_started", run_id=str(run_id), state=runtime.run.state.value)
 
     async def _pause_run(self, run_id: UUID) -> None:
@@ -370,6 +385,18 @@ class TradingEngineProcess:
                 "error": runtime.run.error,
                 "stats": runtime.stats(),
             },
+        )
+
+    async def _shadow_evaluate(self, runtime: StrategyRuntime) -> None:
+        """Log the advisory market-intel opinion for a run start. Never affects
+        execution; a no-op unless the AI-CIO shadow gate is configured."""
+        if self._shadow_gate is None:
+            return
+        await self._shadow_gate.evaluate(
+            run_id=str(runtime.run_id),
+            entry_point=runtime.entry_point,
+            source=runtime.source,
+            symbols=runtime.instrument_symbols,
         )
 
     # -- market data --------------------------------------------------------------------

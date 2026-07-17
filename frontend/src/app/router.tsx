@@ -10,7 +10,7 @@ import { AuditLogPage } from "@/pages/AuditLogPage";
 import { BrokersPage } from "@/pages/BrokersPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ForgotPasswordPage } from "@/pages/auth/ForgotPasswordPage";
-import { LandingPage } from "@/pages/LandingPage";
+import { MarketIntelPage } from "@/pages/MarketIntelPage";
 import { MarketPage } from "@/pages/MarketPage";
 import { MarketplacePage } from "@/pages/MarketplacePage";
 import { LoginPage } from "@/pages/auth/LoginPage";
@@ -28,7 +28,8 @@ import { VerifyEmailPage } from "@/pages/auth/VerifyEmailPage";
 import { AcceptInvitationPage } from "@/pages/auth/AcceptInvitationPage";
 
 export const router: RouteObject[] = [
-  { path: "/", element: <LandingPage /> },
+  // The marketing landing page was removed; the site root is now the login page.
+  { path: "/", element: <Navigate to="/login" replace /> },
   { path: "/login", element: <LoginPage /> },
   { path: "/register", element: <RegisterPage /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
@@ -59,6 +60,7 @@ export const router: RouteObject[] = [
       { path: "/app/trading", element: <TradingPage /> },
       { path: "/app/trading/:tab", element: <TradingPage /> },
       { path: "/app/market", element: <MarketPage /> },
+      { path: "/app/market-intel", element: <MarketIntelPage /> },
       // The intraday workspace replaced the individual pages; old bookmarks
       // (and the retired backtesting page) redirect into it.
       { path: "/app/orders", element: <Navigate to="/app/trading/orders" replace /> },

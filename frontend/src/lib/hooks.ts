@@ -19,7 +19,13 @@ import type {
   AuditFilters,
   BrokerCatalogEntry,
   FeatureFlag,
+  InstitutionalBias,
   MarketInfo,
+  MarketIntelNews,
+  MarketIntelStatus,
+  OptionsSnapshot,
+  Regime,
+  RankingRow,
   MarketplaceLicense,
   MarketplaceListing,
   BrokerConnection,
@@ -228,6 +234,57 @@ export function useMarketQuotes(symbols?: string) {
       }),
     placeholderData: keepPreviousData,
     refetchInterval: 60_000,
+  });
+}
+
+/* ------------------------ market intelligence (AI-CIO) ------------------------ */
+
+export function useMarketIntelStatus() {
+  return useQuery({
+    queryKey: ["market-intel", "status", orgKey()],
+    queryFn: () => api<MarketIntelStatus>("/market-intel/status"),
+  });
+}
+
+export function useRegime() {
+  return useQuery({
+    queryKey: ["market-intel", "regime", orgKey()],
+    queryFn: () => api<Regime | null>("/market-intel/regime"),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useRankings(topN = 20) {
+  return useQuery({
+    queryKey: ["market-intel", "rankings", orgKey(), topN],
+    queryFn: () => api<RankingRow[]>("/market-intel/rankings", { query: { top_n: topN } }),
+    placeholderData: keepPreviousData,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useMarketIntelNews(ticker?: string) {
+  return useQuery({
+    queryKey: ["market-intel", "news", orgKey(), ticker ?? "all"],
+    queryFn: () =>
+      api<MarketIntelNews[]>("/market-intel/news", { query: ticker ? { ticker } : {} }),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useOptionsSnapshot(ticker: string | null) {
+  return useQuery({
+    queryKey: ["market-intel", "options", orgKey(), ticker ?? ""],
+    queryFn: () => api<OptionsSnapshot | null>(`/market-intel/options/${ticker}`),
+    enabled: Boolean(ticker),
+  });
+}
+
+export function useInstitutionalFlow(ticker: string | null) {
+  return useQuery({
+    queryKey: ["market-intel", "flow", orgKey(), ticker ?? ""],
+    queryFn: () => api<InstitutionalBias | null>(`/market-intel/flow/${ticker}`),
+    enabled: Boolean(ticker),
   });
 }
 

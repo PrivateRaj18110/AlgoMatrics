@@ -44,8 +44,13 @@ The Vite dev server proxies `/ops/api` → `http://localhost:8001`.
 
 ## Data sources
 
-**Mock mode (default).** With no configuration the dashboard serves
-deterministic mock fixtures end to end — useful for UI work.
+**Live by default.** The deployed dashboard builds the frontend in live mode, so
+`/ops` always calls the ops-api (`/ops/api`) rather than bundled fixtures. The
+ops-api serves **live AlgoMatrics data when the credentials below are set, and
+its own mock otherwise** — so `/ops` renders either way and switches to real data
+the moment the key is provisioned. (For pure-UI work you can still ship the
+frontend's bundled mock: build the image with `--build-arg VITE_USE_MOCK=true`,
+or set `VITE_USE_MOCK=true` for `npm run dev`.)
 
 **Live platform data.** Set three variables (root `.env` for compose;
 `ops/backend/.env` for local runs):
@@ -61,8 +66,8 @@ keys in the console, or curl with a JWT). The ops backend then maps
 `/dashboard/summary`, `/strategies`, `/strategy-runs`, `/trades`,
 `/risk/*`, `/analytics/*`, `/broker-connections`, `/accounts` into the
 dashboard's schemas, with a ~5 s cache and automatic mock fallback when the
-control plane is unreachable. Machines/events/logs/alerts always come from
-telemetry, not the platform.
+control plane is unreachable or the credentials are absent.
+Machines/events/logs/alerts always come from telemetry, not the platform.
 
 **Machine telemetry.** Install the agent on each trading host (London VPS,
 Google Cloud, personal PC):

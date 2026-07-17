@@ -7,6 +7,8 @@ dependencies = [
   "alembic>=1.14",
   "asyncpg>=0.30",
   "cryptography>=44.0",
+  # Read-only reader for the AI-CIO market-intelligence DuckDB file.
+  "duckdb>=1.0",
   "fastapi>=0.115",
   "httpx>=0.28",
   "prometheus-client>=0.21",
@@ -57,8 +59,10 @@ line-length = 100
 src = ["backend/src", "packages", "agents"]
 # The ops dashboard (ops/) and the raj-monitor SDK were imported from the
 # standalone Raj Quant OS project and keep their own tooling for now
-# (follow-up: bring them up to the platform gates).
-extend-exclude = ["ops", "packages/raj_monitor"]
+# (follow-up: bring them up to the platform gates). ai_cio_phase1/ is the
+# vendored AI-CIO research pipeline: it has its own requirements and style and
+# is consumed only as a data producer, so it stays outside the platform gates.
+extend-exclude = ["ops", "packages/raj_monitor", "ai_cio_phase1"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "S", "RUF"]
@@ -84,7 +88,7 @@ markers = [
 python_version = "3.13"
 strict = true
 plugins = ["pydantic.mypy"]
-exclude = ["^ops/", "^packages/raj_monitor/"]
+exclude = ["^ops/", "^packages/raj_monitor/", "^ai_cio_phase1/"]
 
 [[tool.mypy.overrides]]
 module = [
@@ -94,5 +98,6 @@ module = [
   "prometheus_client.*",
   "boto3.*",
   "anthropic.*",
+  "duckdb.*",
 ]
 ignore_missing_imports = true

@@ -14,6 +14,11 @@ x-backend-env: &backend-env
     JWT_PRIVATE_KEY_FILE: /run/secrets/jwt_private_key
     JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
     BROKER_CREDENTIAL_KEK_FILE: /run/secrets/broker_kek
+    # AI-CIO advisory DuckDB, produced by the aicio-pipeline service and mounted
+    # read-only below. Only the API (market-intel endpoints) and the trading
+    # engine (shadow gate) consume it; other backend services ignore it. Set here
+    # (not via .env) because this is the fixed in-container path.
+    AICIO_DUCKDB_PATH: /data/aicio.duckdb
   read_only: true
   tmpfs:
     - /tmp
@@ -22,6 +27,7 @@ x-backend-env: &backend-env
   volumes:
     - secrets:/run/secrets:ro
     - app_var:/app/var
+    - aicio_data:/data:ro
 
 services:
   # One-shot: generate JWT keypair + broker KEK into the shared secrets volume.
@@ -150,6 +156,25 @@ services:
       redis: {condition: service_healthy}
     restart: unless-stopped
 
+  # AI-CIO market-intelligence pipeline: the sole writer of the shared advisory
+  # DuckDB (regime/rankings/news/options/flow). Independent of Postgres/Redis and
+  # synthetic-by-default, so it needs no network. The API and trading engine mount
+  # the same volume read-only. See docs/operations/market-intelligence.md.
+  aicio-pipeline:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/aicio.Dockerfile
+    image: algo-matrics/aicio:local
+    environment:
+      AICIO_DB_PATH: /data/aicio.duckdb
+      AICIO_DATA_SOURCE: synthetic
+      AICIO_REFRESH_SECONDS: "86400"
+    volumes:
+      - aicio_data:/data
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
   # Ops dashboard backend: raj_monitor telemetry ingest + live platform data
   # proxied from the control plane with a read-scope API key.
   ops-api:
@@ -164,6 +189,10 @@ services:
       DATABASE_URL: ""
       APP_NAME: "AlgoMatrics Ops API"
       ALGOMATRICS_API_URL: http://api:8000/api/v1
+      # ALGOMATRICS_API_KEY + ALGOMATRICS_ORG_ID come from ../../.env (env_file
+      # above). With them the ops dashboard (now live by default) shows real
+      # platform data; without them the ops-api serves its own mock. See
+      # .env.example and docs/operations/ops-dashboard.md.
     depends_on:
       api: {condition: service_started}
     security_opt:
@@ -197,3 +226,4 @@ volumes:
   redis_data:
   secrets:
   app_var:
+  aicio_data:

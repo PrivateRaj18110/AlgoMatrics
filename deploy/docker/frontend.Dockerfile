@@ -5,9 +5,16 @@ RUN npm ci || npm install
 COPY frontend .
 RUN npm run build
 
-# Ops dashboard (served under /ops by the same nginx).
+# Ops dashboard (served under /ops by the same nginx). Built in LIVE mode by
+# default: the SPA calls the ops-api at /ops/api, which serves live AlgoMatrics
+# platform data when the ops-api has ALGOMATRICS_* creds (else its own mock).
+# Override with --build-arg VITE_USE_MOCK=true to ship the bundled frontend mock.
 FROM node:22-alpine AS ops-builder
 WORKDIR /app
+ARG VITE_API_BASE_URL=/ops/api
+ARG VITE_USE_MOCK=false
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_USE_MOCK=$VITE_USE_MOCK
 COPY ops/frontend/package.json ops/frontend/package-lock.json* ./
 RUN npm ci || npm install
 COPY ops/frontend .

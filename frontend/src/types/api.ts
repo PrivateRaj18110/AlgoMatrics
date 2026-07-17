@@ -292,6 +292,72 @@ export interface Candle {
   volume: string;
 }
 
+/* ----------------------------- market intelligence ----------------------------- */
+// AI-CIO advisory reads. Numeric fields are JSON numbers (not Decimal strings).
+
+export interface MarketIntelStatus {
+  configured: boolean;
+}
+
+export interface Regime {
+  label: string;
+  hmm_confidence: number | null;
+  hmm_vol_state: string | null;
+  gmm_vol_state: string | null;
+  adx_14: number | null;
+  avg_pairwise_corr: number | null;
+  breadth_pct_above_ma20: number | null;
+  days_since_changepoint: number | null;
+  as_of: string | null;
+}
+
+export interface RankingDimension {
+  name: string;
+  value: number | null;
+}
+
+export interface RankingRow {
+  run_date: string;
+  ticker: string;
+  name: string | null;
+  rank: number;
+  composite_score: number;
+  regime: string;
+  dimensions: RankingDimension[];
+}
+
+export interface MarketIntelNews {
+  ticker: string;
+  title: string;
+  source: string;
+  link: string;
+  published_raw: string | null;
+  is_duplicate: boolean;
+  sentiment_label: string | null;
+  sentiment_score: number | null;
+}
+
+export interface OptionsSnapshot {
+  ticker: string;
+  run_date: string;
+  max_pain: number | null;
+  max_pain_dist_pct: number | null;
+  pcr_oi: number | null;
+  pcr_volume: number | null;
+  iv_skew: number | null;
+  atm_iv: number | null;
+  oi_score: number | null;
+}
+
+export interface InstitutionalBias {
+  ticker: string;
+  run_date: string;
+  net_value: number | null;
+  gross_value: number | null;
+  n_deals: number | null;
+  if_score: number;
+}
+
 export interface Order {
   id: string;
   account_id: string;

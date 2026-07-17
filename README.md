@@ -67,6 +67,7 @@ All changes are backward-compatible and additive; see [`CHANGELOG.md`](CHANGELOG
 | High availability | Circuit breaker + hardened readiness probes (503 on degraded) | [high-availability](docs/operations/high-availability.md) |
 | Auto scaling | Backlog-driven policy + queue-lag signals + KEDA/HPA | [auto-scaling](docs/operations/auto-scaling.md) |
 | Production infra | Startup config self-check, `/health/info`, Kubernetes kit | [production-infrastructure](docs/operations/production-infrastructure.md) |
+| Market intelligence | AI-CIO regime + rankings overlay (read-only, advisory) + log-only strategy gate | [market-intelligence](docs/operations/market-intelligence.md) |
 
 ## Quick start (Docker — one command)
 
@@ -157,6 +158,7 @@ frontend/    React + TS + Tailwind operations console
 ops/         Ops dashboard (Raj Quant OS): monitoring frontend (served at /ops) + telemetry backend
 packages/    strategy SDK, python SDK, raj_monitor (host telemetry SDK + agent)
 agents/      VPS execution agent (MT5)
+ai_cio_phase1/ vendored AI-CIO market-intelligence pipeline (own deps; read-only data producer)
 deploy/
   compose/       core + observability + scaled-workers Docker Compose topologies
   docker/        backend/frontend images + entrypoint
@@ -170,9 +172,9 @@ docs/        architecture (FOUNDATION + ADRs), development, operations (per-capa
 ```
 
 Backend bounded contexts under `backend/src/algo_platform/modules/` — `ai`, `audit`,
-`billing`, `brokerage`, `feature_flags`, `identity`, `instruments`, `marketplace`,
-`mobile`, `notifications`, `organizations`, `portfolio`, `risk`, `strategies`,
-`trading` — each follows `domain/ → application/ → infrastructure/ → presentation/`.
+`billing`, `brokerage`, `feature_flags`, `identity`, `instruments`, `market_intel`,
+`marketplace`, `mobile`, `notifications`, `organizations`, `portfolio`, `risk`,
+`strategies`, `trading` — each follows `domain/ → application/ → infrastructure/ → presentation/`.
 Cross-cutting technical concerns live in `shared/` (event bus, circuit breaker,
 scaling policy, readiness, rate limiting, secrets, security headers, prometheus).
 See [`docs/development/README.md`](docs/development/README.md) for the layering rules.

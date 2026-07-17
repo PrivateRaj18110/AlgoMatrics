@@ -31,3 +31,10 @@ frontend/dist/
 frontend/tsconfig.tsbuildinfo
 *.tsbuildinfo
 
+# The vendored AI-CIO project ships required input data (the NSE universe CSVs)
+# that the generic `data/` rule above would otherwise drop — keep it. Its
+# generated per-run outputs and the DuckDB it writes stay ignored.
+!ai_cio_phase1/ai_cio_phase1/data/
+ai_cio_phase1/ai_cio_phase1/output/
+ai_cio_phase1/**/*.duckdb
+
