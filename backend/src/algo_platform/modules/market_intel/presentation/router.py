@@ -16,8 +16,12 @@ from algo_platform.api.dependencies.core import SettingsDep
 from algo_platform.api.dependencies.tenant import TenantContext, require_permission
 from algo_platform.config import Settings
 from algo_platform.modules.market_intel.application.client import AicioClient
+from algo_platform.modules.market_intel.domain.indices import INDEX_GROUPS, symbols_for_index
 from algo_platform.modules.market_intel.infrastructure.duckdb_reader import get_aicio_reader
 from algo_platform.modules.organizations.domain.roles import Permission
+
+# Whole-universe scan size when filtering rankings to an index subset.
+_UNIVERSE_SCAN = 1000
 
 router = APIRouter(prefix="/market-intel", tags=["market-intel"])
 
@@ -26,6 +30,11 @@ MarketIntelTenant = Annotated[TenantContext, Depends(require_permission(Permissi
 
 class StatusResponse(BaseModel):
     configured: bool
+
+
+class IndexGroupResponse(BaseModel):
+    value: str
+    label: str
 
 
 class RegimeResponse(BaseModel):
@@ -104,15 +113,36 @@ async def regime(tenant: MarketIntelTenant, settings: SettingsDep) -> RegimeResp
     return RegimeResponse.model_validate(current, from_attributes=True) if current else None
 
 
+@router.get("/indices", response_model=list[IndexGroupResponse])
+async def indices(tenant: MarketIntelTenant, settings: SettingsDep) -> list[IndexGroupResponse]:
+    """Index groups the rankings can be filtered by (Nifty 50, Bank Nifty, …)."""
+    return [IndexGroupResponse(value=value, label=label) for value, label in INDEX_GROUPS]
+
+
 @router.get("/rankings", response_model=list[RankingRowResponse])
 async def rankings(
     tenant: MarketIntelTenant,
     settings: SettingsDep,
     top_n: Annotated[int, Query(ge=1, le=200)] = 20,
     ticker: Annotated[str | None, Query(description="filter to a single NSE symbol")] = None,
+    index: Annotated[
+        str | None, Query(description="filter to an index group, e.g. nifty50 / banknifty")
+    ] = None,
 ) -> list[RankingRowResponse]:
-    """Top-N ranked opportunities for the latest run, with dimension breakdowns."""
-    rows = await _client(settings).rankings(top_n=top_n, ticker=ticker)
+    """Top-N ranked opportunities for the latest run, with dimension breakdowns.
+
+    ``index`` restricts the ranking to that index's constituents (top-N within it);
+    an unknown index returns an empty list.
+    """
+    client = _client(settings)
+    if index:
+        members = symbols_for_index(index)
+        if members is None:
+            return []
+        ranked = await client.rankings(top_n=_UNIVERSE_SCAN)
+        rows = [row for row in ranked if row.ticker.upper() in members][:top_n]
+    else:
+        rows = await client.rankings(top_n=top_n, ticker=ticker)
     return [RankingRowResponse.model_validate(row, from_attributes=True) for row in rows]
 
 

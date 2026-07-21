@@ -28,7 +28,6 @@ const NAV: NavItem[] = [
     icon: "M3 9l1-4h16l1 4M4 9v11h16V9M9 13h6",
     flag: "marketplace",
   },
-  { to: "/app/brokers", label: "Brokers", icon: "M3 7h18v13H3zM8 7V4h8v3" },
   { to: "/app/trading", label: "Trading", icon: "M3 3v18h18M7 14l4-4 3 3 5-6" },
   { to: "/app/market", label: "Market", icon: "M4 20V10M10 20V4M16 20v-8M22 20H2M2 4l5 3 5-5 5 4 5-2" },
   {
@@ -45,7 +44,6 @@ const NAV: NavItem[] = [
     icon: "M12 3a5 5 0 015 5c0 2-1 3-2 4v2H9v-2c-1-1-2-2-2-4a5 5 0 015-5zM9 20h6",
     flag: "ai",
   },
-  { to: "/app/subscription", label: "Subscription", icon: "M3 10h18M7 15h4M3 6h18v12H3z" },
   { to: "/app/settings", label: "Settings", icon: "M12 15a3 3 0 100-6 3 3 0 000 6z" },
 ];
 
@@ -88,7 +86,7 @@ export function AppLayout() {
     const map: Record<string, string> = {
       d: "/app/dashboard",
       s: "/app/strategies",
-      b: "/app/brokers",
+      b: "/app/settings/brokers",
       t: "/app/trading",
       o: "/app/trading/orders",
       p: "/app/trading/positions",

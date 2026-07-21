@@ -299,6 +299,11 @@ export interface MarketIntelStatus {
   configured: boolean;
 }
 
+export interface MarketIntelIndex {
+  value: string;
+  label: string;
+}
+
 export interface Regime {
   label: string;
   hmm_confidence: number | null;

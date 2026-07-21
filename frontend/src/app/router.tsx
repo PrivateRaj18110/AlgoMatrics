@@ -7,7 +7,6 @@ import { AdminPage } from "@/pages/AdminPage";
 import { AnalyticsPage } from "@/pages/AnalyticsPage";
 import { AssistantPage } from "@/pages/AssistantPage";
 import { AuditLogPage } from "@/pages/AuditLogPage";
-import { BrokersPage } from "@/pages/BrokersPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ForgotPasswordPage } from "@/pages/auth/ForgotPasswordPage";
 import { MarketIntelPage } from "@/pages/MarketIntelPage";
@@ -21,7 +20,6 @@ import { ResetPasswordPage } from "@/pages/auth/ResetPasswordPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 import { StrategiesPage } from "@/pages/StrategiesPage";
 import { StrategyDetailPage } from "@/pages/StrategyDetailPage";
-import { SubscriptionPage } from "@/pages/SubscriptionPage";
 import { TradingPage } from "@/pages/TradingPage";
 import { WatchlistsPage } from "@/pages/WatchlistsPage";
 import { VerifyEmailPage } from "@/pages/auth/VerifyEmailPage";
@@ -56,7 +54,7 @@ export const router: RouteObject[] = [
       { path: "/app/strategies/:strategyId", element: <StrategyDetailPage /> },
       { path: "/app/marketplace", element: <MarketplacePage /> },
       { path: "/app/assistant", element: <AssistantPage /> },
-      { path: "/app/brokers", element: <BrokersPage /> },
+      { path: "/app/brokers", element: <Navigate to="/app/settings/brokers" replace /> },
       { path: "/app/trading", element: <TradingPage /> },
       { path: "/app/trading/:tab", element: <TradingPage /> },
       { path: "/app/market", element: <MarketPage /> },
@@ -73,7 +71,7 @@ export const router: RouteObject[] = [
       { path: "/app/analytics", element: <AnalyticsPage /> },
       { path: "/app/notifications", element: <NotificationsPage /> },
       { path: "/app/audit", element: <AuditLogPage /> },
-      { path: "/app/subscription", element: <SubscriptionPage /> },
+      { path: "/app/subscription", element: <Navigate to="/app/dashboard" replace /> },
       { path: "/app/settings", element: <SettingsPage /> },
       { path: "/app/settings/:section", element: <SettingsPage /> },
       {

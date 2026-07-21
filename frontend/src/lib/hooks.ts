@@ -21,6 +21,7 @@ import type {
   FeatureFlag,
   InstitutionalBias,
   MarketInfo,
+  MarketIntelIndex,
   MarketIntelNews,
   MarketIntelStatus,
   OptionsSnapshot,
@@ -254,12 +255,22 @@ export function useRegime() {
   });
 }
 
-export function useRankings(topN = 20) {
+export function useRankings(topN = 20, index?: string) {
   return useQuery({
-    queryKey: ["market-intel", "rankings", orgKey(), topN],
-    queryFn: () => api<RankingRow[]>("/market-intel/rankings", { query: { top_n: topN } }),
+    queryKey: ["market-intel", "rankings", orgKey(), topN, index ?? "all"],
+    queryFn: () =>
+      api<RankingRow[]>("/market-intel/rankings", {
+        query: { top_n: topN, ...(index ? { index } : {}) },
+      }),
     placeholderData: keepPreviousData,
     refetchInterval: 60_000,
+  });
+}
+
+export function useMarketIntelIndices() {
+  return useQuery({
+    queryKey: ["market-intel", "indices", orgKey()],
+    queryFn: () => api<MarketIntelIndex[]>("/market-intel/indices"),
   });
 }
 

@@ -6,6 +6,7 @@ import {
   Card,
   EmptyState,
   PageHeader,
+  Select,
   SkeletonRows,
   StatCard,
   Table,
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui";
 import {
   useInstitutionalFlow,
+  useMarketIntelIndices,
   useMarketIntelNews,
   useMarketIntelStatus,
   useOptionsSnapshot,
@@ -171,25 +173,46 @@ function TickerDetail({ ticker, row, rows }: { ticker: string; row?: RankingRow;
 }
 
 function RankingsPanel() {
-  const { data: rankings, isLoading } = useRankings(20);
+  const { data: indices } = useMarketIntelIndices();
+  const [index, setIndex] = useState<string>("");
   const [picked, setPicked] = useState<string | null>(null);
+  const { data: rankings, isLoading } = useRankings(20, index || undefined);
   const rows = rankings ?? [];
   const selected = picked ?? rows[0]?.ticker ?? null;
   const selectedRow = rows.find((row) => row.ticker === selected);
 
+  const indexSelect = (
+    <Select
+      value={index}
+      onChange={(event) => {
+        setIndex(event.target.value);
+        setPicked(null);
+      }}
+      aria-label="Filter by index"
+      className="w-40"
+    >
+      <option value="">All F&amp;O</option>
+      {(indices ?? []).map((group) => (
+        <option key={group.value} value={group.value}>
+          {group.label}
+        </option>
+      ))}
+    </Select>
+  );
+
   if (isLoading && !rankings) {
     return (
-      <Card title="Top opportunities">
+      <Card title="Top opportunities" actions={indexSelect}>
         <SkeletonRows rows={8} cols={4} />
       </Card>
     );
   }
   if (rows.length === 0) {
     return (
-      <Card title="Top opportunities">
+      <Card title="Top opportunities" actions={indexSelect}>
         <EmptyState
-          title="No ranking data yet"
-          body="The AI-CIO pipeline has not produced a ranking. It refreshes on its own schedule."
+          title={index ? "No ranked names in this index yet" : "No ranking data yet"}
+          body="The AI-CIO pipeline ranks its F&O universe on its own schedule; not every index is fully covered."
         />
       </Card>
     );
@@ -198,7 +221,7 @@ function RankingsPanel() {
   return (
     <div className="grid gap-4 lg:grid-cols-5">
       <div className="lg:col-span-3">
-        <Card title="Top opportunities" className="overflow-hidden">
+        <Card title="Top opportunities" actions={indexSelect} className="overflow-hidden">
           <Table headers={["#", "Ticker", "Name", "Score"]} dense>
             {rows.map((row) => (
               <tr

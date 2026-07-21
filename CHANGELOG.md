@@ -7,6 +7,15 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
+- **Personal-mode UI**: Brokers merged into Settings (Settings → Brokers;
+  `/app/brokers` redirects there, standalone nav item removed) and the
+  Subscription page/nav removed (`/app/subscription` → dashboard). Backend billing
+  is untouched — only the user-facing surface changed.
+- **Market Intel index filter**: the Top-opportunities panel can be scoped to an
+  index group — **Nifty 50 / Nifty Next 50 / Bank Nifty / Fin Nifty** — via a
+  selector. New `GET /api/v1/market-intel/indices` and an `index` query param on
+  `/rankings` (top-N within the index's constituents). The constituent lists are
+  editable snapshots in `modules/market_intel/domain/indices.py`.
 - **Landing page removed**: the site root (`/`) now redirects to the login page
   instead of the marketing landing page (`LandingPage.tsx` deleted).
 - **Ops dashboard now live by default**: the deployed `/ops` frontend is built in

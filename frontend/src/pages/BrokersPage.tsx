@@ -22,7 +22,7 @@ import { money } from "@/lib/format";
 import { toastError, toastSuccess } from "@/stores/toast";
 import type { BrokerCatalogEntry, BrokerConnection } from "@/types/api";
 
-export function BrokersPage() {
+export function BrokersPage({ embedded = false }: { embedded?: boolean }) {
   const { data: connections, isLoading } = useBrokerConnections();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [toRemove, setToRemove] = useState<BrokerConnection | null>(null);
@@ -65,11 +65,20 @@ export function BrokersPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Brokers"
-        description="Connect and manage broker accounts. Credentials are encrypted at rest."
-        actions={<Button onClick={() => setWizardOpen(true)}>Add broker</Button>}
-      />
+      {embedded ? (
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Connect and manage broker accounts. Credentials are encrypted at rest.
+          </p>
+          <Button onClick={() => setWizardOpen(true)}>Add broker</Button>
+        </div>
+      ) : (
+        <PageHeader
+          title="Brokers"
+          description="Connect and manage broker accounts. Credentials are encrypted at rest."
+          actions={<Button onClick={() => setWizardOpen(true)}>Add broker</Button>}
+        />
+      )}
 
       {isLoading ? (
         <Card>

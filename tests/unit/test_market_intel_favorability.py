@@ -10,7 +10,22 @@ import pytest
 
 from algo_platform.modules.market_intel.application.client import family_from_type
 from algo_platform.modules.market_intel.application.shadow_gate import family_for
+from algo_platform.modules.market_intel.domain.indices import INDEX_GROUPS, symbols_for_index
 from algo_platform.modules.market_intel.domain.regime import StrategyFamily, is_favourable
+
+
+def test_symbols_for_index_known_and_case_insensitive() -> None:
+    assert "HDFCBANK" in (symbols_for_index("banknifty") or frozenset())
+    assert "RELIANCE" in (symbols_for_index("nifty50") or frozenset())
+    assert symbols_for_index("BankNifty") is not None  # case-insensitive
+    assert symbols_for_index("nonsense") is None
+
+
+def test_every_index_group_resolves() -> None:
+    for value, label in INDEX_GROUPS:
+        assert label
+        assert symbols_for_index(value), f"{value} has no constituents"
+
 
 _SMA = "algo_platform.modules.strategies.builtin.sma_crossover:SmaCrossover"
 _RSI = "algo_platform.modules.strategies.builtin.rsi_reversion:RsiReversion"

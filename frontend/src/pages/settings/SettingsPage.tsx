@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from "react-router";
 
 import { PageHeader, Tabs } from "@/components/ui";
+import { BrokersPage } from "@/pages/BrokersPage";
 import { AppearanceSettings } from "@/pages/settings/AppearanceSettings";
 import { ApiKeysSettings } from "@/pages/settings/ApiKeysSettings";
 import { NotificationSettings } from "@/pages/settings/NotificationSettings";
@@ -11,6 +12,7 @@ import { TeamSettings } from "@/pages/settings/TeamSettings";
 
 const SECTIONS = [
   { key: "profile", label: "Profile" },
+  { key: "brokers", label: "Brokers" },
   { key: "organization", label: "Organization" },
   { key: "team", label: "Team" },
   { key: "api-keys", label: "API Keys" },
@@ -30,6 +32,7 @@ export function SettingsPage() {
         <Tabs tabs={SECTIONS} active={section} onChange={(key) => navigate(`/app/settings/${key}`)} />
       </div>
       {section === "profile" && <ProfileSettings />}
+      {section === "brokers" && <BrokersPage embedded />}
       {section === "organization" && <OrganizationSettings />}
       {section === "team" && <TeamSettings />}
       {section === "api-keys" && <ApiKeysSettings />}
