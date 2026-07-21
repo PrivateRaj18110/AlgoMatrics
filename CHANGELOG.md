@@ -16,6 +16,16 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
   trading-domain routers were already wired to the live AlgoMatrics client; this
   flips the frontend off its bundled mock. Rebuild with
   `--build-arg VITE_USE_MOCK=true` to ship the bundled mock instead.
+- **Production parity (Kubernetes + CI/CD)**: CI now builds **and pushes** all four
+  images (backend, frontend, ops-api, aicio) to `ghcr.io/algo-matrics/*` on
+  `main`/tags — PRs stay build-only — with metadata tagging (`latest` + short SHA +
+  tag) and per-image GHA cache. New k8s manifests bring the ops dashboard to
+  Kubernetes: `deploy/k8s/45-ops.yaml` (ops-api Deployment + Service + Config/Secret,
+  single replica, health probes, rolling update) and `65-ops-ingress.yaml`
+  (`/ops/api` → ops-api, rewrite + websocket timeouts).
+  `docs/operations/production-infrastructure.md` gains a Compose↔Kubernetes parity
+  table, a required-images/registry section, RWX + ops-key checklist items, and
+  concrete rollback steps.
 
 ### Added — AI-CIO market-intelligence integration
 

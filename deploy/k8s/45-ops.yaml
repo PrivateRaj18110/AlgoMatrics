@@ -1,0 +1,89 @@
+# Ops dashboard backend (Raj Quant OS telemetry ingest + control-plane proxy).
+# Mirrors the compose `ops-api` service. It reads live platform data from the API
+# via an org-scoped read key and keeps host telemetry in memory (no database).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ops-config
+  namespace: algo
+  labels: { app: ops-api }
+data:
+  APP_NAME: "AlgoMatrics Ops API"
+  # The ops service must NOT inherit the platform database — its telemetry store
+  # is in-memory. Explicitly blank, mirroring the compose service.
+  DATABASE_URL: ""
+  # In-cluster control plane: the algo-api Service (port 80 -> container 8000).
+  ALGOMATRICS_API_URL: "http://algo-api/api/v1"
+  # In production the console host serves both /ops and /ops/api (same origin),
+  # but set the app origin so any cross-origin call is still allowed.
+  CORS_ORIGINS: "https://app.algomatrics.com"
+---
+# Template ONLY — populate via your secret manager (External Secrets / sealed-
+# secrets) at deploy time. Both may stay blank: the ops-api then serves its own
+# mock instead of live platform data (graceful, non-fatal).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ops-secrets
+  namespace: algo
+  labels: { app: ops-api }
+type: Opaque
+stringData:
+  # Org-scoped READ API key + org id (POST /api/v1/api-keys, scope=read).
+  ALGOMATRICS_API_KEY: ""
+  ALGOMATRICS_ORG_ID: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-api
+  namespace: algo
+  labels: { app: ops-api }
+spec:
+  # Single replica: the ops-api holds in-memory telemetry (machine metrics, logs,
+  # events, alerts) and a websocket broadcaster, so it is NOT horizontally scaled
+  # (deliberately no HPA). The live trading-domain data is a stateless proxy to the
+  # control plane; only the host telemetry is stateful.
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app: ops-api }
+  template:
+    metadata:
+      labels: { app: ops-api }
+    spec:
+      containers:
+        - name: ops-api
+          image: ghcr.io/algo-matrics/ops-api:latest # pin to the release tag
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef: { name: ops-config }
+            - secretRef: { name: ops-secrets }
+          livenessProbe:
+            httpGet: { path: /api/health, port: 8000 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /api/health, port: 8000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "256Mi" }
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ops-api
+  namespace: algo
+  labels: { app: ops-api }
+spec:
+  selector: { app: ops-api }
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000

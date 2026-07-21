@@ -1,0 +1,46 @@
+# Ops dashboard ingress.
+#
+# Routes the ops REST API + telemetry websocket under /ops/api on the console host
+# to the ops-api Service, mirroring the compose nginx
+# (location /ops/api/ -> ops_api_upstream/api/). ingress-nginx merges this
+# path-scoped ingress with the frontend's on the same host.
+#
+# The /ops SPA static assets and the console (/) are served by the FRONTEND — its
+# own Deployment/Service or a CDN, NOT part of this k8s kit (same as the note in
+# 60-ingress.yaml). Ensure the frontend host and this ingress resolve to the same
+# app origin so /ops (static) and /ops/api (this) sit together, as they do under
+# the single nginx in Docker Compose.
+#
+# TLS: if the frontend already terminates TLS for app.algomatrics.com via its own
+# ingress, share that Secret name below (or drop this tls block) to avoid two
+# cert-manager Certificates racing for the same host.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ops-ingress
+  namespace: algo
+  labels: { app: ops-api }
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Strip the /ops prefix so /ops/api/<x> reaches ops-api as /api/<x>.
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /api/$2
+    # Keep the telemetry websocket (/ops/api/ws) open.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["app.algomatrics.com"]
+      secretName: ops-app-tls
+  rules:
+    - host: app.algomatrics.com
+      http:
+        paths:
+          - path: /ops/api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: ops-api
+                port: { number: 80 }

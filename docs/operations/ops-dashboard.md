@@ -42,6 +42,12 @@ cd ops/frontend && npm install && npm run dev  # http://localhost:5173/ops/
 
 The Vite dev server proxies `/ops/api` → `http://localhost:8001`.
 
+**Kubernetes.** The ops-api runs as `deploy/k8s/45-ops.yaml` (Deployment + Service +
+Config/Secret) and `65-ops-ingress.yaml` routes `/ops/api` to it; the `/ops` SPA
+static assets are served by the frontend (external / CDN), same as the console. See
+[production-infrastructure.md](production-infrastructure.md) for the full sequence,
+required images, and the Compose↔Kubernetes parity table.
+
 ## Data sources
 
 **Live by default.** The deployed dashboard builds the frontend in live mode, so
