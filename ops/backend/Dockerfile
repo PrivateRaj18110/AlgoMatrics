@@ -1,5 +1,5 @@
 # Raj Quant OS — backend image
-FROM python:3.12-slim AS base
+FROM python:3.13-slim AS base
 
 # Keep Python lean and predictable inside the container.
 ENV PYTHONDONTWRITEBYTECODE=1 \

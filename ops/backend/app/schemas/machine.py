@@ -23,3 +23,22 @@ class Machine(BaseModel):
     uptimeSec: int
     lastHeartbeat: str
     strategyCount: int
+    agentId: str | None = None
+    agentVersion: str | None = None
+    hostname: str | None = None
+    environment: str | None = None
+    lastEvent: str | None = None
+    lastTrade: str | None = None
+    lastError: str | None = None
+    lastSuccessfulUpload: str | None = None
+    queueDepth: int | None = None
+    oldestPendingAgeSec: int | None = None
+    transportState: str | None = None
+    currentSessionId: str | None = None
+    tradingProcessState: str | None = None
+    lastEodSync: str | None = None
+    lastEodStatus: str | None = None
+    recoveryState: str | None = None
+    lastRecovery: str | None = None
+    eventsRecovered: int | None = None
+    eodBacklog: int | None = None

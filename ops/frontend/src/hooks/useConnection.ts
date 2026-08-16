@@ -28,10 +28,12 @@ export function useConnection(): ConnectionState {
 
   // Refresh the synthetic latency + last-sync stamp whenever a fetch settles.
   useEffect(() => {
-    if (fetching === 0) {
+    if (fetching !== 0) return
+    const timer = window.setTimeout(() => {
       setLastSync(new Date().toISOString())
       setLatencyMs(6 + Math.round(Math.random() * 18))
-    }
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [fetching])
 
   return {

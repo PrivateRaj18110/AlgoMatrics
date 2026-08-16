@@ -33,6 +33,28 @@ class Machine(Base):
     # Set when a real Local Agent registers this host (vs a seeded demo row).
     live: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     agent_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    agent_version: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Phase 3 current-state fields. Historical telemetry remains in events /
+    # logs / trades / metrics; this row is only the bounded "latest known state"
+    # the dashboard can answer quickly without scanning event history.
+    hostname: Mapped[str] = mapped_column(String, default="", nullable=False)
+    environment: Mapped[str] = mapped_column(String, default="", nullable=False)
+    last_event: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_trade: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_successful_upload: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    queue_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    oldest_pending_age_sec: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    transport_state: Mapped[str | None] = mapped_column(String, nullable=True)
+    current_session_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    trading_process_state: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_eod_sync: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_eod_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    recovery_state: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_recovery_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    events_recovered: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    eod_backlog: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -43,4 +65,6 @@ class Machine(Base):
         Index("ix_machines_status", "status"),
         Index("ix_machines_live", "live"),
         Index("ix_machines_last_heartbeat", "last_heartbeat"),
+        Index("ix_machines_current_session_id", "current_session_id"),
+        Index("ix_machines_last_successful_upload", "last_successful_upload"),
     )

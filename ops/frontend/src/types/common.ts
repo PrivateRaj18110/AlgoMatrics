@@ -1,7 +1,7 @@
 /** Shared primitives used across the domain models. */
 
 /** Generic operational status used by machines, strategies and connections. */
-export type Status = 'online' | 'degraded' | 'offline'
+export type Status = 'online' | 'degraded' | 'offline' | 'unknown'
 
 /** Direction of a price move / pnl delta. */
 export type Trend = 'up' | 'down' | 'flat'

@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTrades } from '@/hooks/useTrades'
 import { useMarket } from '@/providers/market'
-import type { Trade } from '@/types'
 
 const TradesTable = lazy(() =>
   import('@/components/tables/TradesTable').then((m) => ({ default: m.TradesTable })),
@@ -29,7 +28,7 @@ export default function LiveTradesPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title={`${meta.label} · Live Trades`}
+        title={`${meta.label} · Positions`}
         description="Open positions with live floating PnL and exposure."
         actions={<Badge variant="muted">{meta.session}</Badge>}
       />

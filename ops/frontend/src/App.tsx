@@ -31,6 +31,11 @@ const MarketExecutionPage = lazy(() => import('@/pages/market/MarketExecutionPag
 // Global / cross-cutting views.
 const ResearchPage = lazy(() => import('@/pages/Research/ResearchPage'))
 const MachinesPage = lazy(() => import('@/pages/Machines/MachinesPage'))
+const MachineDetailPage = lazy(() => import('@/pages/Machines/MachineDetailPage'))
+const SessionDetailPage = lazy(() => import('@/pages/Sessions/SessionDetailPage'))
+const EodPage = lazy(() => import('@/pages/Eod/EodPage'))
+const QuantPage = lazy(() => import('@/pages/Quant/QuantPage'))
+const RecoveryPage = lazy(() => import('@/pages/Recovery/RecoveryPage'))
 const SettingsPage = lazy(() => import('@/pages/Settings/SettingsPage'))
 const LogsPage = lazy(() => import('@/pages/Logs/LogsPage'))
 const AccountsPage = lazy(() => import('@/pages/Accounts/AccountsPage'))
@@ -49,6 +54,7 @@ export default function App() {
           <Route index element={<Navigate to="overview" replace />} />
           <Route path="overview" element={<MarketOverviewPage />} />
           <Route path="strategies" element={<StrategiesPage />} />
+          <Route path="positions" element={<LiveTradesPage />} />
           <Route path="live-trades" element={<LiveTradesPage />} />
           <Route path="closed-trades" element={<ClosedTradesPage />} />
           <Route path="portfolio" element={<PortfolioPage />} />
@@ -62,14 +68,21 @@ export default function App() {
         {/* Global views */}
         <Route path="research" element={<ResearchPage />} />
         <Route path="monitoring" element={<MachinesPage />} />
+        <Route path="monitoring/:machineId" element={<MachineDetailPage />} />
+        <Route path="sessions/:sessionId" element={<SessionDetailPage />} />
+        <Route path="recovery" element={<RecoveryPage />} />
+        <Route path="data-sync" element={<EodPage />} />
+        <Route path="quant" element={<QuantPage />} />
         <Route path="settings" element={<SettingsPage />} />
 
         {/* Backwards-compatible routes for existing bookmarks / deep links */}
         <Route path="machines" element={<Navigate to="/monitoring" replace />} />
+        <Route path="eod" element={<Navigate to="/data-sync" replace />} />
         <Route path="accounts" element={<AccountsPage />} />
         <Route path="events" element={<EventsPage />} />
         <Route path="alerts" element={<AlertsPage />} />
         <Route path="strategies" element={<Navigate to="/india/strategies" replace />} />
+        <Route path="positions" element={<Navigate to="/india/positions" replace />} />
         <Route path="trades" element={<Navigate to="/india/closed-trades" replace />} />
         <Route path="execution" element={<Navigate to="/india/execution" replace />} />
         <Route path="risk" element={<Navigate to="/india/risk" replace />} />

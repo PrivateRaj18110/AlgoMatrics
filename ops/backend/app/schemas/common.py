@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-Status = Literal["online", "degraded", "offline"]
+Status = Literal["online", "degraded", "offline", "unknown"]
 Trend = Literal["up", "down", "flat"]
 Severity = Literal["info", "warning", "critical"]
 

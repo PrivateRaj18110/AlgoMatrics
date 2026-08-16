@@ -29,6 +29,36 @@ metadata:
     # Keep the telemetry websocket (/ops/api/ws) open.
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+
+    # --- Abuse protection -------------------------------------------------
+    # Sized from measured telemetry, not guessed: steady state is ~0.31
+    # envelopes/sec in batches of 200, i.e. roughly one request every 3 seconds
+    # per agent (raj_monitor upload_sec=3). 20 rps with a burst multiplier of 10
+    # leaves ample room for a reconnect storm or a queue drain after an outage
+    # (a full 100k-envelope backlog is ~500 batches) while still bounding a
+    # flood. Raise these before adding agents, not after seeing 503s.
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "10"
+    # The agent gzips batches; 8m is far above any legitimate payload.
+    nginx.ingress.kubernetes.io/proxy-body-size: "8m"
+
+    # --- Source allowlist (defence in depth) ------------------------------
+    # UNSET DELIBERATELY. Populate with the Google VM's static egress IP/CIDR
+    # once it is known — see open question Q3 in the Phase 0/1 audit. It was not
+    # invented here because an allowlist against an ephemeral IP is worse than
+    # none: it creates false confidence and breaks ingestion at the first NAT
+    # reassignment.
+    #
+    # Authentication is mandatory and independent of this; the allowlist is a
+    # second layer, never the primary control.
+    #
+    #   nginx.ingress.kubernetes.io/whitelist-source-range: "<GOOGLE_VM_EGRESS_IP>/32"
+    #
+    # Note: applying it here would also restrict the dashboard websocket on the
+    # same path prefix. If browsers must reach /ops/api/ws from arbitrary
+    # networks, split the ingress: an allowlisted one for the agent write paths
+    # (/ops/api/agent, /ops/api/ingest) and an open-but-authenticated one for
+    # the rest.
 spec:
   ingressClassName: nginx
   tls:

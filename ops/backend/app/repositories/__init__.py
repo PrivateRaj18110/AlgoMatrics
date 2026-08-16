@@ -12,6 +12,10 @@ the same way in both modes.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import json
+from typing import Any
+
 from app.database.session import database_enabled
 from app.repositories import mock_data as _data
 from app.repositories.base import InMemoryRepository
@@ -47,6 +51,38 @@ class EventsRepository(InMemoryRepository[dict]):
         self._rows.insert(0, event)
         del self._rows[400:]
 
+    def query(
+        self,
+        *,
+        limit: int = 400,
+        machine_id: str | None = None,
+        session_id: str | None = None,
+        event_type: str | None = None,
+        strategy: str | None = None,
+        symbol: str | None = None,
+        severity: str | None = None,
+        since=None,
+        until=None,
+    ) -> list[dict]:
+        rows = self.list()
+        if machine_id:
+            rows = [r for r in rows if r.get("machine_id") == machine_id or r.get("machineId") == machine_id]
+        if session_id:
+            rows = [r for r in rows if r.get("session_id") == session_id or r.get("sessionId") == session_id]
+        if event_type:
+            rows = [r for r in rows if r.get("event_type") == event_type or r.get("eventType") == event_type]
+        if strategy:
+            rows = [r for r in rows if r.get("strategy") == strategy]
+        if symbol:
+            rows = [r for r in rows if r.get("symbol") == symbol]
+        if severity:
+            rows = [r for r in rows if r.get("severity") == severity]
+        if since:
+            rows = [r for r in rows if str(r.get("time", "")) >= since.isoformat()]
+        if until:
+            rows = [r for r in rows if str(r.get("time", "")) <= until.isoformat()]
+        return rows[:limit]
+
 
 class LogsRepository(InMemoryRepository[dict]):
     """Logs support filtering by stream."""
@@ -78,15 +114,290 @@ class _NullMetricsRepository:
         return []
 
 
+class _NullSyncStateRepository:
+    """Mock-mode sync state: accepted and discarded.
+
+    Mock mode is a development convenience only — production refuses to start
+    without a database (``Settings.assert_production_ready``), so nothing that
+    matters is silently dropped here.
+    """
+
+    def get(self, machine_id: str, agent_id: str) -> dict | None:
+        return None
+
+    def record_batch(self, **_kwargs) -> dict:
+        return {}
+
+    def list(self) -> list[dict]:
+        return []
+
+
+class _InMemorySessionsRepository:
+    """Mock-mode trading sessions, shaped like the durable SQL read model."""
+
+    def __init__(self) -> None:
+        self._rows: dict[tuple[str, str], dict[str, Any]] = {}
+
+    def touch(
+        self,
+        *,
+        session_id: str,
+        machine_id: str,
+        machine: str,
+        event_time: datetime | None,
+        is_trade: bool = False,
+    ) -> None:
+        key = (session_id, machine_id)
+        ts = event_time.isoformat() if event_time else _now_iso()
+        row = self._rows.get(key)
+        if row is None:
+            row = {
+                "sessionId": session_id,
+                "machineId": machine_id,
+                "machine": machine,
+                "status": "open",
+                "startedAt": ts,
+                "endedAt": None,
+                "lastEventAt": ts,
+                "eventCount": 0,
+                "tradeCount": 0,
+            }
+            self._rows[key] = row
+        row["eventCount"] += 1
+        if is_trade:
+            row["tradeCount"] += 1
+        if not row.get("lastEventAt") or ts > row["lastEventAt"]:
+            row["lastEventAt"] = ts
+
+    def close(self, *, session_id: str, machine_id: str, ended_at: datetime | None) -> None:
+        row = self._rows.get((session_id, machine_id))
+        if row is None:
+            return
+        row["status"] = "closed"
+        row["endedAt"] = ended_at.isoformat() if ended_at else _now_iso()
+
+    def latest(self, machine_id: str) -> dict | None:
+        rows = [row for row in self._rows.values() if row["machineId"] == machine_id]
+        if not rows:
+            return None
+        return dict(max(rows, key=lambda row: row.get("lastEventAt") or ""))
+
+    def get(self, session_id: str, *, machine_id: str | None = None) -> dict | None:
+        rows = [
+            row for row in self._rows.values()
+            if row["sessionId"] == session_id
+            and (machine_id is None or row["machineId"] == machine_id)
+        ]
+        if not rows:
+            return None
+        return dict(max(rows, key=lambda row: row.get("lastEventAt") or ""))
+
+    def list(
+        self,
+        *,
+        limit: int = 100,
+        machine_id: str | None = None,
+        status: str | None = None,
+    ) -> list[dict]:
+        rows = list(self._rows.values())
+        if machine_id:
+            rows = [row for row in rows if row["machineId"] == machine_id]
+        if status:
+            rows = [row for row in rows if row["status"] == status]
+        return [
+            dict(row)
+            for row in sorted(rows, key=lambda row: row.get("lastEventAt") or "", reverse=True)[
+                :limit
+            ]
+        ]
+
+
+class _InMemoryDeadLetterRepository:
+    """Mock-mode dead letters — kept in RAM so dev/tests can still assert them.
+
+    Bounded so a misbehaving local agent cannot grow it without limit.
+    """
+
+    _CAP = 500
+
+    def __init__(self) -> None:
+        self._rows: list[dict] = []
+
+    def insert(self, entry: dict) -> None:
+        self._rows.insert(0, dict(entry))
+        del self._rows[self._CAP:]
+
+    def list(self) -> list[dict]:
+        return list(self._rows)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class _InMemoryEodRepository:
+    """Mock-mode EOD catalog, bounded to process memory."""
+
+    def __init__(self) -> None:
+        self._datasets: dict[str, dict[str, Any]] = {}
+
+    def get(self, dataset_id: str, *, include_files: bool = True) -> dict | None:
+        row = self._datasets.get(dataset_id)
+        if row is None:
+            return None
+        copy = dict(row)
+        copy["files"] = [dict(file) for file in row.get("files", [])] if include_files else []
+        return copy
+
+    def list(
+        self,
+        *,
+        limit: int = 100,
+        status: str | None = None,
+        machine_id: str | None = None,
+        trading_date: str | None = None,
+    ) -> list[dict]:
+        rows = [self.get(dataset_id, include_files=False) for dataset_id in self._datasets]
+        clean = [row for row in rows if row is not None]
+        if status:
+            clean = [row for row in clean if row["status"] == status]
+        if machine_id:
+            clean = [row for row in clean if row["machineId"] == machine_id]
+        if trading_date:
+            clean = [row for row in clean if row["tradingDate"] == trading_date]
+        return sorted(clean, key=lambda row: row["receivedAt"], reverse=True)[:limit]
+
+    def create(self, dataset: dict[str, Any], files: list[dict[str, Any]]) -> dict:
+        now = _now_iso()
+        row = {
+            **dataset,
+            "status": dataset.get("status", "MANIFESTED"),
+            "statusReason": dataset.get("statusReason"),
+            "storageBackend": dataset.get("storageBackend", "local"),
+            "totalFiles": len(files),
+            "uploadedFiles": 0,
+            "totalBytes": sum(int(file.get("sizeBytes", 0)) for file in files),
+            "uploadedBytes": 0,
+            "completedAt": None,
+            "finalizedAt": None,
+            "rawDeletedAt": None,
+            "receivedAt": now,
+            "updatedAt": now,
+            "files": [
+                {
+                    **file,
+                    "storageKey": file.get("storageKey"),
+                    "bytesReceived": 0,
+                    "status": "MANIFESTED",
+                    "checksumStatus": None,
+                    "failureReason": None,
+                    "uploadedAt": None,
+                    "validatedAt": None,
+                }
+                for file in files
+            ],
+        }
+        self._datasets[row["datasetId"]] = row
+        return self.get(row["datasetId"]) or row
+
+    def update_dataset(self, dataset_id: str, changes: dict[str, Any]) -> dict | None:
+        row = self._datasets.get(dataset_id)
+        if row is None:
+            return None
+        row.update(changes)
+        row["updatedAt"] = _now_iso()
+        return self.get(dataset_id)
+
+    def get_file(self, dataset_id: str, file_id: str) -> dict | None:
+        row = self._datasets.get(dataset_id)
+        if row is None:
+            return None
+        for file in row.get("files", []):
+            if file["fileId"] == file_id:
+                return dict(file)
+        return None
+
+    def update_file(self, dataset_id: str, file_id: str, changes: dict[str, Any]) -> dict | None:
+        row = self._datasets.get(dataset_id)
+        if row is None:
+            return None
+        for file in row.get("files", []):
+            if file["fileId"] == file_id:
+                file.update(changes)
+                self._recalculate(row)
+                row["updatedAt"] = _now_iso()
+                return dict(file)
+        return None
+
+    def reconciliation(self) -> dict[str, Any]:
+        datasets = list(self._datasets.values())
+        files = [file for dataset in datasets for file in dataset.get("files", [])]
+        by_status: dict[str, int] = {}
+        for dataset in datasets:
+            by_status[dataset["status"]] = by_status.get(dataset["status"], 0) + 1
+        return {
+            "total": len(datasets),
+            "byStatus": by_status,
+            "missingFiles": sum(1 for file in files if file["bytesReceived"] < file["sizeBytes"]),
+            "failedFiles": sum(1 for file in files if file["status"] in {"FAILED", "CONFLICT"}),
+            "checksumFailures": sum(1 for file in files if file.get("checksumStatus") == "FAILED"),
+            "partialDatasets": sum(1 for dataset in datasets if dataset["status"] in {"PARTIAL", "UPLOADING"}),
+        }
+
+    @staticmethod
+    def _recalculate(row: dict[str, Any]) -> None:
+        files = row.get("files", [])
+        row["uploadedFiles"] = sum(1 for file in files if file["status"] in {"READY", "COMPLETE"})
+        row["uploadedBytes"] = sum(int(file.get("bytesReceived", 0)) for file in files)
+
+
+class _InMemoryQuantReportRepository:
+    """Mock-mode quant reports."""
+
+    def __init__(self) -> None:
+        self._rows: dict[str, dict[str, Any]] = {}
+
+    def list(self, *, limit: int = 100, dataset_id: str | None = None) -> list[dict[str, Any]]:
+        rows = list(self._rows.values())
+        if dataset_id:
+            rows = [row for row in rows if row["datasetId"] == dataset_id]
+        sorted_rows = sorted(rows, key=lambda row: row["updatedAt"], reverse=True)[:limit]
+        return [json.loads(json.dumps(row)) for row in sorted_rows]
+
+    def get(self, report_id: str) -> dict[str, Any] | None:
+        row = self._rows.get(report_id)
+        return json.loads(json.dumps(row)) if row is not None else None
+
+    def latest_for_dataset(self, dataset_id: str) -> dict[str, Any] | None:
+        rows = self.list(limit=1, dataset_id=dataset_id)
+        return rows[0] if rows else None
+
+    def upsert(self, report: dict[str, Any]) -> dict[str, Any]:
+        now = _now_iso()
+        existing = self._rows.get(report["reportId"], {})
+        row = {
+            **report,
+            "createdAt": existing.get("createdAt", now),
+            "updatedAt": now,
+        }
+        self._rows[report["reportId"]] = row
+        return self.get(report["reportId"]) or row
+
+
 # --------------------------------------------------------------------------- #
 # Scoped repositories: PostgreSQL when DATABASE_URL is set, else in-memory mock.
 # --------------------------------------------------------------------------- #
 if database_enabled():
     from app.repositories.sql import (
+        SqlDeadLetterRepository,
+        SqlEodRepository,
         SqlEventsRepository,
         SqlLogsRepository,
         SqlMachinesRepository,
         SqlMetricsRepository,
+        SqlQuantReportRepository,
+        SqlSessionsRepository,
+        SqlSyncStateRepository,
         SqlTradesRepository,
     )
 
@@ -95,15 +406,25 @@ if database_enabled():
     logs_repo = SqlLogsRepository()
     trades_repo = SqlTradesRepository()
     metrics_repo = SqlMetricsRepository()
+    sync_state_repo = SqlSyncStateRepository()
+    sessions_repo = SqlSessionsRepository()
+    dead_letter_repo = SqlDeadLetterRepository()
+    eod_repo = SqlEodRepository()
+    quant_report_repo = SqlQuantReportRepository()
 else:
     machines_repo = MachinesRepository(_data.MACHINES)
     events_repo = EventsRepository(_data.EVENTS)
     logs_repo = LogsRepository(_data.LOGS)
     trades_repo = _MockTradesRepository(_data.TRADES)
     metrics_repo = _NullMetricsRepository()
+    sync_state_repo = _NullSyncStateRepository()
+    sessions_repo = _InMemorySessionsRepository()
+    dead_letter_repo = _InMemoryDeadLetterRepository()
+    eod_repo = _InMemoryEodRepository()
+    quant_report_repo = _InMemoryQuantReportRepository()
 
 # Idempotency + transaction primitives (no-ops in mock mode).
-from app.repositories.sql import reserve_envelope, unit_of_work  # noqa: E402
+from app.repositories.sql import prune_dedup, reserve_envelope, unit_of_work  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -124,6 +445,8 @@ build_event = _data.build_event
 __all__ = [
     "machines_repo", "strategies_repo", "trades_repo", "brokers_repo",
     "accounts_repo", "alerts_repo", "events_repo", "logs_repo", "metrics_repo",
+    "sync_state_repo", "sessions_repo", "dead_letter_repo", "eod_repo",
+    "quant_report_repo",
     "dashboard_doc", "analytics_doc", "risk_doc", "execution_doc", "build_event",
-    "reserve_envelope", "unit_of_work",
+    "reserve_envelope", "unit_of_work", "prune_dedup",
 ]

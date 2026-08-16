@@ -23,8 +23,13 @@ class Broadcaster:
         self._clients: set[WebSocket] = set()
         self._lock = asyncio.Lock()
 
-    async def connect(self, ws: WebSocket) -> None:
-        await ws.accept()
+    async def connect(self, ws: WebSocket, subprotocol: str | None = None) -> None:
+        """Accept an *already authenticated* socket and start fanning out to it.
+
+        ``subprotocol`` echoes the value negotiated during the handshake; a
+        browser that offered one fails the connection if it is not returned.
+        """
+        await ws.accept(subprotocol=subprotocol)
         async with self._lock:
             self._clients.add(ws)
 

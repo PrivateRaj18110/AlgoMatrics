@@ -17,11 +17,21 @@ from app.core.config import Settings
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
+AGENT_TOKEN = "hotfix-agent-token"
+DASHBOARD_TOKEN = "hotfix-dashboard-token"
+
+
 def _environment(database_url: str | None = None) -> dict[str, str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(BACKEND_DIR), env.get("PYTHONPATH", "")) if part
     )
+    # Phase 2: the telemetry write path and the websocket both require a
+    # credential, so these regression checks now authenticate.
+    env["RAJ_AGENT_TOKEN"] = AGENT_TOKEN
+    env["RAJ_DASHBOARD_TOKEN"] = DASHBOARD_TOKEN
+    env.pop("RAJ_AGENT_TOKENS", None)
+    env.pop("ENVIRONMENT", None)
     if database_url is None:
         env.pop("DATABASE_URL", None)
     else:
@@ -191,6 +201,13 @@ def test_restart_safe_ids_and_envelope_idempotency(tmp_path: Path) -> None:
 
 
 def test_websocket_notifications_and_api_contract_are_unchanged() -> None:
+    """The dashboard's live contract still holds — now behind authentication.
+
+    Phase 2 secured the ingestion tier and the websocket, so this regression
+    check authenticates. Everything it guards is otherwise unchanged: the exact
+    route set, the initial ``machines`` snapshot, the ``event`` notification
+    protocol, and the original five acknowledgement keys the frontend reads.
+    """
     result = _run_backend(
         """
         import json
@@ -203,15 +220,28 @@ def test_websocket_notifications_and_api_contract_are_unchanged() -> None:
             "/api/agent/metrics", "/api/agent/register", "/api/agent/trades",
             "/api/alerts", "/api/analytics", "/api/brokers", "/api/brokers/{broker_id}",
             "/api/dashboard/overview", "/api/events", "/api/execution/overview",
+            "/api/eod/datasets", "/api/eod/datasets/{dataset_id}",
+            "/api/eod/datasets/{dataset_id}/complete",
+            "/api/eod/datasets/{dataset_id}/files/{file_id}/chunks",
+            "/api/eod/datasets/{dataset_id}/finalize",
+            "/api/eod/datasets/{dataset_id}/quarantine", "/api/eod/discoveries",
+            "/api/eod/manifests", "/api/eod/reconciliation",
             "/api/health", "/api/ingest/error", "/api/ingest/event",
             "/api/ingest/heartbeat", "/api/ingest/metric", "/api/ingest/position",
             "/api/ingest/start", "/api/ingest/trade", "/api/logs", "/api/machines",
-            "/api/machines/{machine_id}", "/api/risk/overview", "/api/settings",
+            "/api/machines/{machine_id}", "/api/quant/analytics/{category}",
+            "/api/quant/datasets/{dataset_id}/report", "/api/quant/replays/datasets/{dataset_id}",
+            "/api/quant/replays/synthetic", "/api/quant/reports", "/api/recovery/summary",
+            "/api/risk/overview", "/api/sessions", "/api/sessions/{session_id}", "/api/settings",
             "/api/strategies", "/api/strategies/{strategy_id}", "/api/trades",
         }
         paths_unchanged = set(app.openapi()["paths"]) == expected_paths
+        agent_headers = {"X-Raj-Agent-Token": "hotfix-agent-token",
+                         "X-Raj-Agent-Id": "agent-hotfix"}
         with TestClient(app) as client:
-            with client.websocket_connect("/api/ws") as websocket:
+            with client.websocket_connect(
+                "/api/ws", subprotocols=["raj-token", "hotfix-dashboard-token"]
+            ) as websocket:
                 initial = websocket.receive_json()
                 response = client.post("/api/agent/events", json={
                     "id": "ws-envelope-1", "kind": "event", "machine": "VPS-1",
@@ -220,13 +250,18 @@ def test_websocket_notifications_and_api_contract_are_unchanged() -> None:
                         "category": "strategy", "severity": "info",
                         "message": "websocket regression",
                     },
-                })
+                }, headers=agent_headers)
                 notification = websocket.receive_json()
+        body = response.json()
         print(json.dumps({
             "paths_unchanged": paths_unchanged,
             "initial_type": initial["type"],
             "status": response.status_code,
-            "response_keys": sorted(response.json()),
+            # The original keys must all still be present for the frontend.
+            "original_keys_present": all(
+                k in body for k in
+                ("accepted", "kind", "machineId", "processed", "received")
+            ),
             "notification_type": notification["type"],
             "message": notification["payload"]["message"],
         }))
@@ -236,7 +271,7 @@ def test_websocket_notifications_and_api_contract_are_unchanged() -> None:
         "paths_unchanged": True,
         "initial_type": "machines",
         "status": 200,
-        "response_keys": ["accepted", "kind", "machineId", "processed", "received"],
+        "original_keys_present": True,
         "notification_type": "event",
         "message": "websocket regression",
     }

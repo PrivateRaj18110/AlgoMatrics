@@ -12,7 +12,6 @@ import type { Trade } from '@/types'
 import { PnlValue } from '@/components/common/PnlValue'
 import { DirectionBadge, TradeStatusBadge } from '@/components/widgets/TradeBadges'
 import {
-  formatCurrency,
   formatDateTime,
   formatDuration,
   formatLatency,

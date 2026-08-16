@@ -12,7 +12,7 @@ interface StatusDotProps {
 /** Small coloured indicator with an optional live heartbeat pulse. */
 export function StatusDot({ status, pulse = true, className }: StatusDotProps) {
   const { dot, text } = describeStatus(status)
-  const showPulse = pulse && status !== 'offline'
+  const showPulse = pulse && status !== 'offline' && status !== 'unknown'
   return (
     <span className={cn('relative inline-flex size-2 items-center justify-center', className)}>
       <span className={cn('size-2 rounded-full', dot, showPulse && 'pulse-dot', text)} />

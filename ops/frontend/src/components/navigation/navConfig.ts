@@ -11,6 +11,9 @@ import {
   ScrollText,
   FlaskConical,
   Server,
+  Database,
+  BrainCircuit,
+  RotateCcw,
   Settings,
   type LucideIcon,
 } from 'lucide-react'
@@ -39,7 +42,7 @@ export interface NavTopItem {
 export const MARKET_NAV: NavLeaf[] = [
   { segment: 'overview', label: 'Overview', icon: LayoutDashboard },
   { segment: 'strategies', label: 'Strategies', icon: LineChart },
-  { segment: 'live-trades', label: 'Live Trades', icon: Activity },
+  { segment: 'positions', label: 'Positions', icon: Activity },
   { segment: 'closed-trades', label: 'Closed Trades', icon: History },
   { segment: 'portfolio', label: 'Portfolio', icon: Wallet },
   { segment: 'brokers', label: 'Brokers', icon: Network },
@@ -74,6 +77,9 @@ export const TOP_NAV: NavTopItem = {
 export const GLOBAL_NAV: NavTopItem[] = [
   { to: '/research', label: 'Research', icon: FlaskConical },
   { to: '/monitoring', label: 'Monitoring', icon: Server },
+  { to: '/recovery', label: 'Recovery', icon: RotateCcw },
+  { to: '/data-sync', label: 'Data Sync', icon: Database },
+  { to: '/quant', label: 'Quant Lab', icon: BrainCircuit },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 

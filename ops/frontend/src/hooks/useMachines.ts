@@ -11,3 +11,12 @@ export function useMachines() {
     refetchInterval: useRefetchInterval(),
   })
 }
+
+export function useMachine(machineId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.machine(machineId ?? 'unknown'),
+    queryFn: () => machinesService.getById(machineId ?? ''),
+    enabled: Boolean(machineId),
+    refetchInterval: useRefetchInterval(),
+  })
+}

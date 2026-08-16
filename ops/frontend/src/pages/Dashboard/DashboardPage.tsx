@@ -130,7 +130,7 @@ export default function DashboardPage() {
 
       {/* Machines */}
       <section className="space-y-3">
-        <SectionTitle title="Machines" to="/machines" />
+        <SectionTitle title="Machines" to="/monitoring" />
         <QueryState
           query={machines}
           loading={
@@ -144,7 +144,9 @@ export default function DashboardPage() {
           {(data) => (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {data.map((m) => (
-                <MachineCard key={m.id} machine={m} />
+                <Link key={m.id} to={`/monitoring/${m.id}`} className="block">
+                  <MachineCard machine={m} />
+                </Link>
               ))}
             </div>
           )}

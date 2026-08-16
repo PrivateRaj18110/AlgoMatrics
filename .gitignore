@@ -3,6 +3,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.pytest-tmp/
 .ruff_cache/
 .mypy_cache/
 .coverage
@@ -37,4 +38,3 @@ frontend/tsconfig.tsbuildinfo
 !ai_cio_phase1/ai_cio_phase1/data/
 ai_cio_phase1/ai_cio_phase1/output/
 ai_cio_phase1/**/*.duckdb
-

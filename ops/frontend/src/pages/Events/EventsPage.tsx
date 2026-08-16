@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Radio } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Panel } from '@/components/layout/Panel'
@@ -11,11 +11,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { EventTerminal } from '@/components/widgets/EventTerminal'
 import { useEvents } from '@/hooks/useEvents'
-import type { EventCategory } from '@/types'
+import type { EventCategory, Severity } from '@/types'
 
 type Filter = 'all' | EventCategory
+type SeverityFilter = 'all' | Severity
 
 const CATEGORIES: { value: Filter; label: string }[] = [
   { value: 'all', label: 'All categories' },
@@ -24,18 +26,30 @@ const CATEGORIES: { value: Filter; label: string }[] = [
   { value: 'machine', label: 'Machine' },
   { value: 'broker', label: 'Broker' },
   { value: 'risk', label: 'Risk' },
+  { value: 'data', label: 'Data' },
   { value: 'database', label: 'Database' },
   { value: 'system', label: 'System' },
 ]
 
-export default function EventsPage() {
-  const query = useEvents(200)
-  const [filter, setFilter] = useState<Filter>('all')
+const SEVERITIES: { value: SeverityFilter; label: string }[] = [
+  { value: 'all', label: 'All severities' },
+  { value: 'info', label: 'Info' },
+  { value: 'warning', label: 'Warning' },
+  { value: 'critical', label: 'Critical' },
+]
 
-  const filtered = useMemo(
-    () => (query.data ?? []).filter((e) => filter === 'all' || e.category === filter),
-    [query.data, filter],
-  )
+export default function EventsPage() {
+  const [filter, setFilter] = useState<Filter>('all')
+  const [severity, setSeverity] = useState<SeverityFilter>('all')
+  const [eventType, setEventType] = useState('')
+  const [symbol, setSymbol] = useState('')
+  const query = useEvents(200, {
+    category: filter === 'all' ? undefined : filter,
+    severity: severity === 'all' ? undefined : severity,
+    eventType: eventType.trim() || undefined,
+    symbol: symbol.trim() || undefined,
+  })
+  const events = query.data ?? []
 
   return (
     <div className="flex h-[calc(100dvh-7rem)] min-h-[480px] flex-col space-y-4">
@@ -60,6 +74,30 @@ export default function EventsPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={severity} onValueChange={(v) => setSeverity(v as SeverityFilter)}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SEVERITIES.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              value={eventType}
+              onChange={(event) => setEventType(event.target.value)}
+              placeholder="event type"
+              className="h-9 w-36"
+            />
+            <Input
+              value={symbol}
+              onChange={(event) => setSymbol(event.target.value.toUpperCase())}
+              placeholder="symbol"
+              className="h-9 w-32"
+            />
           </div>
         }
       />
@@ -67,13 +105,13 @@ export default function EventsPage() {
       <QueryState query={query} loading={<Skeleton className="h-full w-full" />}>
         {() => (
           <Panel
-            title={`${filtered.length} events`}
+            title={`${events.length} events`}
             subtitle="Streaming"
             flush
             className="min-h-0 flex-1"
             bodyClassName="min-h-0"
           >
-            <EventTerminal events={filtered} maxHeight="100%" />
+            <EventTerminal events={events} maxHeight="100%" />
           </Panel>
         )}
       </QueryState>

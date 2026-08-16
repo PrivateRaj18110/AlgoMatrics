@@ -2,7 +2,6 @@ import { useState, type ReactNode } from 'react'
 import { Bell, Check, Lock, Mail, Send } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Panel } from '@/components/layout/Panel'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -331,49 +330,48 @@ export default function SettingsPage() {
         </Panel>
       </div>
 
-      {/* Strategy defaults */}
-      <Panel title="Strategy Defaults">
+      {/* Execution authority boundary */}
+      <Panel title="Execution Authority Boundary" actions={<Badge variant="success">Read only</Badge>}>
         <div className="grid gap-x-8 sm:grid-cols-2">
           <SettingRow
-            label="Auto-restart on crash"
-            description="Relaunch a strategy that exits unexpectedly."
-            control={<Switch defaultChecked />}
+            label="Strategy controls"
+            description="AWS dashboard observes strategy state only; start, stop and parameter changes remain on Google."
+            control={<Badge variant="muted">Disabled</Badge>}
           />
           <SettingRow
-            label="Max daily loss per strategy"
-            description="Halt a strategy after this loss."
-            control={<Input defaultValue="2,500" className="w-32 text-right" />}
+            label="Risk limits"
+            description="Risk limits are displayed from telemetry and are not editable from AWS."
+            control={<Badge variant="muted">Disabled</Badge>}
           />
           <SettingRow
-            label="Max open positions"
-            description="Cap concurrent positions per strategy."
-            control={<Input defaultValue="6" className="w-32 text-right" />}
+            label="Order controls"
+            description="BUY, SELL, CLOSE, CANCEL and MODIFY actions are intentionally absent from this dashboard."
+            control={<Badge variant="muted">Absent</Badge>}
           />
           <SettingRow
-            label="Kill switch"
-            description="Flatten all positions on breach."
-            control={<Switch defaultChecked />}
+            label="Broker access"
+            description="AWS does not invoke broker APIs or connect to execution engines."
+            control={<Badge variant="muted">Blocked</Badge>}
           />
         </div>
       </Panel>
 
-      {/* Account / auth placeholder */}
-      <Panel title="Account & Authentication" actions={<Badge variant="muted">Coming soon</Badge>}>
+      {/* Dashboard security mode */}
+      <Panel title="Dashboard Security Mode" actions={<Badge variant="warning">Pre-live</Badge>}>
         <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-muted p-2.5 text-muted-foreground">
               <Lock className="size-5" />
             </div>
             <div>
-              <p className="text-sm font-medium">Supabase Auth</p>
+              <p className="text-sm font-medium">Authenticated dashboard reads</p>
               <p className="text-xs text-muted-foreground">
-                Authentication is architected but intentionally not enabled in this build.
+                REST and WebSocket dashboard access use the configured dashboard token. Per-user
+                JWT/RBAC is not enabled in this AWS pre-live build.
               </p>
             </div>
           </div>
-          <Button variant="outline" disabled>
-            Connect Supabase
-          </Button>
+          <Badge variant="muted">No trading controls</Badge>
         </div>
         <Separator className="my-4" />
         <p className="text-xs text-muted-foreground">Build version v{APP_VERSION}</p>

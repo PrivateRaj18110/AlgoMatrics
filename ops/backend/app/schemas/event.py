@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.schemas.common import Severity
 
 EventCategory = Literal[
-    "trade", "strategy", "machine", "broker", "system", "database", "risk"
+    "trade", "strategy", "machine", "broker", "system", "database", "risk", "data"
 ]
 
 
@@ -20,3 +20,10 @@ class SystemEvent(BaseModel):
     severity: Severity
     source: str
     message: str
+    machineId: str | None = None
+    eventType: str | None = None
+    strategy: str | None = None
+    symbol: str | None = None
+    sessionId: str | None = None
+    sequenceId: int | None = None
+    payloadSummary: str | None = None

@@ -1,0 +1,95 @@
+# PostgreSQL for ops telemetry (machines, events, logs, trades, metrics,
+# sync_state, sessions, dead letters).
+#
+# Deliberately SEPARATE from the platform database. Both the compose file and
+# the previous ops ConfigMap already stated that the ops service must not
+# inherit the platform DATABASE_URL, and that separation is kept here for good
+# reasons: telemetry ingest is a high-write, short-retention workload driven by
+# an external machine, and it must never be able to contend with — or be
+# rolled back alongside — trading data.
+#
+# This is a single-instance StatefulSet suitable for one trading VM's telemetry
+# (~2 MB/day of envelopes, measured). For a managed service (RDS/Cloud SQL),
+# skip this file and point DATABASE_URL in `ops-secrets` at the managed
+# instance instead.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ops-postgres-secrets
+  namespace: algo
+  labels: { app: ops-postgres }
+type: Opaque
+stringData:
+  # Template ONLY — populate via your secret manager at deploy time.
+  # Must match the credentials embedded in ops-secrets.DATABASE_URL.
+  POSTGRES_USER: ""
+  POSTGRES_PASSWORD: ""
+  POSTGRES_DB: "ops_telemetry"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ops-postgres
+  namespace: algo
+  labels: { app: ops-postgres }
+spec:
+  clusterIP: None # headless, for the StatefulSet
+  selector: { app: ops-postgres }
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ops-postgres
+  namespace: algo
+  labels: { app: ops-postgres }
+spec:
+  serviceName: ops-postgres
+  replicas: 1
+  selector:
+    matchLabels: { app: ops-postgres }
+  template:
+    metadata:
+      labels: { app: ops-postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef: { name: ops-postgres-secrets }
+          env:
+            # Keep the data directory a subdirectory of the mount: a PVC root
+            # often contains lost+found, which initdb refuses to use.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: ops-postgres-data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { cpu: "1000m", memory: "1Gi" }
+  volumeClaimTemplates:
+    - metadata:
+        name: ops-postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            # Measured telemetry is ~2 MB/day/agent; 10Gi is years of headroom
+            # with the configured retention. Size up before adding many agents.
+            storage: 10Gi

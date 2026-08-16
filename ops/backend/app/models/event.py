@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, String, Text
+from sqlalchemy import BigInteger, DateTime, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, utcnow
@@ -28,6 +28,15 @@ class Event(Base):
     # Soft reference to machines.id (no hard FK: telemetry ingest must never
     # fail or block on machine row ordering). Indexed for joins/filtering.
     machine_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Phase 3 timeline metadata. These are bounded, dashboard-safe fields; raw
+    # telemetry payloads stay out of this table and are never dumped to clients.
+    event_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    strategy: Mapped[str | None] = mapped_column(String, nullable=True)
+    symbol: Mapped[str | None] = mapped_column(String, nullable=True)
+    session_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    sequence_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    payload_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     __table_args__ = (
@@ -35,4 +44,9 @@ class Event(Base):
         Index("ix_events_time", "time"),
         Index("ix_events_category", "category"),
         Index("ix_events_machine_id", "machine_id"),
+        Index("ix_events_event_type_time", "event_type", "time"),
+        Index("ix_events_session_id", "session_id"),
+        Index("ix_events_strategy", "strategy"),
+        Index("ix_events_symbol", "symbol"),
+        Index("ix_events_severity_time", "severity", "time"),
     )

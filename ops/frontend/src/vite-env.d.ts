@@ -7,6 +7,23 @@ interface ImportMetaEnv {
   readonly VITE_USE_MOCK?: string
   /** Public application version, surfaced in the UI / about screens. */
   readonly VITE_APP_VERSION?: string
+  /**
+   * Viewer credential for REST dashboard APIs. Prefer a per-user platform JWT
+   * when available. If unset, the client falls back to VITE_OPS_WS_TOKEN so one
+   * local/prod dashboard credential can unlock both REST reads and websocket.
+   */
+  readonly VITE_OPS_API_TOKEN?: string
+  /**
+   * Viewer credential for the telemetry websocket (`/api/ws`). Sent in the
+   * `Sec-WebSocket-Protocol` header, never the query string. Without it the
+   * backend refuses the handshake and the live feed stays empty.
+   *
+   * Note: a build-time value is embedded in the bundle, so it authenticates
+   * "a dashboard", not "a person". Where the platform login is available,
+   * configure `OPS_JWT_PUBLIC_KEY` on the backend and supply a per-user
+   * platform access token here instead.
+   */
+  readonly VITE_OPS_WS_TOKEN?: string
 }
 
 interface ImportMeta {

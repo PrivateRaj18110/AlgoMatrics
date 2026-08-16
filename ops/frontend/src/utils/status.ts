@@ -16,6 +16,7 @@ export const STATUS_MAP: Record<Status, StatusDescriptor> = {
   online: { label: 'Online', text: 'text-success', dot: 'bg-success', badge: 'success' },
   degraded: { label: 'Degraded', text: 'text-warning', dot: 'bg-warning', badge: 'warning' },
   offline: { label: 'Offline', text: 'text-danger', dot: 'bg-danger', badge: 'danger' },
+  unknown: { label: 'Unknown', text: 'text-muted-foreground', dot: 'bg-muted-foreground', badge: 'muted' },
 }
 
 export function describeStatus(status: Status): StatusDescriptor {
@@ -26,6 +27,7 @@ export function describeStatus(status: Status): StatusDescriptor {
 export function worstStatus(statuses: Status[]): Status {
   if (statuses.some((s) => s === 'offline')) return 'offline'
   if (statuses.some((s) => s === 'degraded')) return 'degraded'
+  if (statuses.length === 0 || statuses.some((s) => s === 'unknown')) return 'unknown'
   return 'online'
 }
 

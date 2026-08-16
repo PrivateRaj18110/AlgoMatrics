@@ -8,11 +8,16 @@ persisted in this milestone.
 """
 
 from app.models.base import Base, utcnow
+from app.models.dead_letter import DeadLetter
 from app.models.dedup import IngestDedup
+from app.models.eod import EodDataset, EodDatasetFile
 from app.models.event import Event
 from app.models.log import Log
 from app.models.machine import Machine
 from app.models.metric import Metric
+from app.models.quant import QuantReport
+from app.models.session import TradingSession
+from app.models.sync_state import SyncState
 from app.models.trade import Trade
 
 __all__ = [
@@ -23,5 +28,11 @@ __all__ = [
     "Log",
     "Trade",
     "Metric",
+    "QuantReport",
     "IngestDedup",
+    "EodDataset",
+    "EodDatasetFile",
+    "SyncState",
+    "TradingSession",
+    "DeadLetter",
 ]

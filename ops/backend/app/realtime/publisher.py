@@ -12,16 +12,13 @@ import asyncio
 import random
 from datetime import datetime, timezone
 
+from app.core.config import get_settings
 from app.database.session import database_enabled
 from app.realtime.broadcaster import broadcaster
 from app.repositories import build_event, events_repo, machines_repo
 from app.services.agent_service import LIVE_MACHINE_IDS
 
 _rng = random.Random()
-
-# A live agent machine is considered offline if no heartbeat for this long.
-_LIVE_STALE_AFTER_SEC = 20.0
-
 
 def _jitter(value: float, delta: float, lo: float, hi: float) -> float:
     return round(max(lo, min(hi, value + (_rng.random() - 0.5) * 2 * delta)))
@@ -62,10 +59,15 @@ async def publish_loop(interval: float = 3.0) -> None:
                 # Mutating dicts returned by list() mutates the stored records.
                 for m in machines_repo.list():
                     if m.get("id") in LIVE_MACHINE_IDS:
-                        if _age_seconds(m.get("lastHeartbeat")) > _LIVE_STALE_AFTER_SEC:
+                        settings = get_settings()
+                        age = _age_seconds(m.get("lastHeartbeat"))
+                        if age > settings.heartbeat_offline_after_seconds:
                             m["status"] = "offline"
                             m["pythonStatus"] = "offline"
                             m["cpu"] = 0
+                        elif age > settings.heartbeat_degraded_after_seconds:
+                            m["status"] = "degraded"
+                            m["pythonStatus"] = "degraded"
                         continue
                     if m["status"] == "offline":
                         continue

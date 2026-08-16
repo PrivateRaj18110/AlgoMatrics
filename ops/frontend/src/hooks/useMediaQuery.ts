@@ -12,9 +12,12 @@ export function useMediaQuery(query: string): boolean {
   useEffect(() => {
     const mql = window.matchMedia(query)
     const handler = (e: MediaQueryListEvent) => setMatches(e.matches)
-    setMatches(mql.matches)
+    const timer = window.setTimeout(() => setMatches(mql.matches), 0)
     mql.addEventListener('change', handler)
-    return () => mql.removeEventListener('change', handler)
+    return () => {
+      window.clearTimeout(timer)
+      mql.removeEventListener('change', handler)
+    }
   }, [query])
 
   return matches

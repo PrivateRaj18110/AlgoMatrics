@@ -11,6 +11,7 @@ import { MOCK_LATENCY_MS } from '@/utils/constants'
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? ''
+const OPS_API_TOKEN = import.meta.env.VITE_OPS_API_TOKEN ?? import.meta.env.VITE_OPS_WS_TOKEN ?? ''
 
 export const USE_MOCK =
   import.meta.env.VITE_USE_MOCK === 'true' || API_BASE_URL === ''
@@ -39,11 +40,36 @@ export class ApiError extends Error {
   }
 }
 
+function requestHeaders(initHeaders?: HeadersInit, includeJson = true): Headers {
+  const headers = new Headers(initHeaders)
+  if (includeJson && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+  if (OPS_API_TOKEN && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${OPS_API_TOKEN}`)
+  }
+  return headers
+}
+
 /** Real GET request used once a live backend is wired up. */
 export async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers: requestHeaders(init?.headers),
+  })
+  if (!res.ok) {
+    throw new ApiError(`Request to ${path} failed`, res.status)
+  }
+  return (await res.json()) as T
+}
+
+/** Real JSON POST request used by bounded compute endpoints. */
+export async function apiPost<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+    ...init,
+    headers: requestHeaders(init?.headers),
   })
   if (!res.ok) {
     throw new ApiError(`Request to ${path} failed`, res.status)

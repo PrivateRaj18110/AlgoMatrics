@@ -9,6 +9,7 @@ export type EventCategory =
   | 'system'
   | 'database'
   | 'risk'
+  | 'data'
 
 /** A single line in the Bloomberg-style live event terminal. */
 export interface SystemEvent {
@@ -20,4 +21,11 @@ export interface SystemEvent {
   /** Originating machine / strategy / broker label. */
   source: string
   message: string
+  machineId?: string | null
+  eventType?: string | null
+  strategy?: string | null
+  symbol?: string | null
+  sessionId?: string | null
+  sequenceId?: number | null
+  payloadSummary?: string | null
 }

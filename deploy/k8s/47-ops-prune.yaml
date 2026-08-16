@@ -1,0 +1,80 @@
+# Nightly retention job for the ingestion idempotency table.
+#
+# `ingest_dedup` gains one row per ingested envelope and is never cleaned up by
+# the request path, so without this it grows without bound and slowly degrades
+# every insert.
+#
+# Retention is a CORRECTNESS setting, not just housekeeping: an envelope
+# replayed after its dedup row is pruned would be processed a second time. The
+# window (INGEST_DEDUP_RETENTION_DAYS, default 7) must exceed the agent's longest
+# realistic offline period. Its durable queue holds 100,000 envelopes — roughly
+# 14 trading sessions — so raise the window before tolerating a longer outage.
+#
+# Scheduled at 01:20 UTC: after the Indian market close and before the AI-CIO
+# pipeline's 02:00 run, so the two do not contend.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ops-prune-dedup
+  namespace: algo
+  labels: { app: ops-api }
+spec:
+  schedule: "20 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: prune-dedup
+              image: ghcr.io/algo-matrics/ops-api:latest # pin to the release tag
+              command: ["python", "-m", "scripts.prune_dedup"]
+              envFrom:
+                - configMapRef: { name: ops-config }
+                - secretRef: { name: ops-secrets }
+              resources:
+                requests: { cpu: "50m", memory: "128Mi" }
+                limits: { cpu: "500m", memory: "256Mi" }
+---
+# Disabled-by-default retention for ops telemetry/EOD/quant tables.
+#
+# Unlike ingest_dedup, these policies are destructive housekeeping, not request
+# correctness. Every retention variable defaults to 0 (disabled). Enable only
+# after a dry-run review:
+#
+#   kubectl -n algo create job --from=cronjob/ops-prune-retention ops-retention-dry-run
+#   kubectl -n algo logs job/ops-retention-dry-run
+#
+# To dry-run manually, override command to:
+#   python -m scripts.prune_retention --dry-run --json
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ops-prune-retention
+  namespace: algo
+  labels: { app: ops-api }
+spec:
+  schedule: "35 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: prune-retention
+              image: ghcr.io/algo-matrics/ops-api:latest # pin to the release tag
+              command: ["python", "-m", "scripts.prune_retention"]
+              envFrom:
+                - configMapRef: { name: ops-config }
+                - secretRef: { name: ops-secrets }
+              resources:
+                requests: { cpu: "50m", memory: "128Mi" }
+                limits: { cpu: "500m", memory: "256Mi" }

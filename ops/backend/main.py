@@ -43,6 +43,14 @@ def create_app() -> FastAPI:
     """Application factory — builds and configures the FastAPI instance."""
     settings = get_settings()
 
+    # Refuse to serve a production configuration that would be unsafe: no
+    # database (telemetry lost on restart, deduplication disabled), no agent
+    # credential (open telemetry write path), or no dashboard credential (open
+    # telemetry read path). Raising here stops the container before it binds,
+    # which is the point — the alternative is a healthy-looking service quietly
+    # doing the wrong thing.
+    settings.assert_production_ready()
+
     app = FastAPI(
         title=settings.app_name,
         version=settings.version,

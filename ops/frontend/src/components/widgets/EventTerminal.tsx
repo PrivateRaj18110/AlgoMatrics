@@ -14,6 +14,7 @@ const CATEGORY_STYLE: Record<EventCategory, string> = {
   system: 'text-muted-foreground bg-muted',
   database: 'text-warning bg-warning/10',
   risk: 'text-danger bg-danger/10',
+  data: 'text-chart-1 bg-chart-1/10',
 }
 
 /** Severity drives the message colour. */
@@ -60,7 +61,14 @@ export const EventTerminal = memo(function EventTerminal({
               {e.category}
             </span>
             <span className="w-32 shrink-0 truncate text-muted-foreground">{e.source}</span>
-            <span className={cn('min-w-0 flex-1', SEVERITY_TEXT[e.severity])}>{e.message}</span>
+            <span className={cn('min-w-0 flex-1', SEVERITY_TEXT[e.severity])}>
+              {e.message}
+              {(e.eventType || e.symbol || e.sessionId || e.payloadSummary) && (
+                <span className="ml-2 text-muted-foreground">
+                  {[e.eventType, e.symbol, e.sessionId, e.payloadSummary].filter(Boolean).join(' · ')}
+                </span>
+              )}
+            </span>
           </div>
         ))}
       </div>

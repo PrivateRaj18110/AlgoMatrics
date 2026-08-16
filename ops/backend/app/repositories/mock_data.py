@@ -425,7 +425,7 @@ _LOG_TEMPLATES = [
     ("strategy", "warn", "GRID", "Grid level 7 reached — pausing new entries"),
     ("strategy", "error", "GRID", "Strategy exited unexpectedly with code 1"),
     ("python", "debug", "monitor_sdk", "heartbeat() flushed 1 metric batch"),
-    ("python", "info", "runtime", "Python 3.12.4 runtime started, pid=20488"),
+    ("python", "info", "runtime", "Python 3.13 runtime started, pid=20488"),
     ("python", "error", "asyncio", "Task exception: ConnectionResetError(10054)"),
     ("broker", "info", "mt5.bridge", "MT5 terminal connected — ICMarkets-Live12"),
     ("broker", "warn", "mt5.bridge", "Requote on order #88213, retrying"),

@@ -26,4 +26,23 @@ export interface Machine {
   lastHeartbeat: string
   /** Number of strategies hosted on this machine. */
   strategyCount: number
+  agentId?: string | null
+  agentVersion?: string | null
+  hostname?: string | null
+  environment?: string | null
+  lastEvent?: string | null
+  lastTrade?: string | null
+  lastError?: string | null
+  lastSuccessfulUpload?: string | null
+  queueDepth?: number | null
+  oldestPendingAgeSec?: number | null
+  transportState?: string | null
+  currentSessionId?: string | null
+  tradingProcessState?: string | null
+  lastEodSync?: string | null
+  lastEodStatus?: string | null
+  recoveryState?: string | null
+  lastRecovery?: string | null
+  eventsRecovered?: number | null
+  eodBacklog?: number | null
 }

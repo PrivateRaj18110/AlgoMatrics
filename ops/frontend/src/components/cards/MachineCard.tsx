@@ -29,6 +29,10 @@ function Metric({ icon, label, value, tone }: { icon: React.ReactNode; label: st
 /** Machine health card: resources, connectivity, runtime and heartbeat. */
 export const MachineCard = memo(function MachineCard({ machine, className }: MachineCardProps) {
   const offline = machine.status === 'offline'
+  const inactive = offline || machine.status === 'unknown'
+  const heartbeatLabel = machine.lastHeartbeat
+    ? `Heartbeat ${formatRelativeTime(machine.lastHeartbeat)}`
+    : 'Heartbeat unknown'
 
   return (
     <Card className={cn('flex flex-col gap-3 p-4', className)}>
@@ -58,12 +62,12 @@ export const MachineCard = memo(function MachineCard({ machine, className }: Mac
         <Metric
           icon={<Wifi className="size-3.5" />}
           label="Internet"
-          value={offline ? '—' : formatLatency(machine.internetMs)}
+          value={inactive ? '—' : formatLatency(machine.internetMs)}
         />
         <Metric
           icon={<Gauge className="size-3.5" />}
           label="Broker"
-          value={offline ? '—' : formatLatency(machine.brokerPingMs)}
+          value={inactive ? '—' : formatLatency(machine.brokerPingMs)}
         />
         <Metric
           icon={<Thermometer className="size-3.5" />}
@@ -78,13 +82,38 @@ export const MachineCard = memo(function MachineCard({ machine, className }: Mac
         />
       </div>
 
+      {(machine.queueDepth != null || machine.currentSessionId || machine.transportState) && (
+        <div className="grid grid-cols-2 gap-1.5">
+          <Metric
+            icon={<Activity className="size-3.5" />}
+            label="Queue"
+            value={machine.queueDepth != null ? String(machine.queueDepth) : 'n/a'}
+          />
+          <Metric
+            icon={<Server className="size-3.5" />}
+            label="Transport"
+            value={machine.transportState ?? 'n/a'}
+          />
+          <Metric
+            icon={<Gauge className="size-3.5" />}
+            label="Session"
+            value={machine.currentSessionId ?? 'n/a'}
+          />
+          <Metric
+            icon={<Activity className="size-3.5" />}
+            label="Trading"
+            value={machine.tradingProcessState ?? 'n/a'}
+          />
+        </div>
+      )}
+
       {/* Footer: heartbeat + uptime */}
       <div className="mt-auto flex items-center justify-between border-t border-border pt-2.5 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <StatusDot status={machine.status} />
-          {offline ? 'No heartbeat' : `Heartbeat ${formatRelativeTime(machine.lastHeartbeat)}`}
+          {offline ? 'No heartbeat' : heartbeatLabel}
         </span>
-        <span className="tabular">{offline ? 'Down' : `Up ${formatUptime(machine.uptimeSec)}`}</span>
+        <span className="tabular">{inactive ? describeStatus(machine.status).label : `Up ${formatUptime(machine.uptimeSec)}`}</span>
       </div>
     </Card>
   )

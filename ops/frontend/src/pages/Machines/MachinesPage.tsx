@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { MachineCard } from '@/components/cards/MachineCard'
 import { QueryState } from '@/components/common/QueryState'
@@ -49,7 +50,9 @@ export default function MachinesPage() {
         {(data) => (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {data.map((m) => (
-              <MachineCard key={m.id} machine={m} />
+              <Link key={m.id} to={`/monitoring/${m.id}`} className="block">
+                <MachineCard machine={m} />
+              </Link>
             ))}
           </div>
         )}
