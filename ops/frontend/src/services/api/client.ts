@@ -11,7 +11,6 @@ import { MOCK_LATENCY_MS } from '@/utils/constants'
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? ''
-const OPS_API_TOKEN = import.meta.env.VITE_OPS_API_TOKEN ?? import.meta.env.VITE_OPS_WS_TOKEN ?? ''
 
 export const USE_MOCK =
   import.meta.env.VITE_USE_MOCK === 'true' || API_BASE_URL === ''
@@ -44,9 +43,6 @@ function requestHeaders(initHeaders?: HeadersInit, includeJson = true): Headers 
   const headers = new Headers(initHeaders)
   if (includeJson && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
-  }
-  if (OPS_API_TOKEN && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${OPS_API_TOKEN}`)
   }
   return headers
 }
