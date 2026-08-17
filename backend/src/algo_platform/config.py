@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # HTTP port on which background processes expose their Prometheus registry.
     metrics_port: int = Field(default=9100, ge=1, le=65535)
 
+    # Read-only ops telemetry Postgres (Google ingest). Unset => empty operations APIs.
+    ops_database_url: str | None = None
+
     database_url: str
     database_pool_size: int = Field(default=10, ge=1, le=100)
     redis_url: str

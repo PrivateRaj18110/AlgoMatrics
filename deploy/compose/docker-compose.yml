@@ -19,6 +19,7 @@ x-backend-env: &backend-env
     # engine (shadow gate) consume it; other backend services ignore it. Set here
     # (not via .env) because this is the fixed in-container path.
     AICIO_DUCKDB_PATH: /data/aicio.duckdb
+    OPS_DATABASE_URL: "${OPS_DATABASE_URL:-}"
   read_only: true
   tmpfs:
     - /tmp

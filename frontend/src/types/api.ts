@@ -749,3 +749,95 @@ export interface SystemHealth {
   engine_heartbeat_age_seconds: number | null;
   active_runs: number;
 }
+
+export interface OpsOverview {
+  machine_count: number | null;
+  online_machines: number | null;
+  closed_trade_count: number | null;
+  total_pnl: number | null;
+  awaiting_telemetry: boolean;
+}
+
+export interface OpsMachine {
+  id: string;
+  name: string;
+  hostname: string | null;
+  agent_id: string | null;
+  status: string | null;
+  cpu: number | null;
+  ram: number | null;
+  disk: number | null;
+  last_heartbeat: string | null;
+  last_successful_upload: string | null;
+  queue_depth: number | null;
+  oldest_pending_age_sec: number | null;
+}
+
+export interface OpsEvent {
+  id: string;
+  time: string | null;
+  received_at: string | null;
+  category: string | null;
+  severity: string | null;
+  source: string | null;
+  message: string | null;
+  machine_id: string | null;
+  event_type: string | null;
+  strategy: string | null;
+  symbol: string | null;
+  payload_summary: string | null;
+  level?: string | null;
+}
+
+export interface OpsTrade {
+  id: string;
+  time: string | null;
+  strategy: string | null;
+  machine: string | null;
+  machine_id: string | null;
+  broker: string | null;
+  account: string | null;
+  symbol: string | null;
+  direction: string | null;
+  entry: number | null;
+  exit: number | null;
+  quantity: number | null;
+  pnl: number | null;
+  latency_ms: number | null;
+  duration_sec: number | null;
+  status: string | null;
+}
+
+export interface OpsStrategyRow {
+  strategy_id: string;
+  strategy_name: string;
+  machine_id: string | null;
+  status: string | null;
+  last_heartbeat: string | null;
+  symbols: string[];
+  trade_count: number | null;
+  total_pnl: number | null;
+  win_rate: number | null;
+  avg_latency_ms: number | null;
+}
+
+export interface OpsSymbolRow {
+  strategy_name: string;
+  symbol: string;
+  underlying: string | null;
+  instrument: string | null;
+  expiry: string | null;
+  strike: string | null;
+  option_type: string | null;
+  metadata_available: boolean;
+  trade_count: number | null;
+  pnl: number | null;
+  win_rate: number | null;
+}
+
+export interface OpsAnalytics {
+  strategies: OpsStrategyRow[];
+  symbols: OpsSymbolRow[];
+  option_metadata: string;
+}
+

@@ -22,6 +22,20 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: "/app/dashboard", label: "Dashboard", icon: "M3 12l9-9 9 9M5 10v10h14V10" },
   { to: "/app/strategies", label: "Strategies", icon: "M4 6h16M4 12h16M4 18h10" },
+  { to: "/app/engine-strategies", label: "Engine strategies", icon: "M5 5h14v4H5zM5 11h14v8H5z" },
+  {
+    to: "/app/marketplace",
+    label: "Marketplace",
+    icon: "M3 9l1-4h16l1 4M4 9v11h16V9M9 13h6",
+    flag: "marketplace",
+  },
+  { to: "/app/trading", label: "Trading", icon: "M3 3v18h18M7 14l4-4 3 3 5-6" },
+  { to: "/app/closed-trades", label: "Closed trades", icon: "M4 6h16M4 12h10M4 18h7" },
+  { to: "/app/machines", label: "Machines", icon: "M4 6h16v12H4zM8 18v2M16 18v2" },
+  { to: "/app/events", label: "Events", icon: "M12 8v4l3 3M5 12a7 7 0 1014 0 7 7 0 00-14 0z" },
+  { to: "/app/execution", label: "Execution", icon: "M5 12h14M13 6l6 6-6 6" },
+  { to: "/app/logs", label: "Logs", icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
+  { to: "/app/alerts", label: "Alerts", icon: "M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z" },
   {
     to: "/app/marketplace",
     label: "Marketplace",

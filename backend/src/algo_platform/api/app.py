@@ -258,6 +258,9 @@ def _include_routers(app: FastAPI) -> None:
     from algo_platform.modules.notifications.presentation.router import (
         router as notifications_router,
     )
+    from algo_platform.modules.operations.presentation.router import (
+        router as operations_router,
+    )
     from algo_platform.modules.organizations.presentation.router import (
         router as organizations_router,
     )
@@ -291,6 +294,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(billing_router, prefix=prefix)
     app.include_router(billing_webhooks_router, prefix=prefix)
     app.include_router(notifications_router, prefix=prefix)
+    app.include_router(operations_router, prefix=prefix)
     app.include_router(mobile_router, prefix=prefix)
     app.include_router(brokerage_router, prefix=prefix)
     app.include_router(market_data_router, prefix=prefix)

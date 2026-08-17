@@ -55,6 +55,12 @@ import type {
   Quote,
   RiskEvent,
   RiskLimits,
+  OpsAnalytics,
+  OpsEvent,
+  OpsMachine,
+  OpsOverview,
+  OpsStrategyRow,
+  OpsTrade,
   Strategy,
   StrategyLog,
   StrategyRun,
@@ -826,3 +832,76 @@ export function useAdminVenueInstruments() {
       }),
   });
 }
+
+export function useOpsOverview() {
+  return useQuery({
+    queryKey: ["ops-overview", orgKey()],
+    queryFn: () => api<OpsOverview>("/operations/overview"),
+    refetchInterval: 15000,
+  });
+}
+
+export function useOpsMachines() {
+  return useQuery({
+    queryKey: ["ops-machines", orgKey()],
+    queryFn: () => api<OpsMachine[]>("/operations/machines"),
+    refetchInterval: 15000,
+  });
+}
+
+export function useOpsEvents(filters: { event_type?: string } = {}) {
+  return useQuery({
+    queryKey: ["ops-events", orgKey(), filters],
+    queryFn: () => api<OpsEvent[]>("/operations/events", { query: filters }),
+    refetchInterval: 15000,
+  });
+}
+
+export function useOpsLogs() {
+  return useQuery({
+    queryKey: ["ops-logs", orgKey()],
+    queryFn: () => api<OpsEvent[]>("/operations/logs"),
+    refetchInterval: 20000,
+  });
+}
+
+export function useOpsAlerts() {
+  return useQuery({
+    queryKey: ["ops-alerts", orgKey()],
+    queryFn: () => api<OpsEvent[]>("/operations/alerts"),
+    refetchInterval: 15000,
+  });
+}
+
+export function useOpsOrders() {
+  return useQuery({
+    queryKey: ["ops-orders", orgKey()],
+    queryFn: () => api<OpsEvent[]>("/operations/orders"),
+    refetchInterval: 15000,
+  });
+}
+
+export function useOpsTrades() {
+  return useQuery({
+    queryKey: ["ops-engine-trades", orgKey()],
+    queryFn: () => api<OpsTrade[]>("/operations/trades"),
+    refetchInterval: 15000,
+  });
+}
+
+export function useOpsStrategies() {
+  return useQuery({
+    queryKey: ["ops-engine-strategies", orgKey()],
+    queryFn: () => api<OpsStrategyRow[]>("/operations/strategies"),
+    refetchInterval: 20000,
+  });
+}
+
+export function useOpsAnalytics(strategy?: string) {
+  return useQuery({
+    queryKey: ["ops-engine-analytics", orgKey(), strategy],
+    queryFn: () =>
+      api<OpsAnalytics>("/operations/analytics", { query: { strategy } }),
+  });
+}
+

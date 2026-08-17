@@ -24,6 +24,17 @@ import { TradingPage } from "@/pages/TradingPage";
 import { WatchlistsPage } from "@/pages/WatchlistsPage";
 import { VerifyEmailPage } from "@/pages/auth/VerifyEmailPage";
 import { AcceptInvitationPage } from "@/pages/auth/AcceptInvitationPage";
+import {
+  ClosedTradesPage,
+  EngineAnalyticsPage,
+  EngineOrdersPage,
+  EngineStrategiesPage,
+  EngineStrategySymbolsRoute,
+  EventsPage,
+  LogsPage,
+  MachinesPage,
+  TelemetryAlertsPage,
+} from "@/pages/operations/OperationsPages";
 
 export const router: RouteObject[] = [
   // The marketing landing page was removed; the site root is now the login page.
@@ -52,6 +63,15 @@ export const router: RouteObject[] = [
       { path: "/app/dashboard", element: <DashboardPage /> },
       { path: "/app/strategies", element: <StrategiesPage /> },
       { path: "/app/strategies/:strategyId", element: <StrategyDetailPage /> },
+      { path: "/app/engine-strategies", element: <EngineStrategiesPage /> },
+      { path: "/app/engine-strategies/:strategyName", element: <EngineStrategySymbolsRoute /> },
+      { path: "/app/machines", element: <MachinesPage /> },
+      { path: "/app/events", element: <EventsPage /> },
+      { path: "/app/closed-trades", element: <ClosedTradesPage /> },
+      { path: "/app/execution", element: <EngineOrdersPage /> },
+      { path: "/app/logs", element: <LogsPage /> },
+      { path: "/app/alerts", element: <TelemetryAlertsPage /> },
+      { path: "/app/engine-analytics", element: <EngineAnalyticsPage /> },
       { path: "/app/marketplace", element: <MarketplacePage /> },
       { path: "/app/assistant", element: <AssistantPage /> },
       { path: "/app/brokers", element: <Navigate to="/app/settings/brokers" replace /> },

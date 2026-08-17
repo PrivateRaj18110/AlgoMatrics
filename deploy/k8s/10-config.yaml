@@ -34,6 +34,8 @@ metadata:
 type: Opaque
 stringData:
   DATABASE_URL: "postgresql+asyncpg://USER:PASSWORD@postgres:5432/algo"
+  # Optional read-only URL for Google telemetry (ops Postgres). Empty => /operations APIs return [].
+  OPS_DATABASE_URL: ""
   REDIS_URL: "redis://redis:6379/0"
   JWT_PRIVATE_KEY_PEM: "REPLACE_ME"
   JWT_PUBLIC_KEY_PEM: "REPLACE_ME"
