@@ -162,8 +162,12 @@ def _aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
-def _iso(dt: datetime | None) -> str:
-    return _aware(dt).isoformat() if dt is not None else ""
+def _iso(dt: datetime | None) -> str | None:
+    """UTC ISO-8601 with a Z suffix. None stays None (unknown, not epoch)."""
+    if dt is None:
+        return None
+    aware = _aware(dt).astimezone(timezone.utc)
+    return aware.isoformat().replace("+00:00", "Z")
 
 
 def _parse_iso(value: Any) -> datetime | None:
@@ -253,7 +257,8 @@ def _event_to_dict(e: Event) -> dict[str, Any]:
             "severity": e.severity, "source": e.source, "message": e.message,
             "machineId": e.machine_id, "eventType": e.event_type,
             "strategy": e.strategy, "symbol": e.symbol, "sessionId": e.session_id,
-            "sequenceId": e.sequence_id, "payloadSummary": e.payload_summary}
+            "sequenceId": e.sequence_id, "payloadSummary": e.payload_summary,
+            "receivedAt": _iso(e.created_at)}
 
 
 def _log_to_dict(row: Log) -> dict[str, Any]:

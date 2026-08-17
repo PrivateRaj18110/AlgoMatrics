@@ -1,3 +1,5 @@
+import { formatTradingTime } from "@/lib/time";
+
 const currencySymbols: Record<string, string> = {
   INR: "₹",
   USD: "$",
@@ -43,27 +45,19 @@ export function signed(value: string | number | null | undefined, currency = "IN
 }
 
 export function dateTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "—";
-  return parsed.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatTradingTime(value);
 }
 
 export function dateOnly(value: string | null | undefined): string {
   if (!value) return "—";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "—";
-  return parsed.toLocaleDateString(undefined, {
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
     year: "numeric",
     month: "short",
     day: "numeric",
-  });
+  }).format(parsed);
 }
 
 export function timeAgo(value: string | null | undefined): string {

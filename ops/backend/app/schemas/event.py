@@ -28,3 +28,4 @@ class SystemEvent(BaseModel):
     sequenceId: int | None = None
     payloadSummary: str | None = None
     sourceEventType: str | None = None
+    receivedAt: str | None = None

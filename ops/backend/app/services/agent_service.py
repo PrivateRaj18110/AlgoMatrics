@@ -112,7 +112,7 @@ def _next_id(prefix: str) -> str:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _ack(kind: str, processed: int = 1, machine_id: str | None = None) -> AgentAck:
@@ -180,6 +180,7 @@ async def _emit_event(
         "sessionId": session_id, "sequenceId": sequence_id,
         "payloadSummary": payload_summary,
         "sourceEventType": source_event_type,
+        "receivedAt": _now_iso(),
     }
     events_repo.prepend(event)
     await broadcaster.broadcast({"type": "event", "payload": _public_event(event)})
@@ -253,9 +254,9 @@ async def handle_register(p: AgentRegister) -> AgentAck:
     machine = {
         "id": mid, "name": p.machine, "location": p.location or "Live agent",
         "provider": p.provider or "Raj Local Agent", "status": "online",
-        "cpu": 0.0, "ram": 0.0, "disk": 0.0, "temperatureC": None,
-        "internetMs": 0.0, "brokerPingMs": 0.0, "pythonStatus": "online",
-        "uptimeSec": 0, "lastHeartbeat": _now_iso(), "strategyCount": 0,
+        "temperatureC": None,
+        "pythonStatus": "online",
+        "lastHeartbeat": _now_iso(), "strategyCount": None,
         "live": True, "agentId": p.agentId, "agentVersion": p.sdkVersion,
         "hostname": p.hostname or p.machine, "environment": p.environment or "",
         "transportState": "registered",
@@ -284,17 +285,34 @@ async def _apply_machine_telemetry(machine: str, t: dict[str, Any]) -> str:
         # register call had not landed was silently dropped and the machine
         # never appeared on the dashboard.
         await handle_register(AgentRegister(agentId=t.get("agentId") or mid, machine=machine))
-    changes = {
-        "cpu": round(float(t.get("cpu", 0.0)), 1),
-        "ram": round(float(t.get("ram", 0.0)), 1),
-        "disk": round(float(t.get("disk", 0.0)), 1),
-        "internetMs": round(float(t.get("internetMs", 0.0)), 1),
-        "brokerPingMs": round(float(t.get("brokerPingMs", t.get("latencyMs", 0.0))), 1),
-        "uptimeSec": int(t.get("uptimeSec", 0)),
+    def _reported_float(*keys: str) -> float | None:
+        for key in keys:
+            if key in t and t[key] is not None:
+                return round(float(t[key]), 1)
+        return None
+
+    changes: dict[str, Any] = {
         "pythonStatus": "online",
         "lastHeartbeat": t.get("ts") or _now_iso(),
         "status": _status_from_health(t.get("health")),
     }
+    cpu = _reported_float("cpu")
+    ram = _reported_float("ram")
+    disk = _reported_float("disk")
+    internet = _reported_float("internetMs")
+    broker_ping = _reported_float("brokerPingMs", "latencyMs")
+    if cpu is not None:
+        changes["cpu"] = cpu
+    if ram is not None:
+        changes["ram"] = ram
+    if disk is not None:
+        changes["disk"] = disk
+    if internet is not None:
+        changes["internetMs"] = internet
+    if broker_ping is not None:
+        changes["brokerPingMs"] = broker_ping
+    if t.get("uptimeSec") is not None:
+        changes["uptimeSec"] = int(t["uptimeSec"])
     optional_fields = {
         "agentId": t.get("agentId"),
         "hostname": t.get("hostname"),
@@ -393,26 +411,34 @@ async def _handle_trade(machine: str, strategy: str, data: dict[str, Any],
                       event_time=event_time)
     _log("strategy", "info", strategy,
          f"trade() {data.get('symbol', '')} {action} pnl={pnl}", envelope_id=env_id, machine_id=mid)
-    trade = _persist_trade(machine, strategy, data, env_id, mid, account)
+    trade = _persist_trade(machine, strategy, data, env_id, mid, account, event_time=event_time)
     if trade is not None:
         await _broadcast_trade(trade)
 
 
 def _persist_trade(machine: str, strategy: str, data: dict[str, Any],
-                   env_id: str | None, mid: str | None, account: str | None) -> dict | None:
+                   env_id: str | None, mid: str | None, account: str | None,
+                   event_time: str | None = None) -> dict | None:
     """Append a trade to the blotter (open/close/cancelled/rejected only)."""
     action = str(data.get("action", "close"))
     status = _TRADE_STATUS.get(action)
     if status is None:  # modify / pending are not blotter rows
         return None
+    def _present(key: str, *alts: str) -> Any:
+        for name in (key, *alts):
+            if name in data and data[name] is not None:
+                return data[name]
+        return None
+
     trade = {
-        "id": _next_id("trd"), "envelope_id": env_id, "time": _now_iso(),
+        "id": _next_id("trd"), "envelope_id": env_id, "time": event_time or _now_iso(),
         "strategy": strategy, "machine": machine, "machine_id": mid,
         "broker": data.get("broker") or "", "account": account or "",
         "symbol": data.get("symbol", ""), "direction": str(data.get("direction", "long")).lower(),
-        "action": action, "entry": data.get("entry", 0.0), "exit": data.get("exit"),
-        "quantity": data.get("quantity", 0.0), "pnl": data.get("pnl", 0.0),
-        "latencyMs": data.get("latencyMs", 0.0), "durationSec": data.get("durationSec", 0),
+        "action": action, "entry": _present("entry"), "exit": _present("exit"),
+        "quantity": _present("quantity"), "pnl": _present("pnl"),
+        "latencyMs": _present("latencyMs", "latency_ms"),
+        "durationSec": _present("durationSec", "duration_sec"),
         "status": status,
     }
     trades_repo.insert(trade)
