@@ -4,6 +4,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .pytest-tmp/
+.pytest_sqlite/
 .ruff_cache/
 .mypy_cache/
 .coverage

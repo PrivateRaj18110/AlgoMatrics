@@ -28,4 +28,5 @@ export interface SystemEvent {
   sessionId?: string | null
   sequenceId?: number | null
   payloadSummary?: string | null
+  sourceEventType?: string | null
 }

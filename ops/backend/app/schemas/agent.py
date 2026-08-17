@@ -10,7 +10,7 @@ endpoints exist for direct testing and finer-grained posting.
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 
 class AgentRegister(BaseModel):
@@ -67,14 +67,22 @@ class Envelope(BaseModel):
     tracking without a protocol bump.
     """
 
-    id: str | None = None
-    kind: str
-    ts: str | None = None
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    id: str | None = Field(default=None, validation_alias=AliasChoices("id", "event_id", "eventId"))
+    kind: str | None = None
+    ts: str | None = Field(default=None, validation_alias=AliasChoices("ts", "timestamp", "event_time"))
     strategy: str = "unknown"
     machine: str = "unknown"
     account: str | None = None
     protocol: int = 1
     data: dict[str, Any] = Field(default_factory=dict)
+
+    # Google DataAgent / RajBridge fields. Additive — a shipped agent omits them.
+    event_type: str | None = None
+    source_event_type: str | None = None
+    source: str | None = None
+    agent_id: str | None = Field(default=None, validation_alias=AliasChoices("agent_id", "agentId"))
 
     # --- Additive (Phase 2). Optional for backward compatibility. ----------
     # Monotonic per (machine, agent). Enables gap detection; NOT a dedup key —
@@ -91,6 +99,51 @@ class Envelope(BaseModel):
     session_id: str | None = Field(
         default=None, description="Trading session this envelope belongs to."
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_data_agent_shape(cls, value: Any) -> Any:
+        """Accept Google DataEventEnvelope keys without renaming the wire contract.
+
+        ``kind`` / ``data`` stay the shipped-agent names. When they are absent,
+        ``event_type`` / ``payload`` / ``event_id`` are copied in. When both
+        ``kind`` and ``event_type`` are present they are kept independently so
+        classification can prefer the Google type over a wrapper kind.
+        """
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        payload = data.get("payload")
+        if not data.get("data") and isinstance(payload, dict):
+            data["data"] = payload
+        if not data.get("id"):
+            data["id"] = data.get("event_id") or data.get("eventId")
+        if (not data.get("machine") or data.get("machine") == "unknown") and (
+            data.get("machine_id") or data.get("machineId")
+        ):
+            data["machine"] = data.get("machine_id") or data.get("machineId")
+        inner = data.get("data") if isinstance(data.get("data"), dict) else {}
+        if not data.get("event_type"):
+            data["event_type"] = (
+                inner.get("event_type") or inner.get("eventType") or data.get("eventType")
+            )
+        if not data.get("source_event_type"):
+            data["source_event_type"] = (
+                inner.get("source_event_type")
+                or inner.get("sourceEventType")
+                or data.get("sourceEventType")
+            )
+        if not data.get("kind"):
+            data["kind"] = data.get("event_type") or data.get("source_event_type")
+        if not data.get("agent_id"):
+            data["agent_id"] = data.get("agentId")
+        return data
+
+    @model_validator(mode="after")
+    def _require_kind_or_event_type(self) -> "Envelope":
+        if not (self.kind or self.event_type or self.source_event_type):
+            raise ValueError("envelope requires kind, event_type, or source_event_type")
+        return self
 
 
 class AgentBatch(BaseModel):

@@ -49,6 +49,7 @@ from app.schemas.agent import (
     Envelope,
     EnvelopeOutcome,
 )
+from app.services.telemetry_classification import resolve_dispatch_kind
 
 # Ingest observability. Never logs payload bodies or credentials — only
 # identifiers, kinds and outcomes.
@@ -142,6 +143,7 @@ def _public_event(event: dict) -> dict:
         "strategy": event.get("strategy"), "symbol": event.get("symbol"),
         "sessionId": event.get("session_id"), "sequenceId": event.get("sequence_id"),
         "payloadSummary": event.get("payload_summary"),
+        "sourceEventType": event.get("source_event_type"),
     }
 
 
@@ -164,6 +166,7 @@ async def _emit_event(
     sequence_id: int | None = None,
     payload_summary: str | None = None,
     event_time: str | None = None,
+    source_event_type: str | None = None,
 ) -> dict:
     event = {
         "id": _next_id("evt"), "time": event_time or _now_iso(), "category": category,
@@ -172,9 +175,11 @@ async def _emit_event(
         "event_type": event_type, "strategy": strategy, "symbol": symbol,
         "session_id": session_id, "sequence_id": sequence_id,
         "payload_summary": payload_summary,
+        "source_event_type": source_event_type,
         "machineId": machine_id, "eventType": event_type,
         "sessionId": session_id, "sequenceId": sequence_id,
         "payloadSummary": payload_summary,
+        "sourceEventType": source_event_type,
     }
     events_repo.prepend(event)
     await broadcaster.broadcast({"type": "event", "payload": _public_event(event)})
@@ -190,6 +195,22 @@ def _log(source: str, level: str, logger: str, message: str,
     })
 
 
+def _public_trade(trade: dict) -> dict:
+    return {
+        "id": trade["id"], "time": trade["time"], "strategy": trade.get("strategy", ""),
+        "machine": trade.get("machine", ""), "broker": trade.get("broker", ""),
+        "account": trade.get("account", ""), "symbol": trade.get("symbol", ""),
+        "direction": trade.get("direction", "long"), "entry": trade.get("entry", 0.0),
+        "exit": trade.get("exit"), "quantity": trade.get("quantity", 0.0),
+        "pnl": trade.get("pnl", 0.0), "latencyMs": trade.get("latencyMs", 0.0),
+        "durationSec": trade.get("durationSec", 0), "status": trade.get("status", "closed"),
+    }
+
+
+async def _broadcast_trade(trade: dict) -> None:
+    await broadcaster.broadcast({"type": "trade", "payload": _public_trade(trade)})
+
+
 def _payload_summary(data: dict[str, Any], *, limit: int = 240) -> str | None:
     """Small, deterministic, dashboard-safe preview of non-secret fields."""
     allowed = (
@@ -197,6 +218,7 @@ def _payload_summary(data: dict[str, Any], *, limit: int = 240) -> str | None:
         "price", "avgPrice", "pnl", "realizedPnl", "unrealizedPnl", "reason",
         "queueDepth", "oldestPendingAgeSec", "transportState",
         "eventsRecovered", "eodBacklog", "recoveryState",
+        "event_type", "source_event_type",
     )
     pairs = [
         f"{key}={data[key]}"
@@ -371,17 +393,19 @@ async def _handle_trade(machine: str, strategy: str, data: dict[str, Any],
                       event_time=event_time)
     _log("strategy", "info", strategy,
          f"trade() {data.get('symbol', '')} {action} pnl={pnl}", envelope_id=env_id, machine_id=mid)
-    _persist_trade(machine, strategy, data, env_id, mid, account)
+    trade = _persist_trade(machine, strategy, data, env_id, mid, account)
+    if trade is not None:
+        await _broadcast_trade(trade)
 
 
 def _persist_trade(machine: str, strategy: str, data: dict[str, Any],
-                   env_id: str | None, mid: str | None, account: str | None) -> None:
+                   env_id: str | None, mid: str | None, account: str | None) -> dict | None:
     """Append a trade to the blotter (open/close/cancelled/rejected only)."""
     action = str(data.get("action", "close"))
     status = _TRADE_STATUS.get(action)
     if status is None:  # modify / pending are not blotter rows
-        return
-    trades_repo.insert({
+        return None
+    trade = {
         "id": _next_id("trd"), "envelope_id": env_id, "time": _now_iso(),
         "strategy": strategy, "machine": machine, "machine_id": mid,
         "broker": data.get("broker") or "", "account": account or "",
@@ -390,7 +414,9 @@ def _persist_trade(machine: str, strategy: str, data: dict[str, Any],
         "quantity": data.get("quantity", 0.0), "pnl": data.get("pnl", 0.0),
         "latencyMs": data.get("latencyMs", 0.0), "durationSec": data.get("durationSec", 0),
         "status": status,
-    })
+    }
+    trades_repo.insert(trade)
+    return trade
 
 
 async def _handle_start(machine: str, strategy: str, data: dict[str, Any],
@@ -543,7 +569,7 @@ async def _handle_phase3_operational(
         _event_message(kind, data),
         envelope_id=env_id,
         machine_id=mid,
-        event_type=str(data.get("type") or kind),
+        event_type=str(kind),
         strategy=strategy,
         symbol=_symbol(data),
         session_id=session_id,
@@ -557,14 +583,16 @@ async def _handle_phase3_operational(
 # Dispatch (single envelope, transactional + idempotent) + batch
 # --------------------------------------------------------------------------- #
 async def _dispatch_inner(env: Envelope, agent_id: str | None = None) -> None:
-    kind, machine, strategy, data = env.kind, env.machine, env.strategy, env.data
+    kind = resolve_dispatch_kind(env) or env.kind
+    machine, strategy, data = env.machine, env.strategy, env.data
     env_id = env.id
     mid = machine_id_for(machine) if machine and machine != "unknown" else None
     event_time = env.ts
+    agent = agent_id or env.agent_id
     if kind in ("heartbeat", "metrics"):
         # Prefer the id in the payload, then the authenticated request header;
         # `_apply_machine_telemetry` falls back to the machine id if neither.
-        await _handle_metrics(machine, {**data, "agentId": data.get("agentId") or agent_id, "ts": env.ts})
+        await _handle_metrics(machine, {**data, "agentId": data.get("agentId") or agent, "ts": env.ts})
         if kind == "metrics":
             _persist_host_metrics(machine, mid, env_id, data)
     elif kind == "metric":
@@ -618,14 +646,15 @@ async def _dispatch(env: Envelope, agent_id: str | None = None) -> tuple[Outcome
     Returns ``(outcome, reason)``. Never raises — the caller needs an outcome for
     every item so the acknowledgement can be truthful.
     """
-    if env.kind not in KNOWN_KINDS:
-        reason = f"unknown envelope kind '{env.kind}'"
+    kind = resolve_dispatch_kind(env) or env.kind
+    if kind not in KNOWN_KINDS:
+        reason = f"unknown envelope kind '{kind}'"
         _dead_letter(env, reason, "UnknownKind", agent_id)
         return Outcome.REJECTED, reason
 
     try:
         with unit_of_work():
-            if not reserve_envelope(env.id, env.kind):
+            if not reserve_envelope(env.id, kind):
                 # Already processed. At-least-once delivery makes this normal,
                 # not an error: no rows, no broadcast, no metric movement.
                 return Outcome.DUPLICATE, None
@@ -652,7 +681,7 @@ def _record_session(env: Envelope, mid: str | None) -> None:
     try:
         sessions_repo.touch(
             session_id=env.session_id, machine_id=mid, machine=env.machine,
-            event_time=_parse_ts(env.ts), is_trade=(env.kind == "trade"),
+            event_time=_parse_ts(env.ts), is_trade=(resolve_dispatch_kind(env) == "trade"),
         )
     except Exception:
         # Session bookkeeping is derived data; it must never fail an ingest that
@@ -756,11 +785,31 @@ async def handle_batch(batch: AgentBatch, agent_id: str | None = None) -> AgentA
 
 # Thin wrappers for the per-kind direct endpoints — routed through the same
 # transactional, idempotent dispatch path as the batch.
-def _as_envelope(kind: str, env: Envelope) -> Envelope:
-    return Envelope(kind=kind, id=env.id, machine=env.machine, strategy=env.strategy,
-                    account=env.account, data=env.data, ts=env.ts,
-                    sequence_id=env.sequence_id, schema_version=env.schema_version,
-                    session_id=env.session_id)
+def _as_envelope(default_kind: str, env: Envelope) -> Envelope:
+    """Copy an envelope for a per-kind endpoint without erasing a real type.
+
+    ``POST /api/agent/trades`` used to force ``kind=trade``. A heartbeat or
+    order posted to that path then became a closed blotter row. The path default
+    is used only when the envelope has no classifiable type of its own.
+    """
+    resolved = resolve_dispatch_kind(env)
+    kind = resolved or default_kind
+    return Envelope(
+        kind=kind,
+        id=env.id,
+        machine=env.machine,
+        strategy=env.strategy,
+        account=env.account,
+        data=env.data,
+        ts=env.ts,
+        sequence_id=env.sequence_id,
+        schema_version=env.schema_version,
+        session_id=env.session_id,
+        event_type=env.event_type,
+        source_event_type=env.source_event_type,
+        source=env.source,
+        agent_id=env.agent_id,
+    )
 
 
 async def _handle_single(kind: str, env: Envelope, agent_id: str | None = None) -> AgentAck:
@@ -775,10 +824,11 @@ async def _handle_single(kind: str, env: Envelope, agent_id: str | None = None) 
     mid = machine_id_for(env.machine) if env.machine else None
     if outcome is Outcome.ACCEPTED:
         _record_session(envelope, mid)
+    ack_kind = resolve_dispatch_kind(envelope) or kind
     return AgentAck(
         accepted=outcome is not Outcome.FAILED,
         received=_now_iso(),
-        kind=kind,
+        kind=ack_kind,
         processed=1 if outcome is Outcome.ACCEPTED else 0,
         machineId=mid,
         total=1,

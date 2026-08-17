@@ -1,4 +1,4 @@
-import type { Machine, SystemEvent } from '@/types'
+import type { Machine, SystemEvent, Trade } from '@/types'
 
 /**
  * The realtime transport speaks a small, typed message protocol. The same
@@ -8,6 +8,7 @@ import type { Machine, SystemEvent } from '@/types'
 export type RealtimeMessage =
   | { type: 'machines'; payload: Machine[] }
   | { type: 'event'; payload: SystemEvent }
+  | { type: 'trade'; payload: Trade }
   | { type: 'connection'; payload: { latencyMs: number; time: string } }
 
 export type RealtimeHandler = (msg: RealtimeMessage) => void

@@ -27,3 +27,4 @@ class SystemEvent(BaseModel):
     sessionId: str | None = None
     sequenceId: int | None = None
     payloadSummary: str | None = None
+    sourceEventType: str | None = None

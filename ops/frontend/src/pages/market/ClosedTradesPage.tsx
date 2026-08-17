@@ -21,7 +21,7 @@ export default function ClosedTradesPage() {
   const deferredSearch = useDeferredValue(search)
 
   const closed = useMemo(
-    () => (query.data ?? []).filter((t) => t.status !== 'open'),
+    () => (query.data ?? []).filter((t) => t.status === 'closed'),
     [query.data],
   )
   const stats = useMemo(() => {
