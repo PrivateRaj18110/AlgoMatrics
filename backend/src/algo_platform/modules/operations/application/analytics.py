@@ -87,6 +87,10 @@ def aggregate_strategies(
                 "winning_trades": len(wins) if pnls else None,
                 "losing_trades": len(losses) if pnls else None,
                 "total_pnl": sum(pnls) if pnls else None,
+                "gross_pnl": sum(pnls) if pnls else None,
+                "average_trade": (sum(pnls) / len(pnls)) if pnls else None,
+                "best_trade": max(pnls) if pnls else None,
+                "worst_trade": min(pnls) if pnls else None,
                 "win_rate": _ratio(len(wins), len(losses)),
                 "profit_factor": (
                     None
@@ -143,12 +147,25 @@ def aggregate_symbols(
                 "option_type": parts.option_type,
                 "metadata_available": parts.metadata_available,
                 "trade_count": len(pnls) if pnls else None,
+                "winning_trades": len(wins) if pnls else None,
+                "losing_trades": len(losses) if pnls else None,
                 "pnl": sum(pnls) if pnls else None,
+                "average_trade": (sum(pnls) / len(pnls)) if pnls else None,
+                "best_trade": max(pnls) if pnls else None,
+                "worst_trade": min(pnls) if pnls else None,
                 "win_rate": _ratio(len(wins), len(losses)),
                 "profit_factor": (sum(wins) / gross_loss) if pnls and gross_loss else None,
-                "average_trade": (sum(pnls) / len(pnls)) if pnls else None,
                 "open_positions": bucket["open"] if bucket["open"] else None,
                 "quantity": bucket["qty"],
             }
         )
     return sorted(rows, key=lambda r: (r["strategy_name"], r["symbol"]))
+
+
+def aggregate_symbol_strategies(trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Symbol → strategy breakdown (same metrics, inverted grouping)."""
+
+    return sorted(
+        aggregate_symbols(trades),
+        key=lambda r: (r["symbol"], r["strategy_name"]),
+    )

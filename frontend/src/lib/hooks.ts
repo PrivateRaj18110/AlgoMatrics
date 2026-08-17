@@ -849,7 +849,7 @@ export function useOpsMachines() {
   });
 }
 
-export function useOpsEvents(filters: { event_type?: string } = {}) {
+export function useOpsEvents(filters: { event_type?: string; machine_id?: string; strategy?: string; symbol?: string } = {}) {
   return useQuery({
     queryKey: ["ops-events", orgKey(), filters],
     queryFn: () => api<OpsEvent[]>("/operations/events", { query: filters }),
@@ -881,10 +881,10 @@ export function useOpsOrders() {
   });
 }
 
-export function useOpsTrades() {
+export function useOpsTrades(filters: { strategy?: string; symbol?: string; direction?: string; status?: string } = {}) {
   return useQuery({
-    queryKey: ["ops-engine-trades", orgKey()],
-    queryFn: () => api<OpsTrade[]>("/operations/trades"),
+    queryKey: ["ops-engine-trades", orgKey(), filters],
+    queryFn: () => api<OpsTrade[]>("/operations/trades", { query: filters }),
     refetchInterval: 15000,
   });
 }

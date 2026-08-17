@@ -1,7 +1,9 @@
 # AlgoMatrics architecture audit (Phase 1)
 
-**Status:** audit only. No product code was changed in this phase.  
-**Classification invariant to preserve:** commit `f9bee1a` (`fix(ops): classify telemetry so only real trades hit Closed Trades`).  
+**Status:** implementation of the main `/app` read path is documented in
+[`OPERATIONS_READ_PATH.md`](./OPERATIONS_READ_PATH.md). This audit remains the
+source-backed map of the two-app surface.
+**Classification invariant:** commit `f9bee1a` (`fix(ops): classify telemetry so only real trades hit Closed Trades`).
 **Historical blotter:** ~1463 trade rows / ~1367 likely misclassified — **do not delete**.
 
 This document is the source-backed map of the current two-app production surface and the target single-app architecture. Implementation starts at Phase 2.

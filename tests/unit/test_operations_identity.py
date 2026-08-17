@@ -11,6 +11,7 @@ def test_strategy_identity_is_machine_plus_name() -> None:
     assert strategy_identity("Alpha", "mch-agent-gcp") == "mch-agent-gcp::Alpha"
     assert strategy_identity("Alpha", "mch-a") != strategy_identity("Alpha", "mch-b")
     assert strategy_identity("", "mch") == ""
+    assert strategy_identity("Alpha", None) == "Alpha"
 
 
 def test_option_parts_only_when_present() -> None:

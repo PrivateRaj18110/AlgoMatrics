@@ -31,14 +31,34 @@ function Dash(value: string | number | null | undefined): string {
   return String(value);
 }
 
+function TelemetryError() {
+  return (
+    <EmptyState
+      title="Telemetry unavailable"
+      body="The operations database is not configured or could not be reached. No demo data is shown."
+    />
+  );
+}
+
+function TimezoneCaption() {
+  return (
+    <p className="mb-3 text-xs text-slate-500">
+      Event and trade clocks are stored as UTC. Display uses IANA zones: Asia/Kolkata (IST) and UTC. Offsets are never added by hand.
+    </p>
+  );
+}
+
 export function MachinesPage() {
-  const { data, isLoading } = useOpsMachines();
+  const { data, isLoading, isError } = useOpsMachines();
   return (
     <div>
       <PageHeader title="Machines" description="Hosts reported by Google telemetry" />
+      <TimezoneCaption />
       <Card>
         {isLoading ? (
           <SkeletonRows rows={4} cols={6} />
+        ) : isError ? (
+          <TelemetryError />
         ) : !data?.length ? (
           <EmptyState title="Awaiting telemetry" body="No machines have reported a heartbeat yet." />
         ) : (
@@ -66,10 +86,11 @@ export function MachinesPage() {
 
 export function EventsPage() {
   const [eventType, setEventType] = useState("");
-  const { data, isLoading } = useOpsEvents({ event_type: eventType || undefined });
+  const { data, isLoading, isError } = useOpsEvents({ event_type: eventType || undefined });
   return (
     <div>
       <PageHeader title="Events" description="Categorized telemetry. Heartbeats are not trades." />
+      <TimezoneCaption />
       <div className="mb-3 max-w-xs">
         <Field label="Event type">
           <Select value={eventType} onChange={(event) => setEventType(event.target.value)}>
@@ -88,6 +109,8 @@ export function EventsPage() {
       <Card>
         {isLoading ? (
           <SkeletonRows rows={6} cols={5} />
+        ) : isError ? (
+          <TelemetryError />
         ) : !data?.length ? (
           <EmptyState title="No data available" body="No events match these filters." />
         ) : (
@@ -111,16 +134,19 @@ export function EventsPage() {
 }
 
 export function ClosedTradesPage() {
-  const { data, isLoading } = useOpsTrades();
+  const { data, isLoading, isError } = useOpsTrades();
   return (
     <div>
       <PageHeader
         title="Closed Trades"
         description="Only explicit trade / trade_closed telemetry. Misclassified historical rows are excluded from this view, not deleted."
       />
+      <TimezoneCaption />
       <Card>
         {isLoading ? (
           <SkeletonRows rows={6} cols={8} />
+        ) : isError ? (
+          <TelemetryError />
         ) : !data?.length ? (
           <EmptyState title="No data available" body="No explicit closed trades have been ingested." />
         ) : (
@@ -160,13 +186,16 @@ export function ClosedTradesPage() {
 }
 
 export function EngineOrdersPage() {
-  const { data, isLoading } = useOpsOrders();
+  const { data, isLoading, isError } = useOpsOrders();
   return (
     <div>
       <PageHeader title="Execution" description="Order events from Google telemetry. Missing fields stay unknown." />
+      <TimezoneCaption />
       <Card>
         {isLoading ? (
           <SkeletonRows rows={5} cols={5} />
+        ) : isError ? (
+          <TelemetryError />
         ) : !data?.length ? (
           <EmptyState title="Awaiting telemetry" body="No order events have been reported." />
         ) : (
@@ -189,13 +218,16 @@ export function EngineOrdersPage() {
 }
 
 export function LogsPage() {
-  const { data, isLoading } = useOpsLogs();
+  const { data, isLoading, isError } = useOpsLogs();
   return (
     <div>
       <PageHeader title="Logs" description="Agent and system logs from telemetry" />
+      <TimezoneCaption />
       <Card>
         {isLoading ? (
           <SkeletonRows rows={5} cols={4} />
+        ) : isError ? (
+          <TelemetryError />
         ) : !data?.length ? (
           <EmptyState title="No data available" />
         ) : (
@@ -216,13 +248,16 @@ export function LogsPage() {
 }
 
 export function TelemetryAlertsPage() {
-  const { data, isLoading } = useOpsAlerts();
+  const { data, isLoading, isError } = useOpsAlerts();
   return (
     <div>
       <PageHeader title="Alerts" description="Critical telemetry and error events" />
+      <TimezoneCaption />
       <Card>
         {isLoading ? (
           <SkeletonRows rows={4} cols={4} />
+        ) : isError ? (
+          <TelemetryError />
         ) : !data?.length ? (
           <EmptyState title="No data available" body="No alerts have been reported." />
         ) : (
@@ -243,18 +278,21 @@ export function TelemetryAlertsPage() {
 }
 
 export function EngineStrategiesPage() {
-  const { data, isLoading } = useOpsStrategies();
+  const { data, isLoading, isError } = useOpsStrategies();
   return (
     <div>
       <PageHeader
         title="Engine strategies"
         description="Identities reported by Google telemetry. Names are never invented."
       />
+      <TimezoneCaption />
       <Card>
         {isLoading ? (
           <SkeletonRows rows={4} cols={6} />
+        ) : isError ? (
+          <TelemetryError />
         ) : !data?.length ? (
-          <EmptyState title="Awaiting telemetry" body="No strategy_status or trade strategy names have arrived." />
+          <EmptyState title="No strategy data available" body="No strategy_status or trade strategy names have arrived." />
         ) : (
           <Table
             headers={["Strategy", "Machine", "Status", "Trades", "PnL", "Win rate", "Latency", "Symbols"]}
@@ -292,7 +330,7 @@ export function EngineStrategySymbolsRoute() {
 }
 
 function EngineStrategySymbolsPage({ strategyName }: { strategyName: string }) {
-  const { data, isLoading } = useOpsAnalytics(strategyName);
+  const { data, isLoading, isError } = useOpsAnalytics(strategyName);
   const symbols = data?.symbols ?? [];
   return (
     <div>
@@ -300,9 +338,12 @@ function EngineStrategySymbolsPage({ strategyName }: { strategyName: string }) {
         title={strategyName}
         description="Symbols and option metadata only when present in the telemetry symbol string."
       />
+      <TimezoneCaption />
       <Card>
         {isLoading ? (
           <SkeletonRows rows={4} cols={6} />
+        ) : isError ? (
+          <TelemetryError />
         ) : !symbols.length ? (
           <EmptyState title="No data available" body="This strategy has no symbol-attributed trades yet." />
         ) : (
@@ -342,15 +383,18 @@ function EngineStrategySymbolsPage({ strategyName }: { strategyName: string }) {
 }
 
 export function EngineAnalyticsPage() {
-  const { data, isLoading } = useOpsAnalytics();
+  const { data, isLoading, isError } = useOpsAnalytics();
   return (
     <div>
       <PageHeader title="Engine analytics" description="Aggregated only from real Google trades and strategy_status." />
+      <TimezoneCaption />
       <EngineStrategiesPage />
       <div className="mt-4">
         <Card>
           {isLoading ? (
             <SkeletonRows rows={4} cols={5} />
+          ) : isError ? (
+            <TelemetryError />
           ) : !data?.symbols?.length ? (
             <EmptyState title="No data available" body="Symbol drill-down appears when trades include a symbol." />
           ) : (
@@ -366,6 +410,29 @@ export function EngineAnalyticsPage() {
                   </Td>
                   <Td>{row.pnl === null || row.pnl === undefined ? "—" : money(row.pnl)}</Td>
                   <Td>{Dash(row.trade_count)}</Td>
+                </tr>
+              ))}
+            </Table>
+          )}
+        </Card>
+      </div>
+      <div className="mt-4">
+        <Card>
+          {!data?.by_symbol?.length ? (
+            <EmptyState title="No data available" body="Symbol → strategy breakdown appears when the same symbol trades under more than one strategy name." />
+          ) : (
+            <Table headers={["Symbol", "Strategy", "Trades", "PnL", "Win rate"]}>
+              {data.by_symbol.map((row) => (
+                <tr key={`by-symbol-${row.symbol}-${row.strategy_name}`}>
+                  <Td>{row.symbol}</Td>
+                  <Td>{row.strategy_name}</Td>
+                  <Td>{Dash(row.trade_count)}</Td>
+                  <Td>{row.pnl === null || row.pnl === undefined ? "—" : money(row.pnl)}</Td>
+                  <Td>
+                    {row.win_rate === null || row.win_rate === undefined
+                      ? "—"
+                      : unknownPercent(row.win_rate * 100)}
+                  </Td>
                 </tr>
               ))}
             </Table>

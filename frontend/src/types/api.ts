@@ -756,6 +756,107 @@ export interface OpsOverview {
   closed_trade_count: number | null;
   total_pnl: number | null;
   awaiting_telemetry: boolean;
+  telemetry_configured?: boolean;
+}
+
+export interface OpsMachine {
+  id: string;
+  name: string;
+  hostname: string | null;
+  agent_id: string | null;
+  status: string | null;
+  cpu: number | null;
+  ram: number | null;
+  disk: number | null;
+  last_heartbeat: string | null;
+  last_successful_upload: string | null;
+  queue_depth: number | null;
+  oldest_pending_age_sec: number | null;
+}
+
+export interface OpsEvent {
+  id: string;
+  time: string | null;
+  received_at: string | null;
+  ingest_ts?: string | null;
+  event_ts?: string | null;
+  category: string | null;
+  severity: string | null;
+  source: string | null;
+  message: string | null;
+  machine_id: string | null;
+  event_type: string | null;
+  strategy: string | null;
+  symbol: string | null;
+  payload_summary: string | null;
+  level?: string | null;
+}
+
+export interface OpsTrade {
+  id: string;
+  envelope_id?: string | null;
+  time: string | null;
+  trade_ts?: string | null;
+  strategy: string | null;
+  machine: string | null;
+  machine_id: string | null;
+  broker: string | null;
+  account: string | null;
+  symbol: string | null;
+  direction: string | null;
+  entry: number | null;
+  exit: number | null;
+  quantity: number | null;
+  pnl: number | null;
+  latency_ms: number | null;
+  duration_sec: number | null;
+  status: string | null;
+}
+
+export interface OpsStrategyRow {
+  strategy_id: string;
+  strategy_name: string;
+  machine_id: string | null;
+  status: string | null;
+  last_heartbeat: string | null;
+  symbols: string[];
+  trade_count: number | null;
+  winning_trades?: number | null;
+  losing_trades?: number | null;
+  total_pnl: number | null;
+  gross_pnl?: number | null;
+  average_trade?: number | null;
+  best_trade?: number | null;
+  worst_trade?: number | null;
+  win_rate: number | null;
+  avg_latency_ms: number | null;
+}
+
+export interface OpsSymbolRow {
+  strategy_name: string;
+  symbol: string;
+  underlying: string | null;
+  instrument: string | null;
+  expiry: string | null;
+  strike: string | null;
+  option_type: string | null;
+  metadata_available: boolean;
+  trade_count: number | null;
+  winning_trades?: number | null;
+  losing_trades?: number | null;
+  pnl: number | null;
+  average_trade?: number | null;
+  best_trade?: number | null;
+  worst_trade?: number | null;
+  win_rate: number | null;
+}
+
+export interface OpsAnalytics {
+  strategies: OpsStrategyRow[];
+  symbols: OpsSymbolRow[];
+  by_symbol?: OpsSymbolRow[];
+  option_metadata: string;
+  timestamps?: Record<string, string>;
 }
 
 export interface OpsMachine {
