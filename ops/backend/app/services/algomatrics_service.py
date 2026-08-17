@@ -52,10 +52,10 @@ def _live(fetch: Any) -> Any:
     try:
         return fetch(client)
     except AlgoMatricsUnavailable as exc:
-        logger.warning("AlgoMatrics unavailable, serving mock data: %s", exc)
+        logger.warning("AlgoMatrics unavailable; not substituting mock data: %s", exc)
         return None
     except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("Unexpected AlgoMatrics payload, serving mock data: %s", exc)
+        logger.warning("Unexpected AlgoMatrics payload; not substituting mock data: %s", exc)
         return None
 
 

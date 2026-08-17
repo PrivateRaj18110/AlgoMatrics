@@ -17,12 +17,12 @@ class Strategy(BaseModel):
     machineName: str
     broker: str
     symbols: list[str]
-    todayPnl: float
-    weekPnl: float
-    todayTrades: int
-    openPositions: int
-    winRate: float
-    profitFactor: float
-    avgLatencyMs: float
+    todayPnl: float | None = None
+    weekPnl: float | None = None
+    todayTrades: int | None = None
+    openPositions: int | None = None
+    winRate: float | None = None
+    profitFactor: float | None = None
+    avgLatencyMs: float | None = None
     sparkline: list[TimeSeriesPoint]
-    lastHeartbeat: str
+    lastHeartbeat: str | None = None

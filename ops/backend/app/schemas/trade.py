@@ -19,10 +19,10 @@ class Trade(BaseModel):
     account: str
     symbol: str
     direction: TradeDirection
-    entry: float
+    entry: float | None = None
     exit: float | None
-    quantity: float
-    pnl: float
-    latencyMs: float
-    durationSec: int
+    quantity: float | None = None
+    pnl: float | None = None
+    latencyMs: float | None = None
+    durationSec: int | None = None
     status: TradeStatus

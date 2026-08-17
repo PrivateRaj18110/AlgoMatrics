@@ -18,12 +18,12 @@ class Account(BaseModel):
     type: AccountType
     currency: str
     status: Status
-    balance: float
-    equity: float
-    todayPnl: float
-    openPnl: float
-    marginLevelPct: float
-    leverage: int
-    openPositions: int
+    balance: float | None = None
+    equity: float | None = None
+    todayPnl: float | None = None
+    openPnl: float | None = None
+    marginLevelPct: float | None = None
+    leverage: int | None = None
+    openPositions: int | None = None
     strategies: list[str]
     equityCurve: list[TimeSeriesPoint]

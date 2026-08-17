@@ -13,16 +13,16 @@ class Broker(BaseModel):
     server: str
     connection: Status
     account: str
-    spreadPips: float
-    balance: float
-    equity: float
-    margin: float
-    freeMargin: float
-    marginLevelPct: float
-    leverage: int
-    openPositions: int
-    pendingOrders: int
-    rejectedOrders: int
-    pingMs: float
-    lastSync: str
+    spreadPips: float | None = None
+    balance: float | None = None
+    equity: float | None = None
+    margin: float | None = None
+    freeMargin: float | None = None
+    marginLevelPct: float | None = None
+    leverage: int | None = None
+    openPositions: int | None = None
+    pendingOrders: int | None = None
+    rejectedOrders: int | None = None
+    pingMs: float | None = None
+    lastSync: str | None = None
     pingHistory: list[TimeSeriesPoint]

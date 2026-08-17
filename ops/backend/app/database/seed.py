@@ -16,8 +16,14 @@ from app.repositories import mock_data as _data
 
 
 def seed_if_empty() -> dict[str, int]:
-    """Seed demo machines/trades when their tables are empty. Returns counts."""
-    if not database_enabled():
+    """Seed demo machines/trades when their tables are empty. Returns counts.
+
+    Production never seeds. Demo hosts (London VPS) and RNG trades must not
+    appear because a fresh ops database was empty.
+    """
+    from app.core.mock_policy import allow_mock_fixtures
+
+    if not database_enabled() or not allow_mock_fixtures():
         return {"machines": 0, "trades": 0}
 
     seeded = {"machines": 0, "trades": 0}

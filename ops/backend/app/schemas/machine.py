@@ -13,16 +13,16 @@ class Machine(BaseModel):
     location: str
     provider: str
     status: Status
-    cpu: float
-    ram: float
-    disk: float
+    cpu: float | None = None
+    ram: float | None = None
+    disk: float | None = None
     temperatureC: float | None
-    internetMs: float
-    brokerPingMs: float
+    internetMs: float | None = None
+    brokerPingMs: float | None = None
     pythonStatus: Status
-    uptimeSec: int
-    lastHeartbeat: str
-    strategyCount: int
+    uptimeSec: int | None = None
+    lastHeartbeat: str | None = None
+    strategyCount: int | None = None
     agentId: str | None = None
     agentVersion: str | None = None
     hostname: str | None = None
