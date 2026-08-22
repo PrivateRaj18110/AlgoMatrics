@@ -52,21 +52,142 @@ jobs:
         working-directory: frontend
         run: npm run test
 
+  ops-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ops/frontend/package-lock.json
+      - working-directory: ops/frontend
+        run: npm ci || npm install
+      - name: Type check + production build
+        working-directory: ops/frontend
+        run: npm run build
+
+  ops-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.13"}
+      - name: Install ops backend deps
+        working-directory: ops/backend
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Ops backend tests
+        working-directory: ops/backend
+        run: python -m pytest -q
+      - name: raj-monitor SDK tests
+        run: |
+          pip install ./packages/raj_monitor
+          python -m pytest -q packages/raj_monitor/tests
+
+  # Builds every deployable image. On pull requests it builds only (verification);
+  # on pushes to main / tags it also pushes to GHCR so the k8s manifests
+  # (deploy/k8s/*: ghcr.io/algo-matrics/*) have images to pull.
   image:
     runs-on: ubuntu-latest
-    needs: [backend, frontend]
+    needs: [backend, frontend, ops-frontend, ops-backend]
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # Must match the image namespace in deploy/k8s/*. Pushing needs a token with
+      # write:packages on this namespace: GITHUB_TOKEN suffices when the repo lives
+      # under the algo-matrics org; otherwise set a GHCR_TOKEN secret (a PAT with
+      # write:packages) — the login step prefers it.
+      REGISTRY: ghcr.io
+      NAMESPACE: algo-matrics
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build backend image
+      # Log in + push only on branch/tag pushes, never on PRs (incl. forks).
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Backend image metadata
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/backend
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=ref,event=tag
+      - name: Build/push backend image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/docker/backend.Dockerfile
-          push: false
-      - name: Build frontend image
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Frontend image metadata
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/frontend
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=ref,event=tag
+      - name: Build/push frontend image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/docker/frontend.Dockerfile
-          push: false
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Ops API image metadata
+        id: meta-ops
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/ops-api
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=ref,event=tag
+      - name: Build/push ops API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/ops-api.Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta-ops.outputs.tags }}
+          labels: ${{ steps.meta-ops.outputs.labels }}
+          cache-from: type=gha,scope=ops-api
+          cache-to: type=gha,mode=max,scope=ops-api
+
+      - name: AI-CIO image metadata
+        id: meta-aicio
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/aicio
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=ref,event=tag
+      - name: Build/push AI-CIO image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/aicio.Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta-aicio.outputs.tags }}
+          labels: ${{ steps.meta-aicio.outputs.labels }}
+          cache-from: type=gha,scope=aicio
+          cache-to: type=gha,mode=max,scope=aicio

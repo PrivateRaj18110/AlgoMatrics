@@ -117,18 +117,7 @@ export function LoginPage() {
   }
 
   return (
-    <AuthShell
-      title="Welcome back"
-      subtitle="Sign in to your Algo Matrics account"
-      footer={
-        <>
-          New here?{" "}
-          <Link to="/register" className="font-medium text-accent-500 hover:underline">
-            Create an account
-          </Link>
-        </>
-      }
-    >
+    <AuthShell title="Welcome back" subtitle="Sign in to your Algo Matrics account">
       <Seo title="Sign in — Algo Matrics" canonicalPath="/login" />
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         {formError && (

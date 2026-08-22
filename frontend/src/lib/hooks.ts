@@ -19,6 +19,14 @@ import type {
   AuditFilters,
   BrokerCatalogEntry,
   FeatureFlag,
+  InstitutionalBias,
+  MarketInfo,
+  MarketIntelIndex,
+  MarketIntelNews,
+  MarketIntelStatus,
+  OptionsSnapshot,
+  Regime,
+  RankingRow,
   MarketplaceLicense,
   MarketplaceListing,
   BrokerConnection,
@@ -47,6 +55,12 @@ import type {
   Quote,
   RiskEvent,
   RiskLimits,
+  OpsAnalytics,
+  OpsEvent,
+  OpsMachine,
+  OpsOverview,
+  OpsStrategyRow,
+  OpsTrade,
   Strategy,
   StrategyLog,
   StrategyRun,
@@ -59,10 +73,17 @@ import type {
   UserProfile,
   VenueInstrument,
   Watchlist,
+  WorkspaceTask,
 } from "@/types/api";
 
 function orgKey(): string {
   return useAuth.getState().activeOrgId ?? "none";
+}
+
+function useTenantReady(): boolean {
+  const token = useAuth((state) => state.accessToken);
+  const orgId = useAuth((state) => state.activeOrgId);
+  return Boolean(token && orgId);
 }
 
 /* --------------------------------- account ---------------------------------- */
@@ -210,6 +231,87 @@ export function useQuotes(instrumentIds: string[], enabled = true) {
   });
 }
 
+export function useMarketIndices() {
+  return useQuery({
+    queryKey: ["market-info", "indices", orgKey()],
+    queryFn: () => api<MarketInfo[]>("/market-info/indices"),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useMarketQuotes(symbols?: string) {
+  return useQuery({
+    queryKey: ["market-info", "quotes", orgKey(), symbols ?? "default"],
+    queryFn: () =>
+      api<MarketInfo[]>("/market-info/quotes", {
+        query: symbols ? { symbols } : {},
+      }),
+    placeholderData: keepPreviousData,
+    refetchInterval: 60_000,
+  });
+}
+
+/* ------------------------ market intelligence (AI-CIO) ------------------------ */
+
+export function useMarketIntelStatus() {
+  return useQuery({
+    queryKey: ["market-intel", "status", orgKey()],
+    queryFn: () => api<MarketIntelStatus>("/market-intel/status"),
+  });
+}
+
+export function useRegime() {
+  return useQuery({
+    queryKey: ["market-intel", "regime", orgKey()],
+    queryFn: () => api<Regime | null>("/market-intel/regime"),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useRankings(topN = 20, index?: string) {
+  return useQuery({
+    queryKey: ["market-intel", "rankings", orgKey(), topN, index ?? "all"],
+    queryFn: () =>
+      api<RankingRow[]>("/market-intel/rankings", {
+        query: { top_n: topN, ...(index ? { index } : {}) },
+      }),
+    placeholderData: keepPreviousData,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useMarketIntelIndices() {
+  return useQuery({
+    queryKey: ["market-intel", "indices", orgKey()],
+    queryFn: () => api<MarketIntelIndex[]>("/market-intel/indices"),
+  });
+}
+
+export function useMarketIntelNews(ticker?: string) {
+  return useQuery({
+    queryKey: ["market-intel", "news", orgKey(), ticker ?? "all"],
+    queryFn: () =>
+      api<MarketIntelNews[]>("/market-intel/news", { query: ticker ? { ticker } : {} }),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useOptionsSnapshot(ticker: string | null) {
+  return useQuery({
+    queryKey: ["market-intel", "options", orgKey(), ticker ?? ""],
+    queryFn: () => api<OptionsSnapshot | null>(`/market-intel/options/${ticker}`),
+    enabled: Boolean(ticker),
+  });
+}
+
+export function useInstitutionalFlow(ticker: string | null) {
+  return useQuery({
+    queryKey: ["market-intel", "flow", orgKey(), ticker ?? ""],
+    queryFn: () => api<InstitutionalBias | null>(`/market-intel/flow/${ticker}`),
+    enabled: Boolean(ticker),
+  });
+}
+
 /* --------------------------------- trading ---------------------------------- */
 
 export function useOrders(params: {
@@ -217,9 +319,11 @@ export function useOrders(params: {
   status?: string;
   open_only?: boolean;
 } = {}) {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["orders", orgKey(), params],
     queryFn: () => api<Paged<Order>>("/orders", { query: { ...params, limit: 100 } }),
+    enabled: ready,
     refetchInterval: 8000,
   });
 }
@@ -232,10 +336,11 @@ export function useTrades(params: { account_id?: string } = {}) {
 }
 
 export function usePositions(params: { account_id?: string } = {}) {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["positions", orgKey(), params],
     queryFn: () => api<Position[]>("/positions", { query: params }),
-    refetchInterval: 8000,
+    enabled: ready,
   });
 }
 
@@ -395,9 +500,11 @@ export function useStrategyLogs(runId: string | undefined) {
 /* ------------------------------- dashboard ---------------------------------- */
 
 export function useDashboard() {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["dashboard", orgKey()],
     queryFn: () => api<DashboardSummary>("/dashboard/summary"),
+    enabled: ready,
     refetchInterval: 10000,
   });
 }
@@ -737,3 +844,138 @@ export function useAdminVenueInstruments() {
       }),
   });
 }
+
+export function useOpsOverview() {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["ops-overview", orgKey()],
+    queryFn: () => api<OpsOverview>("/operations/overview"),
+    enabled: ready,
+    refetchInterval: 15000,
+  });
+}
+
+export function useOpsMachines() {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["ops-machines", orgKey()],
+    queryFn: () => api<OpsMachine[]>("/operations/machines"),
+    enabled: ready,
+    refetchInterval: 15000,
+  });
+}
+
+export function useOpsEvents(filters: { event_type?: string; machine_id?: string; strategy?: string; symbol?: string } = {}) {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["ops-events", orgKey(), filters],
+    queryFn: () => api<OpsEvent[]>("/operations/events", { query: filters }),
+    enabled: ready,
+    refetchInterval: 15000,
+  });
+}
+
+export function useOpsLogs() {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["ops-logs", orgKey()],
+    queryFn: () => api<OpsEvent[]>("/operations/logs"),
+    enabled: ready,
+    refetchInterval: 20000,
+  });
+}
+
+export function useOpsAlerts() {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["ops-alerts", orgKey()],
+    queryFn: () => api<OpsEvent[]>("/operations/alerts"),
+    enabled: ready,
+    refetchInterval: 15000,
+  });
+}
+
+export function useOpsOrders() {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["ops-orders", orgKey()],
+    queryFn: () => api<OpsEvent[]>("/operations/orders"),
+    enabled: ready,
+    refetchInterval: 15000,
+  });
+}
+
+export function useOpsTrades(filters: { strategy?: string; symbol?: string; direction?: string; status?: string } = {}) {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["ops-engine-trades", orgKey(), filters],
+    queryFn: () => api<OpsTrade[]>("/operations/trades", { query: filters }),
+    enabled: ready,
+    refetchInterval: 15000,
+  });
+}
+
+export function useOpsStrategies() {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["ops-engine-strategies", orgKey()],
+    queryFn: () => api<OpsStrategyRow[]>("/operations/strategies"),
+    enabled: ready,
+    refetchInterval: 20000,
+  });
+}
+
+export function useOpsAnalytics(strategy?: string) {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["ops-engine-analytics", orgKey(), strategy],
+    queryFn: () =>
+      api<OpsAnalytics>("/operations/analytics", { query: { strategy } }),
+    enabled: ready,
+  });
+}
+
+export function useWorkspaceTasks() {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["workspace-tasks", orgKey()],
+    queryFn: () => api<WorkspaceTask[]>("/tasks"),
+    enabled: ready,
+  });
+}
+
+export function useCreateTask() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { title: string; priority?: string; due_at?: string | null; tag?: string | null }) =>
+      api<WorkspaceTask>("/tasks", { method: "POST", body }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["workspace-tasks"] }),
+  });
+}
+
+export function useUpdateTask() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      title?: string;
+      priority?: string;
+      due_at?: string | null;
+      tag?: string | null;
+      completed?: boolean;
+    }) => api<WorkspaceTask>(`/tasks/${id}`, { method: "PATCH", body }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["workspace-tasks"] }),
+  });
+}
+
+export function useArchiveTask() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/tasks/${id}`, { method: "DELETE" }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["workspace-tasks"] }),
+  });
+}
+

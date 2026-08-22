@@ -19,6 +19,7 @@ from algo_platform.shared.domain.errors import (
     NotFoundError,
     PermissionDenied,
     RateLimited,
+    UnavailableError,
     ValidationFailed,
 )
 
@@ -33,6 +34,7 @@ _STATUS_BY_ERROR: dict[type[DomainError], int] = {
     RateLimited: status.HTTP_429_TOO_MANY_REQUESTS,
     EntitlementExceeded: status.HTTP_402_PAYMENT_REQUIRED,
     InvariantViolation: status.HTTP_409_CONFLICT,
+    UnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 
 PROBLEM_CONTENT_TYPE = "application/problem+json"

@@ -61,3 +61,9 @@ class EntitlementExceeded(DomainError):
 
 class InvariantViolation(DomainError):
     code: ClassVar[str] = "invariant_violation"
+
+
+class UnavailableError(DomainError):
+    """A required dependency is not configured (fail closed)."""
+
+    code: ClassVar[str] = "unavailable"

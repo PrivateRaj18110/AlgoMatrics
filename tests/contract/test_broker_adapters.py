@@ -30,6 +30,10 @@ from algo_platform.modules.trading.infrastructure.brokers.binance import (
     BinanceExecutionAdapter,
 )
 from algo_platform.modules.trading.infrastructure.brokers.delta import DeltaExecutionAdapter
+from algo_platform.modules.trading.infrastructure.brokers.flattrade import (
+    FlattradeExecutionAdapter,
+    _TrackedOrder,
+)
 from algo_platform.modules.trading.infrastructure.brokers.ibkr import (
     IbkrExecutionAdapter,
     _validate_gateway_url,
@@ -344,6 +348,158 @@ class TestAngelOneAdapter:
         )
         balances = await adapter.get_balances()
         assert balances["cash"] == Decimal("5000")
+
+
+# -------------------------------- Flattrade ---------------------------------
+
+
+def _noren_body(request: httpx.Request) -> tuple[dict[str, object], str]:
+    """Split a Noren ``jData=<json>&jKey=<token>`` envelope."""
+    import json
+
+    jdata_part, jkey = request.content.decode().split("&jKey=")
+    return json.loads(jdata_part.removeprefix("jData=")), jkey
+
+
+class TestFlattradeAdapter:
+    def _adapter(self) -> FlattradeExecutionAdapter:
+        return FlattradeExecutionAdapter(
+            client_code="FT0001", session_token="jkey-token", symbol_resolver=_venue
+        )
+
+    async def test_submit_market_order_builds_noren_envelope(self) -> None:
+        adapter = self._adapter()
+        captured: list[httpx.Request] = []
+        _attach(
+            adapter,
+            _router(
+                {
+                    ("POST", "/PiConnectTP/PlaceOrder"): (
+                        200,
+                        {"stat": "Ok", "norenordno": "24071200001"},
+                    )
+                },
+                captured,
+            ),
+            "https://piconnect.flattrade.in/PiConnectTP",
+        )
+        ack = await adapter.submit_order(_intent())
+        assert ack.broker_order_id == "24071200001"
+        assert ack.status is OrderStatus.SUBMITTED
+        jdata, jkey = _noren_body(captured[0])
+        assert jkey == "jkey-token"
+        assert jdata["tsym"] == "RELIANCE"
+        assert jdata["exch"] == "NSE"
+        assert jdata["trantype"] == "B"
+        assert jdata["prctyp"] == "MKT"
+        assert jdata["qty"] == "10"
+        assert jdata["ret"] == "DAY"
+        assert jdata["prd"] == "I"
+
+    async def test_submit_limit_includes_price(self) -> None:
+        adapter = self._adapter()
+        captured: list[httpx.Request] = []
+        _attach(
+            adapter,
+            _router(
+                {("POST", "/PiConnectTP/PlaceOrder"): (200, {"stat": "Ok", "norenordno": "1"})},
+                captured,
+            ),
+            "https://piconnect.flattrade.in/PiConnectTP",
+        )
+        await adapter.submit_order(
+            _intent(order_type=OrderType.LIMIT, limit_price=Decimal("2950.5"))
+        )
+        jdata, _ = _noren_body(captured[0])
+        assert jdata["prc"] == "2950.5"
+        assert jdata["prctyp"] == "LMT"
+
+    async def test_rejected_order_raises_conflict(self) -> None:
+        adapter = self._adapter()
+        _attach(
+            adapter,
+            _router(
+                {
+                    ("POST", "/PiConnectTP/PlaceOrder"): (
+                        200,
+                        {"stat": "Not_Ok", "emsg": "RMS blocked"},
+                    )
+                },
+                [],
+            ),
+            "https://piconnect.flattrade.in/PiConnectTP",
+        )
+        with pytest.raises(ConflictError, match="RMS blocked"):
+            await adapter.submit_order(_intent())
+
+    async def test_cancel_and_replace(self) -> None:
+        adapter = self._adapter()
+        adapter._tracked["F-1"] = _TrackedOrder(
+            client_order_id="cid-1", symbol="RELIANCE", exchange="NSE"
+        )
+        captured: list[httpx.Request] = []
+        _attach(
+            adapter,
+            _router(
+                {
+                    ("POST", "/PiConnectTP/CancelOrder"): (200, {"stat": "Ok"}),
+                    ("POST", "/PiConnectTP/ModifyOrder"): (200, {"stat": "Ok"}),
+                },
+                captured,
+            ),
+            "https://piconnect.flattrade.in/PiConnectTP",
+        )
+        cancel = await adapter.cancel_order("F-1")
+        assert cancel.status is OrderStatus.CANCEL_PENDING
+        replace = await adapter.replace_order("F-1", quantity=Decimal("5"))
+        assert replace.status is OrderStatus.SUBMITTED
+        jdata, _ = _noren_body(captured[1])
+        assert jdata["tsym"] == "RELIANCE"
+        assert jdata["qty"] == "5"
+
+    async def test_stream_maps_complete_status(self) -> None:
+        adapter = self._adapter()
+        adapter._tracked["F-9"] = _TrackedOrder(
+            client_order_id="cid-9", symbol="RELIANCE", exchange="NSE"
+        )
+        _attach(
+            adapter,
+            _router(
+                {
+                    ("POST", "/PiConnectTP/OrderBook"): (
+                        200,
+                        [
+                            {
+                                "norenordno": "F-9",
+                                "status": "COMPLETE",
+                                "fillshares": 10,
+                                "avgprc": "2951.25",
+                            }
+                        ],
+                    )
+                },
+                [],
+            ),
+            "https://piconnect.flattrade.in/PiConnectTP",
+        )
+        update = await _first_update(adapter)
+        assert update.status is OrderStatus.FILLED
+        assert update.filled_quantity == Decimal("10")
+        assert update.average_price == Decimal("2951.25")
+
+    async def test_balances_and_health(self) -> None:
+        adapter = self._adapter()
+        _attach(
+            adapter,
+            _router(
+                {("POST", "/PiConnectTP/Limits"): (200, {"stat": "Ok", "cash": "150000.50"})},
+                [],
+            ),
+            "https://piconnect.flattrade.in/PiConnectTP",
+        )
+        assert await adapter.health() is True
+        balances = await adapter.get_balances()
+        assert balances["cash"] == Decimal("150000.50")
 
 
 # ---------------------------------- Delta -----------------------------------
@@ -777,8 +933,11 @@ class TestBinanceAdapter:
         _attach(adapter, handler, "https://api.binance.com")
 
         await adapter.submit_order(
-            _intent(order_type=OrderType.LIMIT, limit_price=Decimal("100.5"),
-                    time_in_force=TimeInForce.IOC)
+            _intent(
+                order_type=OrderType.LIMIT,
+                limit_price=Decimal("100.5"),
+                time_in_force=TimeInForce.IOC,
+            )
         )
         query = parse_qs(captured[0].url.query.decode())
         assert query["price"] == ["100.5"]
@@ -798,8 +957,14 @@ class TestBinanceAdapter:
                 ("POST", "/api/v3/order"): (200, {"orderId": 9}),
                 ("GET", "/api/v3/openOrders"): (
                     200,
-                    [{"orderId": 9, "status": "FILLED", "executedQty": "10",
-                      "cummulativeQuoteQty": "1000"}],
+                    [
+                        {
+                            "orderId": 9,
+                            "status": "FILLED",
+                            "executedQty": "10",
+                            "cummulativeQuoteQty": "1000",
+                        }
+                    ],
                 ),
             },
             captured,
@@ -814,10 +979,12 @@ class TestBinanceAdapter:
 
     async def test_balances_filters_zero(self) -> None:
         handler = _router(
-            {("GET", "/api/v3/account"): (
-                200,
-                {"balances": [{"asset": "USDT", "free": "500"}, {"asset": "BTC", "free": "0"}]},
-            )},
+            {
+                ("GET", "/api/v3/account"): (
+                    200,
+                    {"balances": [{"asset": "USDT", "free": "500"}, {"asset": "BTC", "free": "0"}]},
+                )
+            },
             [],
         )
         adapter = self._adapter()
@@ -857,11 +1024,13 @@ class TestIbkrAdapter:
         )
         adapter = self._adapter()
         _attach(adapter, handler, "https://localhost:5000")
-        ack = await adapter.submit_order(_intent(order_type=OrderType.LIMIT,
-                                                 limit_price=Decimal("2950")))
+        ack = await adapter.submit_order(
+            _intent(order_type=OrderType.LIMIT, limit_price=Decimal("2950"))
+        )
         assert ack.broker_order_id == "o777"
         assert adapter._tracked["o777"] == "cid-1"
         import json as _json
+
         body = _json.loads(captured[0].content.decode())
         assert body["orders"][0]["conid"] == 2885
         assert body["orders"][0]["orderType"] == "LMT"
@@ -888,11 +1057,21 @@ class TestIbkrAdapter:
         adapter = self._adapter()
         adapter._tracked["o9"] = "cid-9"
         handler = _router(
-            {("GET", "/v1/api/iserver/account/orders"): (
-                200,
-                {"orders": [{"orderId": "o9", "status": "Submitted",
-                             "filledQuantity": 4, "avgPrice": 100.25}]},
-            )},
+            {
+                ("GET", "/v1/api/iserver/account/orders"): (
+                    200,
+                    {
+                        "orders": [
+                            {
+                                "orderId": "o9",
+                                "status": "Submitted",
+                                "filledQuantity": 4,
+                                "avgPrice": 100.25,
+                            }
+                        ]
+                    },
+                )
+            },
             [],
         )
         _attach(adapter, handler, "https://localhost:5000")
@@ -902,9 +1081,12 @@ class TestIbkrAdapter:
 
     async def test_balances_from_ledger(self) -> None:
         handler = _router(
-            {("GET", "/v1/api/portfolio/DU123/ledger"): (
-                200, {"USD": {"cashbalance": 12500.5}, "BASE": {"cashbalance": 12500.5}},
-            )},
+            {
+                ("GET", "/v1/api/portfolio/DU123/ledger"): (
+                    200,
+                    {"USD": {"cashbalance": 12500.5}, "BASE": {"cashbalance": 12500.5}},
+                )
+            },
             [],
         )
         adapter = self._adapter()

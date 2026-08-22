@@ -237,11 +237,17 @@ def _include_routers(app: FastAPI) -> None:
     from algo_platform.modules.identity.presentation.users_router import (
         router as users_router,
     )
+    from algo_platform.modules.instruments.presentation.market_info_router import (
+        router as market_info_router,
+    )
     from algo_platform.modules.instruments.presentation.router import (
         admin_router as venue_instruments_admin_router,
     )
     from algo_platform.modules.instruments.presentation.router import (
         router as market_data_router,
+    )
+    from algo_platform.modules.market_intel.presentation.router import (
+        router as market_intel_router,
     )
     from algo_platform.modules.marketplace.presentation.router import (
         router as marketplace_router,
@@ -251,6 +257,9 @@ def _include_routers(app: FastAPI) -> None:
     )
     from algo_platform.modules.notifications.presentation.router import (
         router as notifications_router,
+    )
+    from algo_platform.modules.operations.presentation.router import (
+        router as operations_router,
     )
     from algo_platform.modules.organizations.presentation.router import (
         router as organizations_router,
@@ -271,6 +280,9 @@ def _include_routers(app: FastAPI) -> None:
     from algo_platform.modules.trading.presentation.router import (
         router as trading_router,
     )
+    from algo_platform.modules.workspace.presentation.router import (
+        router as workspace_router,
+    )
 
     # Prometheus scrape endpoint is mounted at the root, not under /api/v1.
     app.include_router(metrics_router)
@@ -285,9 +297,13 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(billing_router, prefix=prefix)
     app.include_router(billing_webhooks_router, prefix=prefix)
     app.include_router(notifications_router, prefix=prefix)
+    app.include_router(operations_router, prefix=prefix)
+    app.include_router(workspace_router, prefix=prefix)
     app.include_router(mobile_router, prefix=prefix)
     app.include_router(brokerage_router, prefix=prefix)
     app.include_router(market_data_router, prefix=prefix)
+    app.include_router(market_info_router, prefix=prefix)
+    app.include_router(market_intel_router, prefix=prefix)
     app.include_router(venue_instruments_admin_router, prefix=prefix)
     app.include_router(trading_router, prefix=prefix)
     app.include_router(risk_router, prefix=prefix)

@@ -271,6 +271,18 @@ export interface ScannerRow {
   change_pct: string | null;
 }
 
+export interface MarketInfo {
+  symbol: string;
+  name: string;
+  yahoo_symbol: string;
+  price: string | null;
+  previous_close: string | null;
+  change: string | null;
+  change_pct: string | null;
+  currency: string;
+  as_of: string | null;
+}
+
 export interface Candle {
   timestamp: string;
   open: string;
@@ -278,6 +290,77 @@ export interface Candle {
   low: string;
   close: string;
   volume: string;
+}
+
+/* ----------------------------- market intelligence ----------------------------- */
+// AI-CIO advisory reads. Numeric fields are JSON numbers (not Decimal strings).
+
+export interface MarketIntelStatus {
+  configured: boolean;
+}
+
+export interface MarketIntelIndex {
+  value: string;
+  label: string;
+}
+
+export interface Regime {
+  label: string;
+  hmm_confidence: number | null;
+  hmm_vol_state: string | null;
+  gmm_vol_state: string | null;
+  adx_14: number | null;
+  avg_pairwise_corr: number | null;
+  breadth_pct_above_ma20: number | null;
+  days_since_changepoint: number | null;
+  as_of: string | null;
+}
+
+export interface RankingDimension {
+  name: string;
+  value: number | null;
+}
+
+export interface RankingRow {
+  run_date: string;
+  ticker: string;
+  name: string | null;
+  rank: number;
+  composite_score: number;
+  regime: string;
+  dimensions: RankingDimension[];
+}
+
+export interface MarketIntelNews {
+  ticker: string;
+  title: string;
+  source: string;
+  link: string;
+  published_raw: string | null;
+  is_duplicate: boolean;
+  sentiment_label: string | null;
+  sentiment_score: number | null;
+}
+
+export interface OptionsSnapshot {
+  ticker: string;
+  run_date: string;
+  max_pain: number | null;
+  max_pain_dist_pct: number | null;
+  pcr_oi: number | null;
+  pcr_volume: number | null;
+  iv_skew: number | null;
+  atm_iv: number | null;
+  oi_score: number | null;
+}
+
+export interface InstitutionalBias {
+  ticker: string;
+  run_date: string;
+  net_value: number | null;
+  gross_value: number | null;
+  n_deals: number | null;
+  if_score: number;
 }
 
 export interface Order {
@@ -350,6 +433,19 @@ export interface WatchlistItem {
   symbol: string;
   name: string;
   sort_order: number;
+}
+
+export interface WorkspaceTask {
+  id: string;
+  title: string;
+  notes: string | null;
+  priority: "low" | "normal" | "high";
+  due_at: string | null;
+  completed_at: string | null;
+  archived_at: string | null;
+  tag: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Watchlist {
@@ -666,3 +762,196 @@ export interface SystemHealth {
   engine_heartbeat_age_seconds: number | null;
   active_runs: number;
 }
+
+export interface OpsOverview {
+  machine_count: number | null;
+  online_machines: number | null;
+  closed_trade_count: number | null;
+  total_pnl: number | null;
+  awaiting_telemetry: boolean;
+  telemetry_configured?: boolean;
+}
+
+export interface OpsMachine {
+  id: string;
+  name: string;
+  hostname: string | null;
+  agent_id: string | null;
+  status: string | null;
+  cpu: number | null;
+  ram: number | null;
+  disk: number | null;
+  last_heartbeat: string | null;
+  last_successful_upload: string | null;
+  queue_depth: number | null;
+  oldest_pending_age_sec: number | null;
+}
+
+export interface OpsEvent {
+  id: string;
+  time: string | null;
+  received_at: string | null;
+  ingest_ts?: string | null;
+  event_ts?: string | null;
+  category: string | null;
+  severity: string | null;
+  source: string | null;
+  message: string | null;
+  machine_id: string | null;
+  event_type: string | null;
+  strategy: string | null;
+  symbol: string | null;
+  payload_summary: string | null;
+  level?: string | null;
+}
+
+export interface OpsTrade {
+  id: string;
+  envelope_id?: string | null;
+  time: string | null;
+  trade_ts?: string | null;
+  strategy: string | null;
+  machine: string | null;
+  machine_id: string | null;
+  broker: string | null;
+  account: string | null;
+  symbol: string | null;
+  direction: string | null;
+  entry: number | null;
+  exit: number | null;
+  quantity: number | null;
+  pnl: number | null;
+  latency_ms: number | null;
+  duration_sec: number | null;
+  status: string | null;
+}
+
+export interface OpsStrategyRow {
+  strategy_id: string;
+  strategy_name: string;
+  machine_id: string | null;
+  status: string | null;
+  last_heartbeat: string | null;
+  symbols: string[];
+  trade_count: number | null;
+  winning_trades?: number | null;
+  losing_trades?: number | null;
+  total_pnl: number | null;
+  gross_pnl?: number | null;
+  average_trade?: number | null;
+  best_trade?: number | null;
+  worst_trade?: number | null;
+  win_rate: number | null;
+  avg_latency_ms: number | null;
+}
+
+export interface OpsSymbolRow {
+  strategy_name: string;
+  symbol: string;
+  underlying: string | null;
+  instrument: string | null;
+  expiry: string | null;
+  strike: string | null;
+  option_type: string | null;
+  metadata_available: boolean;
+  trade_count: number | null;
+  winning_trades?: number | null;
+  losing_trades?: number | null;
+  pnl: number | null;
+  average_trade?: number | null;
+  best_trade?: number | null;
+  worst_trade?: number | null;
+  win_rate: number | null;
+}
+
+export interface OpsAnalytics {
+  strategies: OpsStrategyRow[];
+  symbols: OpsSymbolRow[];
+  by_symbol?: OpsSymbolRow[];
+  option_metadata: string;
+  timestamps?: Record<string, string>;
+}
+
+export interface OpsMachine {
+  id: string;
+  name: string;
+  hostname: string | null;
+  agent_id: string | null;
+  status: string | null;
+  cpu: number | null;
+  ram: number | null;
+  disk: number | null;
+  last_heartbeat: string | null;
+  last_successful_upload: string | null;
+  queue_depth: number | null;
+  oldest_pending_age_sec: number | null;
+}
+
+export interface OpsEvent {
+  id: string;
+  time: string | null;
+  received_at: string | null;
+  category: string | null;
+  severity: string | null;
+  source: string | null;
+  message: string | null;
+  machine_id: string | null;
+  event_type: string | null;
+  strategy: string | null;
+  symbol: string | null;
+  payload_summary: string | null;
+  level?: string | null;
+}
+
+export interface OpsTrade {
+  id: string;
+  time: string | null;
+  strategy: string | null;
+  machine: string | null;
+  machine_id: string | null;
+  broker: string | null;
+  account: string | null;
+  symbol: string | null;
+  direction: string | null;
+  entry: number | null;
+  exit: number | null;
+  quantity: number | null;
+  pnl: number | null;
+  latency_ms: number | null;
+  duration_sec: number | null;
+  status: string | null;
+}
+
+export interface OpsStrategyRow {
+  strategy_id: string;
+  strategy_name: string;
+  machine_id: string | null;
+  status: string | null;
+  last_heartbeat: string | null;
+  symbols: string[];
+  trade_count: number | null;
+  total_pnl: number | null;
+  win_rate: number | null;
+  avg_latency_ms: number | null;
+}
+
+export interface OpsSymbolRow {
+  strategy_name: string;
+  symbol: string;
+  underlying: string | null;
+  instrument: string | null;
+  expiry: string | null;
+  strike: string | null;
+  option_type: string | null;
+  metadata_available: boolean;
+  trade_count: number | null;
+  pnl: number | null;
+  win_rate: number | null;
+}
+
+export interface OpsAnalytics {
+  strategies: OpsStrategyRow[];
+  symbols: OpsSymbolRow[];
+  option_metadata: string;
+}
+

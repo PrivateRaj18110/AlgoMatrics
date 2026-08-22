@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     # HTTP port on which background processes expose their Prometheus registry.
     metrics_port: int = Field(default=9100, ge=1, le=65535)
 
+    # Read-only ops telemetry Postgres (Google ingest).
+    # Unset in local/test → empty operations APIs (never fixtures).
+    # Unset in production → 503 fail-closed.
+    ops_database_url: str | None = None
+
     database_url: str
     database_pool_size: int = Field(default=10, ge=1, le=100)
     redis_url: str
@@ -112,6 +117,15 @@ class Settings(BaseSettings):
     market_data_source: Literal["simulated"] = "simulated"
     market_tick_interval_ms: int = Field(default=1000, ge=100, le=60_000)
     market_data_seed: int = 20_260_101
+
+    # Market intelligence (AI-CIO). A read-only, advisory overlay: the platform
+    # only *reads* this DuckDB file, never writes it and never trades on it.
+    # Unset => the feature is dormant (API returns empty, the engine gate is off).
+    aicio_duckdb_path: Path | None = None
+    # When enabled (and a DB path is set) the trading engine logs, at each run
+    # start, what AI-CIO *would* advise — without changing execution. Flipping the
+    # advice into real behaviour is a separate, reviewed change.
+    aicio_shadow_gate_enabled: bool = True
 
     # Event transport behind the abstract EventBus. Redis Streams today; the
     # other backends are recognised for forward compatibility and wired later.

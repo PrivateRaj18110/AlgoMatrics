@@ -21,12 +21,28 @@ spec:
         - name: engine
           image: ghcr.io/algo-matrics/backend:latest
           args: ["engine"]
+          # Read-only AI-CIO DuckDB for the log-only market-intel shadow gate; an
+          # absent/empty file is tolerated (the gate simply logs no data).
+          env:
+            - name: AICIO_DUCKDB_PATH
+              value: /data/aicio.duckdb
           envFrom:
             - configMapRef: { name: algo-config }
             - secretRef: { name: algo-secrets }
           resources:
             requests: { cpu: "250m", memory: "256Mi" }
             limits: { cpu: "1", memory: "512Mi" }
+          volumeMounts:
+            - name: aicio-data
+              mountPath: /data
+              readOnly: true
+      # RWX PVC written by the aicio-pipeline CronJob — see 15-aicio-storage.yaml.
+      # Omit this volume (and the mount above) if you are not deploying AI-CIO.
+      volumes:
+        - name: aicio-data
+          persistentVolumeClaim:
+            claimName: algo-aicio-data
+            readOnly: true
 ---
 apiVersion: apps/v1
 kind: Deployment

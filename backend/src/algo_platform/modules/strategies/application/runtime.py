@@ -289,6 +289,8 @@ class StrategyRuntime:
         strategy: SdkStrategy,
         context: EngineStrategyContext,
         instrument_symbols: dict[UUID, str],
+        entry_point: str = "",
+        source: str = "",
     ) -> None:
         self.run = run
         self._strategy = strategy
@@ -296,6 +298,10 @@ class StrategyRuntime:
         self._symbols = instrument_symbols
         self._candles: dict[UUID, _RuntimeCandleState] = {}
         self.failed_reason: str | None = None
+        # Read-only identity used by the advisory market-intel shadow gate; the
+        # runtime does not act on either.
+        self.entry_point = entry_point
+        self.source = source
 
     @property
     def run_id(self) -> UUID:
@@ -304,6 +310,10 @@ class StrategyRuntime:
     @property
     def instrument_ids(self) -> list[UUID]:
         return list(self.run.instrument_ids)
+
+    @property
+    def instrument_symbols(self) -> list[str]:
+        return list(self._symbols.values())
 
     async def start(self) -> None:
         await self._invoke(self._strategy.initialize(self.context))
@@ -440,4 +450,6 @@ async def load_runtime(
         strategy=strategy,
         context=context,
         instrument_symbols=symbol_by_id,
+        entry_point=version.entry_point,
+        source=version.source,
     )

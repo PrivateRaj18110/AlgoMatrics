@@ -57,4 +57,14 @@ describe("LoginPage", () => {
     );
     expect(navigate).not.toHaveBeenCalled();
   });
+
+  it("does not expose public signup", () => {
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText("Create an account")).not.toBeInTheDocument();
+    expect(screen.queryByText("New here?")).not.toBeInTheDocument();
+  });
 });

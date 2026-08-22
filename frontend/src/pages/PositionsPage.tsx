@@ -13,13 +13,15 @@ import {
 } from "@/components/ui";
 import { usePositions } from "@/lib/hooks";
 import { money, pnlClass, signed, toNumber } from "@/lib/format";
+import { inRegion, regionEmptyCopy, type MarketRegion } from "@/lib/marketRegion";
 
-export function PositionsPage() {
+export function PositionsPage({ region }: { region?: MarketRegion } = {}) {
   const { data: positions, isLoading } = usePositions();
   const [ticketOpen, setTicketOpen] = useState(false);
   const [presetInstrument, setPresetInstrument] = useState<string | undefined>();
 
-  const totals = (positions ?? []).reduce(
+  const visible = region ? inRegion(region, positions) : positions;
+  const totals = (visible ?? []).reduce(
     (acc, position) => {
       acc.unrealized += toNumber(position.unrealized_pnl);
       acc.realized += toNumber(position.realized_pnl);
@@ -50,8 +52,11 @@ export function PositionsPage() {
       <Card>
         {isLoading ? (
           <SkeletonRows rows={5} cols={8} />
-        ) : !positions || positions.length === 0 ? (
-          <EmptyState title="No open positions" body="Positions appear here once orders fill." />
+        ) : !visible || visible.length === 0 ? (
+          <EmptyState
+            title={region ? regionEmptyCopy(region) : "No open positions"}
+            body={region ? undefined : "Positions appear here once orders fill."}
+          />
         ) : (
           <Table
             headers={[
@@ -66,7 +71,7 @@ export function PositionsPage() {
               "",
             ]}
           >
-            {positions.map((position) => (
+            {visible.map((position) => (
               <tr key={position.id}>
                 <Td className="font-medium">{position.symbol}</Td>
                 <Td>

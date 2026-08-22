@@ -213,79 +213,32 @@ BROKERS: list[dict[str, Any]] = [
         ],
     },
     {
-        "code": "delta",
-        "name": "Delta Exchange",
-        "description": "Crypto futures and perpetuals (India).",
-        "supports_paper": False,
-        "supports_live": True,
-        "capabilities": {
-            "order_types": ["market", "limit"],
-            "asset_classes": ["crypto"],
-            "sessions": "24x7",
-        },
-        "credential_fields": [
-            {"name": "api_key", "label": "API key", "secret": False},
-            {"name": "api_secret", "label": "API secret", "secret": True},
-        ],
-    },
-    {
-        "code": "mt5",
-        "name": "MetaTrader 5 (VPS agent)",
-        "description": "Forex/CFD via an MT5 terminal managed by the Algo Matrics VPS agent.",
+        "code": "flattrade",
+        "name": "Flattrade",
+        "description": "NSE/BSE equities and F&O via the free Flattrade API.",
         "supports_paper": False,
         "supports_live": True,
         "capabilities": {
             "order_types": ["market", "limit", "stop", "stop_limit"],
-            "asset_classes": ["forex", "cfd"],
+            "asset_classes": ["equity", "futures", "options"],
+            "exchange": "NSE",
         },
         "credential_fields": [
+            {"name": "client_code", "label": "Client code", "secret": False},
             {
-                "name": "agent_url",
-                "label": "Agent URL",
-                "secret": False,
-                "help_text": "https address of your VPS agent.",
+                "name": "session_token",
+                "label": "API session token",
+                "secret": True,
+                "help_text": "Daily token (jKey) from the Flattrade API login flow.",
             },
-            {"name": "agent_token", "label": "Agent token", "secret": True},
-            {"name": "mt5_login", "label": "MT5 login", "secret": False},
-        ],
-    },
-    {
-        "code": "binance",
-        "name": "Binance",
-        "description": "Global crypto spot exchange.",
-        "supports_paper": False,
-        "supports_live": True,
-        "capabilities": {
-            "order_types": ["market", "limit", "stop", "stop_limit"],
-            "asset_classes": ["crypto"],
-            "sessions": "24x7",
-        },
-        "credential_fields": [
-            {"name": "api_key", "label": "API key", "secret": False},
-            {"name": "api_secret", "label": "API secret", "secret": True},
-        ],
-    },
-    {
-        "code": "interactive_brokers",
-        "name": "Interactive Brokers",
-        "description": "Global multi-asset broker via the Client Portal gateway.",
-        "supports_paper": False,
-        "supports_live": True,
-        "capabilities": {
-            "order_types": ["market", "limit", "stop", "stop_limit"],
-            "asset_classes": ["equity", "options", "futures", "forex"],
-        },
-        "credential_fields": [
-            {
-                "name": "gateway_url",
-                "label": "Gateway URL",
-                "secret": False,
-                "help_text": "HTTPS URL of your IBKR Client Portal gateway.",
-            },
-            {"name": "account_id", "label": "Account ID", "secret": False},
         ],
     },
 ]
+
+# Venues pulled from the catalog for now (intraday India focus). Adapters stay
+# in the codebase; the seed deactivates any existing catalog rows so they stop
+# appearing in the UI and new connections cannot be created.
+RETIRED_BROKER_CODES: list[str] = ["delta", "mt5", "binance", "interactive_brokers"]
 
 # SEED DATA: starter instrument universe for the paper simulator.
 INSTRUMENTS: list[tuple[str, str, str, str, str, str, str, str]] = [
@@ -345,11 +298,19 @@ async def seed_plans(session: AsyncSession) -> int:
 
 async def seed_brokers(session: AsyncSession) -> int:
     created = 0
+    for code in RETIRED_BROKER_CODES:
+        retired = (
+            await session.execute(select(BrokerModel).where(BrokerModel.code == code))
+        ).scalar_one_or_none()
+        if retired is not None and retired.is_active:
+            retired.is_active = False
     for spec in BROKERS:
         existing = (
             await session.execute(select(BrokerModel).where(BrokerModel.code == spec["code"]))
         ).scalar_one_or_none()
         if existing is not None:
+            if not existing.is_active and spec["code"] not in RETIRED_BROKER_CODES:
+                existing.is_active = True
             continue
         session.add(
             BrokerModel(

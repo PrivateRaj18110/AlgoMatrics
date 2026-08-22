@@ -5,6 +5,91 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Personal-mode UI**: Brokers merged into Settings (Settings → Brokers;
+  `/app/brokers` redirects there, standalone nav item removed) and the
+  Subscription page/nav removed (`/app/subscription` → dashboard). Backend billing
+  is untouched — only the user-facing surface changed.
+- **Market Intel index filter**: the Top-opportunities panel can be scoped to an
+  index group — **Nifty 50 / Nifty Next 50 / Bank Nifty / Fin Nifty** — via a
+  selector. New `GET /api/v1/market-intel/indices` and an `index` query param on
+  `/rankings` (top-N within the index's constituents). The constituent lists are
+  editable snapshots in `modules/market_intel/domain/indices.py`.
+- **Landing page removed**: the site root (`/`) now redirects to the login page
+  instead of the marketing landing page (`LandingPage.tsx` deleted).
+- **Ops dashboard now live by default**: the deployed `/ops` frontend is built in
+  live mode (`VITE_API_BASE_URL=/ops/api`, `VITE_USE_MOCK=false`), so it calls the
+  ops-api and shows real AlgoMatrics data once `ALGOMATRICS_API_KEY` / `ORG_ID`
+  are set — falling back to the ops-api's own mock otherwise. All seven ops
+  trading-domain routers were already wired to the live AlgoMatrics client; this
+  flips the frontend off its bundled mock. Rebuild with
+  `--build-arg VITE_USE_MOCK=true` to ship the bundled mock instead.
+- **Production parity (Kubernetes + CI/CD)**: CI now builds **and pushes** all four
+  images (backend, frontend, ops-api, aicio) to `ghcr.io/algo-matrics/*` on
+  `main`/tags — PRs stay build-only — with metadata tagging (`latest` + short SHA +
+  tag) and per-image GHA cache. New k8s manifests bring the ops dashboard to
+  Kubernetes: `deploy/k8s/45-ops.yaml` (ops-api Deployment + Service + Config/Secret,
+  single replica, health probes, rolling update) and `65-ops-ingress.yaml`
+  (`/ops/api` → ops-api, rewrite + websocket timeouts).
+  `docs/operations/production-infrastructure.md` gains a Compose↔Kubernetes parity
+  table, a required-images/registry section, RWX + ops-key checklist items, and
+  concrete rollback steps.
+
+### Added — AI-CIO market-intelligence integration
+
+- **Market intelligence** (`modules/market_intel`): a read-only, advisory overlay
+  over the vendored AI-CIO pipeline (`ai_cio_phase1/`). A fail-soft DuckDB reader
+  (`read_only=True`, degrades to empty/None), the `AicioClient` facade
+  (`current_regime` / `rankings` / `is_favorable_regime` / `recent_news` /
+  `options_snapshot` / `institutional_bias`), and `GET /api/v1/market-intel/{status,
+  regime,rankings,news,options/{ticker},flow/{ticker}}` gated on `ANALYTICS_VIEW`.
+  Guide: `docs/operations/market-intelligence.md`.
+- **Console Market Intel page** (`/app/market-intel`): current regime + ensemble
+  diagnostics, top-N ranked opportunities with a per-dimension breakdown, a
+  selected-ticker detail (options + institutional flow), and recent news.
+- **Shadow-mode strategy gate**: the trading engine logs, at each run start, what
+  AI-CIO *would* advise (`shadow_gate.regime_opinion` / `ranking_opinion`) —
+  **log-only, never changes execution**. A live rollout is gated on 30+ days of
+  this shadow signal. Read-only accessors added to `StrategyRuntime`.
+- **AI-CIO persistence**: its `rankings` table now carries the raw dimension
+  breakdown and a new one-row-per-run `regime` table (diagnostics), so the
+  breakdown comes from the DB, not just the CSV.
+- **Pipeline deployment**: `deploy/docker/aicio.Dockerfile` + compose service
+  `aicio-pipeline` (sole writer of a shared `aicio_data` volume, mounted read-only
+  into `api`/`trading-engine`), synthetic-by-default so bring-up stays hermetic.
+  Kubernetes: `deploy/k8s/15-aicio-storage.yaml` (RWX PVC) + `55-aicio-pipeline.yaml`
+  (daily CronJob), with the api/engine deployments mounting it read-only. AI-CIO's
+  `requirements.txt` corrected (added `hmmlearn` / `scikit-learn` / `ruptures` /
+  `datasketch`, which the code imports). New backend dependency: `duckdb`. Config:
+  `AICIO_DUCKDB_PATH`, `AICIO_SHADOW_GATE_ENABLED`.
+- **Tests**: `test_market_intel_favorability`, `test_shadow_gate` (asserts no
+  run-state mutation), `test_market_intel_reader` (real temp DuckDB + graceful
+  degradation + read-only handle), and `MarketIntelPage.test.tsx`.
+
+### Added — Ops dashboard integration + intraday-India refocus
+
+- **Ops dashboard** (`ops/`, served at `/ops`): the Raj Quant OS monitoring
+  monorepo integrated as a separate app — React 19 frontend (subpath build),
+  FastAPI telemetry backend (`/ops/api/agent/*` ingest, websocket), and the
+  `raj-monitor` SDK/agent at `packages/raj_monitor`. The ops backend mirrors
+  live platform data via an org-scoped read API key with mock fallback.
+  Compose service `ops-api`, nginx `/ops` locations, CI jobs, docs:
+  `docs/operations/ops-dashboard.md`.
+- **Flattrade broker** (`flattrade`): Noren REST execution adapter +
+  connection verifier + catalog entry (intraday product default). 6 new
+  contract tests.
+- **Indian market info**: `GET /market-info/indices` + `/market-info/quotes`
+  (free Yahoo Finance chart API, 60 s cache, NSE/BSE only) + console
+  **Market** page. 4 new contract tests.
+- **Console**: orders/positions/trades/portfolio/risk consolidated into one
+  tabbed **Trading** page (`/app/trading/:tab`, old paths redirect);
+  Backtesting page unrouted for now (`/app/backtesting` → strategies).
+- **Broker catalog**: Delta, MT5, Binance, Interactive Brokers deactivated by
+  the seed (adapters retained); Flattrade added.
+- `scripts/send_test_email.py` + `docs/operations/go-live-checklist.md`
+  (Search Console verification, SMTP/SPF/DKIM steps).
+
 ### Added — Production infrastructure (Master Spec Phase 20)
 
 Kubernetes deployment kit + runtime guardrails. See

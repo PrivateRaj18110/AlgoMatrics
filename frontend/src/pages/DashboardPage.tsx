@@ -25,6 +25,7 @@ import {
 } from "@/lib/hooks";
 import { dateTime, money, pct, pnlClass, signed, toNumber } from "@/lib/format";
 import { liveChannel } from "@/lib/ws";
+import { OpsOverviewStrip } from "@/pages/operations/OperationsPages";
 import { useAuth } from "@/stores/auth";
 
 export function DashboardPage() {
@@ -99,6 +100,8 @@ export function DashboardPage() {
           />
         </div>
       )}
+
+      <OpsOverviewStrip />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <Card title="Equity curve (30 days)" className="lg:col-span-2">

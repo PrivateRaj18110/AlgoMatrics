@@ -1,0 +1,13 @@
+# Raj Monitor — Local Agent dependencies
+#
+# The SDK (raj_monitor.monitor) needs NOTHING beyond the Python standard library,
+# so it is safe to drop into any strategy project. The Local Agent benefits from
+# two optional packages below; it degrades gracefully if they are absent.
+
+# Rich, cross-platform host metrics (CPU/RAM/disk/network/processes/MT5 detect).
+# Without it the agent falls back to stdlib-only readings.
+psutil>=5.9,<8.0
+
+# Human-friendly config.yaml parsing. Without it a small built-in parser handles
+# the simple key/value subset this file uses.
+PyYAML>=6.0,<7.0

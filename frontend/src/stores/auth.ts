@@ -29,7 +29,9 @@ export const useAuth = create<AuthState>((set, get) => ({
   status: "booting",
 
   setTokens: (tokens) =>
-    set({ accessToken: tokens.access_token, user: tokens.user, status: "authenticated" }),
+    // Status stays "booting" until loadContext restores org context. Flipping
+    // to authenticated here let /app mount and call /operations/* without X-Org-Id.
+    set({ accessToken: tokens.access_token, user: tokens.user }),
 
   setUser: (user) => set({ user }),
 
@@ -64,7 +66,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       get().setOrganizations(orgs);
       set({ user, status: "authenticated" });
     } catch {
-      set({ status: "anonymous" });
+      get().reset();
     }
   },
 

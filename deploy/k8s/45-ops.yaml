@@ -1,0 +1,182 @@
+# Ops dashboard backend (Raj Quant OS telemetry ingest + control-plane proxy).
+# Mirrors the compose `ops-api` service. It reads live platform data from the API
+# via an org-scoped read key and persists Google VM telemetry to its OWN
+# PostgreSQL database.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ops-config
+  namespace: algo
+  labels: { app: ops-api }
+data:
+  APP_NAME: "AlgoMatrics Ops API"
+  # Turns on the Phase 2 startup guard: the container refuses to boot without a
+  # database and without ingestion credentials, instead of quietly degrading.
+  ENVIRONMENT: "production"
+  # In-cluster control plane: the algo-api Service (port 80 -> container 8000).
+  ALGOMATRICS_API_URL: "http://algo-api/api/v1"
+  # In production the console host serves both /ops and /ops/api (same origin),
+  # but set the app origin so any cross-origin call is still allowed.
+  CORS_ORIGINS: "https://app.algomatrics.com"
+  INGEST_MAX_BATCH_ITEMS: "1000"
+  INGEST_DEDUP_RETENTION_DAYS: "7"
+  TELEMETRY_RETENTION_DAYS: "0"
+  OPERATIONAL_EVENT_RETENTION_DAYS: "0"
+  DEAD_LETTER_RETENTION_DAYS: "0"
+  SESSION_RETENTION_DAYS: "0"
+  EOD_STORAGE_BACKEND: "local"
+  EOD_STORAGE_ROOT: "/var/lib/algomatrics/eod"
+  EOD_MAX_CHUNK_BYTES: "26214400"
+  # Set EOD_STORAGE_BACKEND to "s3" and populate these values before increasing
+  # ops-api replicas. Credentials should come from IRSA/workload identity or a
+  # secret manager using the standard AWS environment/provider chain.
+  EOD_S3_BUCKET: ""
+  EOD_S3_PREFIX: "algomatrics/eod"
+  EOD_S3_REGION: ""
+  EOD_S3_ENDPOINT_URL: ""
+  EOD_S3_FORCE_PATH_STYLE: "false"
+  EOD_S3_SERVER_SIDE_ENCRYPTION: ""
+  EOD_METADATA_RETENTION_DAYS: "0"
+  EOD_RAW_RETENTION_DAYS: "0"
+  QUANT_MAX_FILE_BYTES: "52428800"
+  QUANT_MAX_ROWS: "500000"
+  QUANT_REPLAY_MAX_POINTS: "2000"
+  QUANT_SYNTHETIC_MAX_STEPS: "10000"
+  QUANT_REPORT_RETENTION_DAYS: "0"
+  OPS_REST_AUTH_REQUIRED: "true"
+---
+# Template ONLY — populate via your secret manager (External Secrets / sealed-
+# secrets) at deploy time. NOTHING here may be committed with a real value.
+#
+# Required (the pod will not start without them):
+#   DATABASE_URL         ops telemetry database — NOT the platform database
+#   RAJ_AGENT_TOKENS     machine-scoped agent credentials
+#   RAJ_DASHBOARD_TOKEN  websocket viewer credential
+#
+# Optional: ALGOMATRICS_API_KEY/ORG_ID may stay blank — the ops-api then serves
+# its own mock for the trading-domain proxy instead of live platform data
+# (graceful, non-fatal). That fallback does NOT apply to telemetry.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ops-secrets
+  namespace: algo
+  labels: { app: ops-api }
+type: Opaque
+stringData:
+  # Dedicated ops telemetry database. Deliberately separate from the platform
+  # DB so ingest load and retention never touch trading data.
+  #   postgresql+psycopg://ops:<password>@ops-postgres:5432/ops_telemetry
+  DATABASE_URL: ""
+
+  # Agent credentials, machine-scoped: "machine:token,machine2:token2".
+  # The machine name must match the agent's `machine.name` / RAJ_MACHINE exactly.
+  # Generate: python -c "import secrets; print(secrets.token_urlsafe(32))"
+  RAJ_AGENT_TOKENS: ""
+  # Fleet-wide fallback. Leave blank when RAJ_AGENT_TOKENS is set — a leak of
+  # this one would let an attacker forge telemetry for every host.
+  RAJ_AGENT_TOKEN: ""
+
+  # Websocket viewer credential.
+  RAJ_DASHBOARD_TOKEN: ""
+  # Optional: PEM PUBLIC key of the platform's RS256 access tokens, enabling
+  # per-user websocket auth instead of a shared token. Public key only.
+  OPS_JWT_PUBLIC_KEY: ""
+
+  # Org-scoped READ API key + org id (POST /api/v1/api-keys, scope=read).
+  ALGOMATRICS_API_KEY: ""
+  ALGOMATRICS_ORG_ID: ""
+
+  # Optional for S3-compatible storage when workload identity is unavailable.
+  # Prefer IRSA/External Secrets over static keys, and do not commit real values.
+  # AWS_ACCESS_KEY_ID: ""
+  # AWS_SECRET_ACCESS_KEY: ""
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ops-eod-data
+  namespace: algo
+  labels: { app: ops-api }
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      # Local filesystem backend for the single-replica deployment. Use object
+      # storage before increasing ops-api replicas.
+      storage: 50Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-api
+  namespace: algo
+  labels: { app: ops-api }
+spec:
+  # Single replica: telemetry is now durable in PostgreSQL, but the websocket
+  # broadcaster still holds its client set in memory, so this is NOT horizontally
+  # scaled (deliberately no HPA). Scaling out would need a shared pub/sub for
+  # the broadcaster — see the known limitations in the ops ingestion runbook.
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app: ops-api }
+  template:
+    metadata:
+      labels: { app: ops-api }
+    spec:
+      # Apply the telemetry schema before the API starts. Alembic is idempotent,
+      # so a redeploy with no new revision is a no-op. Running it here (rather
+      # than in the app) keeps migrations out of the request path and means a
+      # failed migration blocks the rollout instead of half-starting the API.
+      initContainers:
+        - name: ops-migrate
+          image: ghcr.io/algo-matrics/ops-api:latest # pin to the same tag as below
+          command: ["python", "-m", "alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef: { name: ops-config }
+            - secretRef: { name: ops-secrets }
+          resources:
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "256Mi" }
+      containers:
+        - name: ops-api
+          image: ghcr.io/algo-matrics/ops-api:latest # pin to the release tag
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef: { name: ops-config }
+            - secretRef: { name: ops-secrets }
+          livenessProbe:
+            httpGet: { path: /api/health, port: 8000 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /api/health, port: 8000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: ops-eod-data
+              mountPath: /var/lib/algomatrics/eod
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "256Mi" }
+      volumes:
+        - name: ops-eod-data
+          persistentVolumeClaim: { claimName: ops-eod-data }
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ops-api
+  namespace: algo
+  labels: { app: ops-api }
+spec:
+  selector: { app: ops-api }
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000

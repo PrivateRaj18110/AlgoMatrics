@@ -1,0 +1,60 @@
+# AI-CIO market-intelligence pipeline (CronJob).
+#
+# The sole writer of the shared DuckDB (15-aicio-storage.yaml). Runs the pipeline
+# on a schedule and exits; the API and engine read the result. Synthetic by
+# default, so it needs no network — set AICIO_DATA_SOURCE=yfinance (and allow
+# egress) for real market data, and verify the first live run.
+#
+# Image: built from deploy/docker/aicio.Dockerfile. CI must build and push it
+# (it is NOT the backend image — it carries the heavier ML stack).
+#
+# First run: the PVC starts empty, so /ops-... Market Intel is empty until the
+# first scheduled run. Populate immediately with:
+#   kubectl -n algo create job aicio-init --from=cronjob/algo-aicio-pipeline
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: algo-aicio-pipeline
+  namespace: algo
+  labels: { app: algo-aicio }
+spec:
+  # Daily; tune to the NSE calendar (e.g. after settlement). Times are UTC.
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels: { app: algo-aicio }
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: aicio-pipeline
+              image: ghcr.io/algo-matrics/aicio:latest # pin to the release tag
+              # Override the image's daily sleep-loop with a single run — the
+              # CronJob schedule provides the cadence. run_pipeline goes first: it
+              # writes the OHLCV that market-intel needs for spot prices, so
+              # options fold into the next run's ranking.
+              command: ["sh", "-c"]
+              args:
+                - "python run_pipeline.py && python run_market_intel.py && python run_news.py"
+              env:
+                - name: AICIO_DB_PATH
+                  value: /data/aicio.duckdb
+                - name: AICIO_DATA_SOURCE
+                  value: "synthetic" # set "yfinance" for real data (needs egress)
+              volumeMounts:
+                - name: aicio-data
+                  mountPath: /data
+              resources:
+                requests: { cpu: "500m", memory: "1Gi" }
+                limits: { cpu: "2", memory: "2Gi" }
+          volumes:
+            - name: aicio-data
+              persistentVolumeClaim:
+                claimName: algo-aicio-data
