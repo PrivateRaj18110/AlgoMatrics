@@ -1,6 +1,6 @@
 /** Display timestamps using IANA time zones. Never add/subtract 5:30 manually. */
 
-export type DisplayZone = "Asia/Kolkata" | "UTC";
+export type DisplayZone = "Asia/Kolkata" | "UTC" | "America/New_York" | "Europe/London";
 
 export const TRADING_ZONE: DisplayZone = "Asia/Kolkata";
 export const INFRA_ZONE: DisplayZone = "UTC";

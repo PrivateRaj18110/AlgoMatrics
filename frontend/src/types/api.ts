@@ -435,6 +435,19 @@ export interface WatchlistItem {
   sort_order: number;
 }
 
+export interface WorkspaceTask {
+  id: string;
+  title: string;
+  notes: string | null;
+  priority: "low" | "normal" | "high";
+  due_at: string | null;
+  completed_at: string | null;
+  archived_at: string | null;
+  tag: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Watchlist {
   id: string;
   name: string;

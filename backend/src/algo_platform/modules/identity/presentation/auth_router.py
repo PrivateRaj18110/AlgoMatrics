@@ -25,10 +25,7 @@ from algo_platform.modules.identity.presentation.schemas import (
     VerifyEmailRequest,
     WsTicketResponse,
 )
-from algo_platform.modules.organizations.presentation.dependencies import (
-    OrganizationServiceDep,
-)
-from algo_platform.shared.domain.errors import AuthenticationFailed
+from algo_platform.shared.domain.errors import AuthenticationFailed, PermissionDenied
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -66,35 +63,10 @@ def _clear_refresh_cookie(response: Response, settings: Settings) -> None:
 @router.post(
     "/register",
     response_model=RegisterResponse,
-    status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(rate_limit("register", times=5, seconds=300))],
 )
-async def register(
-    payload: RegisterRequest,
-    request: Request,
-    auth: AuthServiceDep,
-    organizations: OrganizationServiceDep,
-    session: SessionDep,
-) -> RegisterResponse:
-    user = await auth.register(
-        email=payload.email, password=payload.password, full_name=payload.full_name
-    )
-    org_name = payload.organization_name or f"{payload.full_name.split(' ')[0]}'s Workspace"
-    organization = await organizations.create_organization(name=org_name, owner_user_id=user.id)
-    await AuditService(session).record(
-        action="auth.register",
-        resource_type="user",
-        resource_id=str(user.id),
-        organization_id=organization.id,
-        actor_user_id=user.id,
-        request_id=getattr(request.state, "request_id", None),
-        correlation_id=getattr(request.state, "correlation_id", None),
-        ip_hash=hash_ip(request.client.host if request.client else None),
-    )
-    return RegisterResponse(
-        user_id=user.id,
-        message="account created; check your inbox to verify your e-mail address",
-    )
+async def register(_payload: RegisterRequest) -> RegisterResponse:
+    raise PermissionDenied("public signup is disabled")
 
 
 @router.post(

@@ -280,6 +280,9 @@ def _include_routers(app: FastAPI) -> None:
     from algo_platform.modules.trading.presentation.router import (
         router as trading_router,
     )
+    from algo_platform.modules.workspace.presentation.router import (
+        router as workspace_router,
+    )
 
     # Prometheus scrape endpoint is mounted at the root, not under /api/v1.
     app.include_router(metrics_router)
@@ -295,6 +298,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(billing_webhooks_router, prefix=prefix)
     app.include_router(notifications_router, prefix=prefix)
     app.include_router(operations_router, prefix=prefix)
+    app.include_router(workspace_router, prefix=prefix)
     app.include_router(mobile_router, prefix=prefix)
     app.include_router(brokerage_router, prefix=prefix)
     app.include_router(market_data_router, prefix=prefix)

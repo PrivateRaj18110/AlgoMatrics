@@ -6,7 +6,6 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Badge, Button, Field, Input, Modal } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { useFeatureFlags } from "@/lib/hooks";
 import { liveChannel } from "@/lib/ws";
 import { activeOrg, useAuth } from "@/stores/auth";
 import { toastError, toastSuccess } from "@/stores/toast";
@@ -16,50 +15,96 @@ interface NavItem {
   to: string;
   label: string;
   icon: string;
-  flag?: string;
 }
 
-const NAV: NavItem[] = [
-  { to: "/app/dashboard", label: "Dashboard", icon: "M3 12l9-9 9 9M5 10v10h14V10" },
-  { to: "/app/strategies", label: "Strategies", icon: "M4 6h16M4 12h16M4 18h10" },
-  { to: "/app/engine-strategies", label: "Engine strategies", icon: "M5 5h14v4H5zM5 11h14v8H5z" },
+interface MarketLeaf {
+  segment: string;
+  label: string;
+}
+
+const MARKET_LEAVES: MarketLeaf[] = [
+  { segment: "overview", label: "Overview" },
+  { segment: "strategies", label: "Strategies" },
+  { segment: "positions", label: "Positions" },
+  { segment: "closed-trades", label: "Closed Trades" },
+  { segment: "portfolio", label: "Portfolio" },
+  { segment: "brokers", label: "Brokers" },
+  { segment: "analytics", label: "Analytics" },
+  { segment: "risk", label: "Risk" },
+  { segment: "execution", label: "Execution" },
+  { segment: "logs", label: "Logs" },
+];
+
+const DASHBOARD_NAV: NavItem = {
+  to: "/app/dashboard",
+  label: "Dashboard",
+  icon: "M3 12l9-9 9 9M5 10v10h14V10",
+};
+
+const GLOBAL_NAV: NavItem[] = [
+  { to: "/app/todo", label: "To Do List", icon: "M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" },
+  { to: "/app/calendar", label: "Calendar", icon: "M7 3v3M17 3v3M4 8h16M5 5h14v16H5z" },
+  { to: "/app/market-update", label: "Market Update", icon: "M4 20V10M10 20V4M16 20v-8M22 20H2M2 4l5 3 5-5 5 4 5-2" },
   {
-    to: "/app/marketplace",
-    label: "Marketplace",
-    icon: "M3 9l1-4h16l1 4M4 9v11h16V9M9 13h6",
-    flag: "marketplace",
-  },
-  { to: "/app/trading", label: "Trading", icon: "M3 3v18h18M7 14l4-4 3 3 5-6" },
-  { to: "/app/closed-trades", label: "Closed trades", icon: "M4 6h16M4 12h10M4 18h7" },
-  { to: "/app/machines", label: "Machines", icon: "M4 6h16v12H4zM8 18v2M16 18v2" },
-  { to: "/app/events", label: "Events", icon: "M12 8v4l3 3M5 12a7 7 0 1014 0 7 7 0 00-14 0z" },
-  { to: "/app/execution", label: "Execution", icon: "M5 12h14M13 6l6 6-6 6" },
-  { to: "/app/logs", label: "Logs", icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
-  { to: "/app/alerts", label: "Alerts", icon: "M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z" },
-  {
-    to: "/app/marketplace",
-    label: "Marketplace",
-    icon: "M3 9l1-4h16l1 4M4 9v11h16V9M9 13h6",
-    flag: "marketplace",
-  },
-  { to: "/app/trading", label: "Trading", icon: "M3 3v18h18M7 14l4-4 3 3 5-6" },
-  { to: "/app/market", label: "Market", icon: "M4 20V10M10 20V4M16 20v-8M22 20H2M2 4l5 3 5-5 5 4 5-2" },
-  {
-    to: "/app/market-intel",
-    label: "Market Intel",
-    icon: "M12 3a9 9 0 100 18 9 9 0 000-18zm0 4a5 5 0 100 10 5 5 0 000-10zm0 4a1 1 0 100 2 1 1 0 000-2z",
+    to: "/app/market-intelligence",
+    label: "Market Intelligence",
+    icon: "M12 3a9 9 0 100 18 9 9 0 000-18zm0 4a5 5 0 100 10 5 5 0 000-10z",
   },
   { to: "/app/watchlists", label: "Watchlists", icon: "M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7zm0 3a4 4 0 110 8 4 4 0 010-8z" },
-  { to: "/app/analytics", label: "Analytics", icon: "M4 20V10M10 20V4M16 20v-8M22 20H2" },
-  { to: "/app/audit", label: "Audit log", icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
-  {
-    to: "/app/assistant",
-    label: "Assistant",
-    icon: "M12 3a5 5 0 015 5c0 2-1 3-2 4v2H9v-2c-1-1-2-2-2-4a5 5 0 015-5zM9 20h6",
-    flag: "ai",
-  },
+  { to: "/app/audit-log", label: "Audit Log", icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
   { to: "/app/settings", label: "Settings", icon: "M12 15a3 3 0 100-6 3 3 0 000 6z" },
 ];
+
+function navClass(isActive: boolean): string {
+  return clsx(
+    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+    isActive
+      ? "bg-accent-500/10 text-accent-600 dark:text-accent-300"
+      : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-surface-800",
+  );
+}
+
+function MarketGroup({
+  label,
+  root,
+  open,
+  onToggle,
+  activePath,
+}: {
+  label: string;
+  root: string;
+  open: boolean;
+  onToggle: () => void;
+  activePath: string;
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-surface-800"
+        aria-expanded={open}
+      >
+        <span>{label}</span>
+        <span className="text-xs text-slate-400" aria-hidden>
+          {open ? "▾" : "▸"}
+        </span>
+      </button>
+      {open && (
+        <div className="ml-2 space-y-0.5 border-l border-slate-200 pl-2 dark:border-surface-800">
+          {MARKET_LEAVES.map((leaf) => {
+            const to = `${root}/${leaf.segment}`;
+            return (
+              <NavLink key={to} to={to} className={() => navClass(activePath === to || activePath.startsWith(`${to}/`))}>
+                {leaf.label}
+              </NavLink>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Icon({ path }: { path: string }) {
   return (
@@ -75,11 +120,14 @@ export function AppLayout() {
   const activeOrgId = useAuth((state) => state.activeOrgId);
   const switchOrg = useAuth((state) => state.switchOrg);
   const setOrganizations = useAuth((state) => state.setOrganizations);
-  const { data: flags } = useFeatureFlags();
   const logout = useAuth((state) => state.logout);
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [indiaOpen, setIndiaOpen] = useState(location.pathname.startsWith("/app/india"));
+  const [internationalOpen, setInternationalOpen] = useState(
+    location.pathname.startsWith("/app/international"),
+  );
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
   const [organizationName, setOrganizationName] = useState("");
   const [creatingOrganization, setCreatingOrganization] = useState(false);
@@ -92,6 +140,8 @@ export function AppLayout() {
 
   useEffect(() => {
     setMobileOpen(false);
+    if (location.pathname.startsWith("/app/india")) setIndiaOpen(true);
+    if (location.pathname.startsWith("/app/international")) setInternationalOpen(true);
   }, [location.pathname]);
 
   // Keyboard shortcut: "g" then a key jumps between sections.
@@ -171,19 +221,30 @@ export function AppLayout() {
           <span className="font-semibold">Algo Matrics</span>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-          {NAV.filter((item) => !item.flag || flags?.[item.flag]).map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                clsx(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-accent-500/10 text-accent-600 dark:text-accent-300"
-                    : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-surface-800",
-                )
-              }
-            >
+          <NavLink
+            to={DASHBOARD_NAV.to}
+            end
+            className={({ isActive }) => navClass(isActive)}
+          >
+            <Icon path={DASHBOARD_NAV.icon} />
+            {DASHBOARD_NAV.label}
+          </NavLink>
+          <MarketGroup
+            label="India"
+            root="/app/india"
+            open={indiaOpen}
+            onToggle={() => setIndiaOpen((value) => !value)}
+            activePath={location.pathname}
+          />
+          <MarketGroup
+            label="International"
+            root="/app/international"
+            open={internationalOpen}
+            onToggle={() => setInternationalOpen((value) => !value)}
+            activePath={location.pathname}
+          />
+          {GLOBAL_NAV.map((item) => (
+            <NavLink key={item.to} to={item.to} className={({ isActive }) => navClass(isActive)}>
               <Icon path={item.icon} />
               {item.label}
             </NavLink>

@@ -19,16 +19,27 @@ import {
 import { ApiError, api } from "@/lib/api";
 import { useBrokerCatalog, useBrokerConnections } from "@/lib/hooks";
 import { money } from "@/lib/format";
+import { classifyBroker, regionEmptyCopy, type MarketRegion } from "@/lib/marketRegion";
 import { toastError, toastSuccess } from "@/stores/toast";
 import type { BrokerCatalogEntry, BrokerConnection } from "@/types/api";
 
-export function BrokersPage({ embedded = false }: { embedded?: boolean }) {
+export function BrokersPage({
+  embedded = false,
+  region,
+}: {
+  embedded?: boolean;
+  region?: MarketRegion;
+}) {
   const { data: connections, isLoading } = useBrokerConnections();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [toRemove, setToRemove] = useState<BrokerConnection | null>(null);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
   const client = useQueryClient();
+
+  const visible = region
+    ? (connections ?? []).filter((row) => classifyBroker(row.broker_code) === region)
+    : connections;
 
   function invalidate() {
     client.invalidateQueries({ queryKey: ["broker-connections"] });
@@ -84,17 +95,25 @@ export function BrokersPage({ embedded = false }: { embedded?: boolean }) {
         <Card>
           <SkeletonRows rows={3} cols={4} />
         </Card>
-      ) : !connections || connections.length === 0 ? (
+      ) : !visible || visible.length === 0 ? (
         <Card>
           <EmptyState
-            title="No broker connections"
-            body="Add the Paper Trading simulator to start paper trading immediately, or connect a live broker."
-            action={<Button onClick={() => setWizardOpen(true)}>Add your first broker</Button>}
+            title={region ? regionEmptyCopy(region) : "No broker connections"}
+            body={
+              region
+                ? undefined
+                : "Add the Paper Trading simulator to start paper trading immediately, or connect a live broker."
+            }
+            action={
+              region ? undefined : (
+                <Button onClick={() => setWizardOpen(true)}>Add your first broker</Button>
+              )
+            }
           />
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {connections.map((connection) => (
+          {visible.map((connection) => (
             <Card key={connection.id} title={connection.name}>
               <div className="flex items-start justify-between">
                 <div>

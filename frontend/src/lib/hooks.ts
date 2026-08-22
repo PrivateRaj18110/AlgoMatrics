@@ -73,10 +73,17 @@ import type {
   UserProfile,
   VenueInstrument,
   Watchlist,
+  WorkspaceTask,
 } from "@/types/api";
 
 function orgKey(): string {
   return useAuth.getState().activeOrgId ?? "none";
+}
+
+function useTenantReady(): boolean {
+  const token = useAuth((state) => state.accessToken);
+  const orgId = useAuth((state) => state.activeOrgId);
+  return Boolean(token && orgId);
 }
 
 /* --------------------------------- account ---------------------------------- */
@@ -312,9 +319,11 @@ export function useOrders(params: {
   status?: string;
   open_only?: boolean;
 } = {}) {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["orders", orgKey(), params],
     queryFn: () => api<Paged<Order>>("/orders", { query: { ...params, limit: 100 } }),
+    enabled: ready,
     refetchInterval: 8000,
   });
 }
@@ -327,10 +336,11 @@ export function useTrades(params: { account_id?: string } = {}) {
 }
 
 export function usePositions(params: { account_id?: string } = {}) {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["positions", orgKey(), params],
     queryFn: () => api<Position[]>("/positions", { query: params }),
-    refetchInterval: 8000,
+    enabled: ready,
   });
 }
 
@@ -490,9 +500,11 @@ export function useStrategyLogs(runId: string | undefined) {
 /* ------------------------------- dashboard ---------------------------------- */
 
 export function useDashboard() {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["dashboard", orgKey()],
     queryFn: () => api<DashboardSummary>("/dashboard/summary"),
+    enabled: ready,
     refetchInterval: 10000,
   });
 }
@@ -834,74 +846,136 @@ export function useAdminVenueInstruments() {
 }
 
 export function useOpsOverview() {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["ops-overview", orgKey()],
     queryFn: () => api<OpsOverview>("/operations/overview"),
+    enabled: ready,
     refetchInterval: 15000,
   });
 }
 
 export function useOpsMachines() {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["ops-machines", orgKey()],
     queryFn: () => api<OpsMachine[]>("/operations/machines"),
+    enabled: ready,
     refetchInterval: 15000,
   });
 }
 
 export function useOpsEvents(filters: { event_type?: string; machine_id?: string; strategy?: string; symbol?: string } = {}) {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["ops-events", orgKey(), filters],
     queryFn: () => api<OpsEvent[]>("/operations/events", { query: filters }),
+    enabled: ready,
     refetchInterval: 15000,
   });
 }
 
 export function useOpsLogs() {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["ops-logs", orgKey()],
     queryFn: () => api<OpsEvent[]>("/operations/logs"),
+    enabled: ready,
     refetchInterval: 20000,
   });
 }
 
 export function useOpsAlerts() {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["ops-alerts", orgKey()],
     queryFn: () => api<OpsEvent[]>("/operations/alerts"),
+    enabled: ready,
     refetchInterval: 15000,
   });
 }
 
 export function useOpsOrders() {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["ops-orders", orgKey()],
     queryFn: () => api<OpsEvent[]>("/operations/orders"),
+    enabled: ready,
     refetchInterval: 15000,
   });
 }
 
 export function useOpsTrades(filters: { strategy?: string; symbol?: string; direction?: string; status?: string } = {}) {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["ops-engine-trades", orgKey(), filters],
     queryFn: () => api<OpsTrade[]>("/operations/trades", { query: filters }),
+    enabled: ready,
     refetchInterval: 15000,
   });
 }
 
 export function useOpsStrategies() {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["ops-engine-strategies", orgKey()],
     queryFn: () => api<OpsStrategyRow[]>("/operations/strategies"),
+    enabled: ready,
     refetchInterval: 20000,
   });
 }
 
 export function useOpsAnalytics(strategy?: string) {
+  const ready = useTenantReady();
   return useQuery({
     queryKey: ["ops-engine-analytics", orgKey(), strategy],
     queryFn: () =>
       api<OpsAnalytics>("/operations/analytics", { query: { strategy } }),
+    enabled: ready,
+  });
+}
+
+export function useWorkspaceTasks() {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["workspace-tasks", orgKey()],
+    queryFn: () => api<WorkspaceTask[]>("/tasks"),
+    enabled: ready,
+  });
+}
+
+export function useCreateTask() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { title: string; priority?: string; due_at?: string | null; tag?: string | null }) =>
+      api<WorkspaceTask>("/tasks", { method: "POST", body }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["workspace-tasks"] }),
+  });
+}
+
+export function useUpdateTask() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      title?: string;
+      priority?: string;
+      due_at?: string | null;
+      tag?: string | null;
+      completed?: boolean;
+    }) => api<WorkspaceTask>(`/tasks/${id}`, { method: "PATCH", body }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["workspace-tasks"] }),
+  });
+}
+
+export function useArchiveTask() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/tasks/${id}`, { method: "DELETE" }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["workspace-tasks"] }),
   });
 }
 

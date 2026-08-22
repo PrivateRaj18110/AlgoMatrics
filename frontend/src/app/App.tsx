@@ -3,7 +3,8 @@ import { useEffect } from "react";
 import { RouterProvider, createBrowserRouter } from "react-router";
 
 import { router } from "@/app/router";
-import { ErrorBoundary, Spinner, Toaster } from "@/components/ui";
+import { SessionLoading } from "@/app/guards";
+import { ErrorBoundary, Toaster } from "@/components/ui";
 import { useAuth } from "@/stores/auth";
 
 const queryClient = new QueryClient({
@@ -27,11 +28,7 @@ function BootGate({ children }: { children: React.ReactNode }) {
   }, [bootstrap]);
 
   if (status === "booting") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-surface-950">
-        <Spinner className="size-8 text-accent-500" />
-      </div>
-    );
+    return <SessionLoading />;
   }
   return <>{children}</>;
 }
