@@ -35,6 +35,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.mock_policy import (
+    DEMO_MACHINE_IDS,
+    DEMO_MACHINE_NAMES,
+    DEMO_STRATEGY_NAMES,
+    allow_mock_fixtures,
+)
 from app.database.session import database_enabled, get_sessionmaker
 from app.models import (
     DeadLetter,
@@ -318,7 +324,14 @@ class SqlMachinesRepository:
     def list(self) -> list[dict]:
         now = utcnow()
         with _read_session() as s:
-            rows = s.execute(select(Machine).order_by(Machine.created_at, Machine.id)).scalars().all()
+            stmt = select(Machine).order_by(Machine.created_at, Machine.id)
+            if not allow_mock_fixtures():
+                stmt = stmt.where(
+                    Machine.live.is_(True),
+                    Machine.id.not_in(DEMO_MACHINE_IDS),
+                    Machine.name.not_in(["London VPS", "Personal Computer"]),
+                )
+            rows = s.execute(stmt).scalars().all()
             return [_machine_to_dict(m, now) for m in rows]
 
     def get(self, machine_id: str) -> dict | None:
@@ -373,6 +386,11 @@ class SqlEventsRepository:
     ) -> list[dict]:
         with _read_session() as s:
             stmt = select(Event)
+            if not allow_mock_fixtures():
+                stmt = stmt.where(
+                    Event.machine_id.not_in(DEMO_MACHINE_IDS),
+                    Event.source.not_in(["London VPS", "Personal Computer"]),
+                )
             if machine_id:
                 stmt = stmt.where(Event.machine_id == machine_id)
             if session_id:
@@ -416,13 +434,15 @@ class SqlEventsRepository:
 class SqlLogsRepository:
     def by_source(self, source: str | None) -> list[dict]:
         with _read_session() as s:
-            stmt = select(Log).order_by(Log.time.desc(), Log.id.desc()).limit(LOGS_CAP)
-            if source:
-                stmt = (
-                    select(Log).where(Log.source == source)
-                    .order_by(Log.time.desc(), Log.id.desc()).limit(LOGS_CAP)
+            stmt = select(Log).order_by(Log.time.desc(), Log.id.desc())
+            if not allow_mock_fixtures():
+                stmt = stmt.where(
+                    Log.source.not_in(["host.london", "host.pc", "London VPS", "Personal Computer"]),
+                    Log.logger.not_in(["MR-FX", "MOM", "GRID", "XAU-SC", "ARB", "CT", "IDX-ON", "NF", "VOL"]),
                 )
-            rows = s.execute(stmt).scalars().all()
+            if source:
+                stmt = stmt.where(Log.source == source)
+            rows = s.execute(stmt.limit(LOGS_CAP)).scalars().all()
             return [_log_to_dict(row) for row in rows]
 
     def list(self) -> list[dict]:
@@ -441,9 +461,13 @@ class SqlLogsRepository:
 class SqlTradesRepository:
     def list(self) -> list[dict]:
         with _read_session() as s:
-            rows = s.execute(
-                select(Trade).order_by(Trade.time.desc(), Trade.id.desc()).limit(TRADES_CAP)
-            ).scalars().all()
+            stmt = select(Trade).order_by(Trade.time.desc(), Trade.id.desc())
+            if not allow_mock_fixtures():
+                stmt = stmt.where(
+                    Trade.machine_id.not_in(DEMO_MACHINE_IDS),
+                    Trade.machine.not_in(["London VPS", "Personal Computer"]),
+                )
+            rows = s.execute(stmt.limit(TRADES_CAP)).scalars().all()
             return [_trade_to_dict(t) for t in rows]
 
     def get(self, trade_id: str) -> dict | None:

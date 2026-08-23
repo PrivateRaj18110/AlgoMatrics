@@ -54,3 +54,48 @@ def test_symbols_stay_attached_to_strategy() -> None:
     ]
     alpha = aggregate_symbols(trades, "Alpha")
     assert [row["symbol"] for row in alpha] == ["NIFTY"]
+
+
+def test_demo_rows_are_identifiable() -> None:
+    from algo_platform.modules.operations.application.suspect import (
+        is_demo_blotter_row,
+        is_demo_machine,
+    )
+
+    demo_trade = {
+        "id": "trd-demo-1",
+        "envelope_id": None,
+        "strategy": "Mean Reversion FX",
+        "machine": "London VPS",
+        "machine_id": "mch-london",
+    }
+    assert is_demo_blotter_row(demo_trade) is True
+
+    real_trade = {
+        "id": "trd-1",
+        "envelope_id": "env-1",
+        "strategy": "Alpha",
+        "machine": "gcp-trading-1",
+        "machine_id": "mch-agent-gcp-1",
+    }
+    assert is_demo_blotter_row(real_trade) is False
+
+    # A real trade where envelope_id is None must NOT be flagged as demo
+    real_trade_no_envelope = {
+        "id": "trd-2",
+        "envelope_id": None,
+        "strategy": "Alpha",
+        "machine": "gcp-trading-1",
+        "machine_id": "mch-agent-gcp-1",
+        "broker": "Zerodha",
+        "account": "ACC-1234",
+    }
+    assert is_demo_blotter_row(real_trade_no_envelope) is False
+
+    demo_machine = {"id": "mch-london", "name": "London VPS", "live": 0}
+    assert is_demo_machine(demo_machine) is True
+
+    real_machine = {"id": "mch-agent-gcp-1", "name": "gcp-trading-1", "live": 1}
+    assert is_demo_machine(real_machine) is False
+
+

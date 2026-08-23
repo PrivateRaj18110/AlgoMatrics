@@ -96,6 +96,12 @@ Frontend display: IANA `Asia/Kolkata` and `UTC`. Never add/subtract 5:30.
 Likely-misclassified heartbeat rows remain in Ops Postgres. The read API
 filters them from analytics; it does not delete them.
 
+## Demo / seed data exclusion
+
+Historical demo fixtures (London VPS, Personal Computer, Mean Reversion FX, Gold Scalper, IC Markets, trades without `envelope_id`, `live=False` machine placeholders) are excluded at the read layer from `/api/v1/operations/*` endpoints.
+
+The operations read path guarantees that only live Google telemetry (`live=True`, valid `envelope_id`, real strategy identities) is served to the application.
+
 ## Database / migrations
 
 No new tables. Main algo-api reads the existing ops schema.

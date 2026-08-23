@@ -9,7 +9,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from app.core.mock_policy import allow_mock_fixtures
+from app.core.mock_policy import (
+    DEMO_ACCOUNT_NAMES,
+    DEMO_BROKER_NAMES,
+    DEMO_MACHINE_IDS,
+    DEMO_MACHINE_NAMES,
+    DEMO_STRATEGY_NAMES,
+    allow_mock_fixtures,
+)
 from app.database.session import database_enabled
 from app.repositories import events_repo, trades_repo
 
@@ -74,6 +81,9 @@ def telemetry_strategies() -> list[dict]:
         if not name:
             continue
         machine_id = event.get("machineId") or event.get("machine_id")
+        if not allow_mock_fixtures():
+            if str(machine_id or "").lower() in DEMO_MACHINE_IDS:
+                continue
         sid = strategy_identity(name, machine_id)
         row = names.setdefault(
             sid,
@@ -108,6 +118,13 @@ def telemetry_strategies() -> list[dict]:
         if not name or name.lower() == "unknown":
             continue
         machine_id = trade.get("machine_id") or trade.get("machineId")
+        machine_name = trade.get("machine") or ""
+        if not allow_mock_fixtures():
+            if (
+                str(machine_id or "").lower() in DEMO_MACHINE_IDS
+                or str(machine_name).lower() in DEMO_MACHINE_NAMES
+            ):
+                continue
         sid = strategy_identity(name, str(machine_id) if machine_id else None)
         symbol = str(trade.get("symbol") or "").strip()
         row = names.setdefault(
@@ -119,7 +136,7 @@ def telemetry_strategies() -> list[dict]:
                 "description": "Reported by Google telemetry",
                 "status": "unknown",
                 "machineId": machine_id or "",
-                "machineName": trade.get("machine") or machine_id or "",
+                "machineName": machine_name or machine_id or "",
                 "broker": trade.get("broker") or "",
                 "symbols": [],
                 "todayPnl": None,
@@ -151,6 +168,8 @@ def telemetry_brokers() -> list[dict]:
             continue
         name = str(trade.get("broker") or "").strip()
         if not name:
+            continue
+        if not allow_mock_fixtures() and name.lower() in DEMO_BROKER_NAMES:
             continue
         seen[name] = {
             "id": name,
@@ -184,6 +203,8 @@ def telemetry_accounts() -> list[dict]:
             continue
         account = str(trade.get("account") or "").strip()
         if not account:
+            continue
+        if not allow_mock_fixtures() and account.lower() in DEMO_ACCOUNT_NAMES:
             continue
         seen[account] = {
             "id": account,

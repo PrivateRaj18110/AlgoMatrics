@@ -71,6 +71,8 @@ def test_ops_sync_url_uses_psycopg() -> None:
 
 
 def test_psycopg_driver_is_installed() -> None:
-    import psycopg
+    import pytest
 
+    psycopg = pytest.importorskip("psycopg")
     assert psycopg is not None
+

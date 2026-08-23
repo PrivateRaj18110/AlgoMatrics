@@ -9,6 +9,25 @@ from __future__ import annotations
 from app.core.config import get_settings
 
 
+DEMO_MACHINE_IDS = frozenset({"mch-london", "mch-gcloud", "mch-pc"})
+DEMO_MACHINE_NAMES = frozenset({"london vps", "personal computer"})
+DEMO_STRATEGY_NAMES = frozenset(
+    {
+        "mean reversion fx",
+        "momentum breakout",
+        "gold scalper",
+        "stat arb pairs",
+        "crypto trend",
+        "index overnight",
+        "news fade",
+        "grid hedge",
+        "vol harvest",
+    }
+)
+DEMO_BROKER_NAMES = frozenset({"ic markets", "pepperstone", "interactive brokers", "binance"})
+DEMO_ACCOUNT_NAMES = frozenset({"live-001", "live-002", "live-003", "prop-114", "demo-001"})
+
+
 def allow_mock_fixtures() -> bool:
     """True only outside production.
 
@@ -16,6 +35,7 @@ def allow_mock_fixtures() -> bool:
     resurrect London VPS / Gold Scalper rows in a live cluster.
     """
     return not get_settings().is_production
+
 
 
 def empty_dashboard() -> dict:

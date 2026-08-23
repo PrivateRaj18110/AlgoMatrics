@@ -32,6 +32,22 @@ NOT (
 )
 """
 
+_DEMO_TRADE_SQL = """
+NOT (
+    coalesce(machine_id, '') IN ('mch-london', 'mch-gcloud', 'mch-pc')
+    OR coalesce(machine, '') IN ('London VPS', 'Personal Computer')
+    OR (
+        lower(coalesce(broker, '')) IN (
+            'ic markets', 'pepperstone', 'interactive brokers', 'binance'
+        )
+        AND lower(coalesce(account, '')) IN (
+            'live-001', 'live-002', 'live-003', 'prop-114', 'demo-001'
+        )
+    )
+)
+"""
+
+
 
 def _sync_url(url: str) -> str:
     return (
@@ -102,6 +118,9 @@ class TelemetryStore:
                    oldest_pending_age_sec, transport_state, current_session_id,
                    trading_process_state, live
             FROM machines
+            WHERE (live IS TRUE OR live = 1)
+              AND id NOT IN ('mch-london', 'mch-gcloud', 'mch-pc')
+              AND name NOT IN ('London VPS', 'Personal Computer')
             ORDER BY created_at, id
             """
         )
@@ -152,7 +171,11 @@ class TelemetryStore:
     ) -> list[dict[str, Any]]:
         if not self.configured:
             return []
-        clauses = ["1=1"]
+        clauses = [
+            "1=1",
+            "coalesce(machine_id, '') NOT IN ('mch-london', 'mch-gcloud', 'mch-pc')",
+            "coalesce(source, '') NOT IN ('London VPS', 'Personal Computer')",
+        ]
         params: dict[str, Any] = {"limit": limit, "offset": offset}
         if event_type:
             clauses.append("event_type = :event_type")
@@ -216,6 +239,12 @@ class TelemetryStore:
             """
             SELECT id, time, source, level, logger, message
             FROM logs
+            WHERE coalesce(source, '') NOT IN (
+                'host.london', 'host.pc', 'London VPS', 'Personal Computer'
+            )
+              AND coalesce(logger, '') NOT IN (
+                'MR-FX', 'MOM', 'GRID', 'XAU-SC', 'ARB', 'CT', 'IDX-ON', 'NF', 'VOL'
+            )
             ORDER BY time DESC, id DESC
             LIMIT :limit OFFSET :offset
             """
@@ -247,7 +276,7 @@ class TelemetryStore:
         include_suspect: bool,
         params: dict[str, Any],
     ) -> str:
-        clauses = ["1=1"]
+        clauses = ["1=1", _DEMO_TRADE_SQL]
         if strategy:
             clauses.append("strategy = :strategy")
             params["strategy"] = strategy

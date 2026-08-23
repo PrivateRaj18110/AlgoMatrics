@@ -201,3 +201,95 @@ def insert_mixed_batch(url: str, *, duplicate: bool = False) -> None:
                 {"time": now + timedelta(seconds=1)},
             )
     engine.dispose()
+
+
+def insert_demo_seed_data(url: str) -> None:
+    """Insert legacy demo/seed rows that must be filtered from the production read path."""
+
+    now = datetime(2026, 8, 17, 12, 0, tzinfo=UTC)
+    engine = create_engine(url, future=True)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO machines (
+                    id, name, location, provider, status, live, hostname, last_heartbeat,
+                    last_successful_upload, queue_depth, created_at, updated_at
+                ) VALUES (
+                    'mch-london', 'London VPS', 'London', 'Beeks', 'online', 0, 'london-host', :hb, :hb, 0, :hb, :hb
+                )
+                """
+            ),
+            {"hb": now},
+        )
+        conn.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO machines (
+                    id, name, location, provider, status, live, hostname, last_heartbeat,
+                    last_successful_upload, queue_depth, created_at, updated_at
+                ) VALUES (
+                    'mch-pc', 'Personal Computer', 'Mumbai', 'Local', 'offline', 0, 'pc-host', :hb, :hb, 0, :hb, :hb
+                )
+                """
+            ),
+            {"hb": now},
+        )
+        conn.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO trades (
+                    id, envelope_id, time, strategy, machine, machine_id, broker, account, symbol,
+                    direction, entry, exit, quantity, pnl, latency_ms, duration_sec,
+                    status, created_at
+                ) VALUES (
+                    'trd-demo-1', NULL, :time, 'Mean Reversion FX', 'London VPS', 'mch-london',
+                    'IC Markets', 'LIVE-001', 'EURUSD', 'long', 1.08, 1.09, 1, 100.0, 5, 60, 'closed', :time
+                )
+                """
+            ),
+            {"time": now},
+        )
+        conn.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO trades (
+                    id, envelope_id, time, strategy, machine, machine_id, broker, account, symbol,
+                    direction, entry, exit, quantity, pnl, latency_ms, duration_sec,
+                    status, created_at
+                ) VALUES (
+                    'trd-demo-2', NULL, :time, 'Gold Scalper', 'London VPS', 'mch-london',
+                    'Pepperstone', 'LIVE-002', 'XAUUSD', 'short', 2350, 2340, 1, 250.0, 4, 45, 'closed', :time
+                )
+                """
+            ),
+            {"time": now},
+        )
+        conn.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO events (
+                    id, envelope_id, time, category, severity, source, message,
+                    machine_id, event_type, strategy, symbol, created_at
+                ) VALUES (
+                    'evt-demo-1', NULL, :time, 'strategy', 'info', 'London VPS', 'Strategy started',
+                    'mch-london', 'strategy_status', 'Mean Reversion FX', 'EURUSD', :time
+                )
+                """
+            ),
+            {"time": now},
+        )
+        conn.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO logs (
+                    id, time, source, level, logger, message
+                ) VALUES (
+                    'log-demo-1', :time, 'host.london', 'info', 'MR-FX', 'Demo log message'
+                )
+                """
+            ),
+            {"time": now},
+        )
+    engine.dispose()
+
