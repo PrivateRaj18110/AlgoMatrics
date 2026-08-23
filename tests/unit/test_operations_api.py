@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
 from tests.unit.operations_sqlite import insert_mixed_batch, ops_sqlite_db
 
 from algo_platform.api.middleware.errors import register_exception_handlers
@@ -255,5 +258,89 @@ def test_real_trade_with_null_envelope_id_remains_visible() -> None:
         assert "Gold Scalper" not in trade_strategies
 
         service._store.close()
+
+
+def test_historical_closed_trades_pnl_and_offline_strategy_status() -> None:
+    """Historical closed trades contribute to recorded PnL while offline hosts report offline."""
+    with ops_sqlite_db("_tmp_ops_historical.db") as url:
+        engine = create_engine(url, future=True)
+        with engine.begin() as conn:
+            # Insert historical machine with expired heartbeat (>120s ago)
+            stale_hb = datetime(2026, 8, 17, 10, 0, tzinfo=UTC)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO machines (
+                        id, name, status, live, hostname, last_heartbeat,
+                        last_successful_upload, queue_depth, created_at, updated_at
+                    ) VALUES (
+                        'mch-agent-gcp-hist', 'gcp-trading-hist', 'online', 1,
+                        'gcp-trading-hist', :hb, :hb, 0, :hb, :hb
+                    )
+                    """
+                ),
+                {"hb": stale_hb},
+            )
+            # Insert historical strategy status event
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO events (
+                        id, envelope_id, time, category, severity, source, message,
+                        machine_id, event_type, strategy, symbol, payload_summary, created_at
+                    ) VALUES (
+                        'evt-hist-ss', 'env-hist-ss', :time, 'telemetry', 'info', 'agent',
+                        'running', 'mch-agent-gcp-hist', 'strategy_status', 'NiftyTrend',
+                        'NIFTY', 'running', :time
+                    )
+                    """
+                ),
+                {"time": stale_hb},
+            )
+            # Insert historical closed trade
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO trades (
+                        id, envelope_id, time, strategy, machine, machine_id,
+                        broker, account, symbol, direction, entry, exit,
+                        quantity, pnl, latency_ms, duration_sec, status, created_at
+                    ) VALUES (
+                        'trd-hist-1', 'env-hist-trd', :time, 'NiftyTrend',
+                        'gcp-trading-hist', 'mch-agent-gcp-hist', 'Zerodha',
+                        'ACC-1234', 'NIFTY 24500 CE', 'long', 150.0, 180.0,
+                        50, 1500.0, 12, 180, 'closed', :time
+                    )
+                    """
+                ),
+                {"time": stale_hb},
+            )
+        engine.dispose()
+
+        service = OperationsService(TelemetryStore(url), app_env="test")
+        client = TestClient(_app(service))
+
+        # 1. Overview reflects recorded machines and historical PnL
+        overview = client.get("/api/v1/operations/overview").json()
+        assert overview["machine_count"] == 1
+        assert overview["online_machines"] == 0  # Offline due to expired heartbeat
+        assert overview["closed_trade_count"] == 1
+        assert overview["total_pnl"] == 1500.0
+
+        # 2. Machine endpoint reports offline
+        machines = client.get("/api/v1/operations/machines").json()
+        assert len(machines) == 1
+        assert machines[0]["status"] == "offline"
+
+        # 3. Strategies endpoint reports offline (not running)
+        strategies = client.get("/api/v1/operations/strategies").json()
+        assert len(strategies) == 1
+        assert strategies[0]["strategy_name"] == "NiftyTrend"
+        assert strategies[0]["status"] == "offline"
+        assert strategies[0]["trade_count"] == 1
+        assert strategies[0]["total_pnl"] == 1500.0
+
+        service._store.close()
+
 
 

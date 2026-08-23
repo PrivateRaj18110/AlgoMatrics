@@ -449,25 +449,34 @@ export function OpsOverviewStrip() {
   if (data.awaiting_telemetry) {
     return (
       <Card className="mt-4">
-        <EmptyState title="Awaiting telemetry" body="Google machines and closed trades will appear here when ingest is live." />
+        <EmptyState
+          title="Awaiting telemetry"
+          body="Google machines and closed trades will appear here when ingest is live."
+        />
       </Card>
     );
   }
+  const onlineCount = data.online_machines ?? 0;
   return (
     <div className="mt-4 grid gap-4 sm:grid-cols-3">
       <Card>
-        <p className="text-xs text-slate-500">Machines</p>
+        <p className="text-xs text-slate-500">Registered machines</p>
         <p className="text-xl font-semibold">{Dash(data.machine_count)}</p>
+        <p className="mt-1 text-xs text-slate-400">
+          {onlineCount > 0 ? `${onlineCount} online` : "Execution offline"}
+        </p>
       </Card>
       <Card>
-        <p className="text-xs text-slate-500">Closed trades (classified)</p>
+        <p className="text-xs text-slate-500">Recorded closed trades</p>
         <p className="text-xl font-semibold">{Dash(data.closed_trade_count)}</p>
+        <p className="mt-1 text-xs text-slate-400">Classified telemetry</p>
       </Card>
       <Card>
-        <p className="text-xs text-slate-500">Engine PnL</p>
+        <p className="text-xs text-slate-500">Historical Engine PnL</p>
         <p className="text-xl font-semibold">
           {data.total_pnl === null || data.total_pnl === undefined ? "—" : signed(data.total_pnl)}
         </p>
+        <p className="mt-1 text-xs text-slate-400">Cumulative closed trades</p>
       </Card>
     </div>
   );

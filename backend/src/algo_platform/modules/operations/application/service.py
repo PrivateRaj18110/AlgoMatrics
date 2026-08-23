@@ -75,6 +75,8 @@ class OperationsService:
         grouped = self._store.aggregate_trade_groups(group_by="strategy")
         status = self._store.list_events(limit=400, event_type="strategy_status")
         symbol_rows = self._store.aggregate_trade_groups(group_by="strategy_symbol")
+        machines = self._store.list_machines()
+        machine_status_map = {m["id"]: m.get("status") for m in machines}
         symbols_by_strategy: dict[str, list[str]] = {}
         for row in symbol_rows:
             name = row.get("strategy_name")
@@ -96,18 +98,20 @@ class OperationsService:
             name = row.get("strategy_name")
             if not name:
                 continue
-            sid = strategy_identity(name, row.get("machine_id"))
+            m_id = row.get("machine_id")
+            sid = strategy_identity(name, m_id)
             seen.add(sid)
             wins = _int_or_none(row.get("winning_trades")) or 0
             losses = _int_or_none(row.get("losing_trades")) or 0
             trade_n = _int_or_none(row.get("trade_count"))
             event = status_by_id.get(sid, {})
+            m_status = machine_status_map.get(m_id) if m_id else None
             results.append(
                 {
                     "strategy_id": sid,
                     "strategy_name": name,
-                    "machine_id": row.get("machine_id"),
-                    "status": self._status_from_event(event),
+                    "machine_id": m_id,
+                    "status": self._status_from_event(event, m_status),
                     "last_heartbeat": event.get("time"),
                     "symbols": symbols_by_strategy.get(str(name), []),
                     "trade_count": trade_n,
@@ -126,12 +130,14 @@ class OperationsService:
             if sid in seen:
                 continue
             name = event.get("strategy")
+            m_id = event.get("machine_id")
+            m_status = machine_status_map.get(m_id) if m_id else None
             results.append(
                 {
                     "strategy_id": sid,
                     "strategy_name": name,
-                    "machine_id": event.get("machine_id"),
-                    "status": self._status_from_event(event),
+                    "machine_id": m_id,
+                    "status": self._status_from_event(event, m_status),
                     "last_heartbeat": event.get("time"),
                     "symbols": [],
                     "trade_count": None,
@@ -201,10 +207,14 @@ class OperationsService:
         }
 
     @staticmethod
-    def _status_from_event(event: dict[str, Any]) -> str:
+    def _status_from_event(
+        event: dict[str, Any], machine_status: str | None = None
+    ) -> str:
+        if machine_status in ("offline", "stopped"):
+            return "offline"
         summary = str(event.get("payload_summary") or "").lower()
         if "running" in summary or "online" in summary:
-            return "online"
+            return "online" if machine_status != "offline" else "offline"
         if "stop" in summary or "offline" in summary:
             return "offline"
         return "unknown"

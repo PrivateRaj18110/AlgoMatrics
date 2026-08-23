@@ -104,4 +104,26 @@ describe("operations pages", () => {
     expect(screen.getByText("Alpha")).toBeInTheDocument();
     expect(screen.getByText("NIFTY")).toBeInTheDocument();
   });
+
+  it("renders OpsOverviewStrip with clear historical labels", () => {
+    hooks.useOpsOverview.mockReturnValue({
+      data: {
+        machine_count: 6,
+        online_machines: 0,
+        closed_trade_count: 85,
+        total_pnl: 3141,
+        awaiting_telemetry: false,
+        telemetry_configured: true,
+      },
+      isLoading: false,
+      isError: false,
+    });
+    const { OpsOverviewStrip } = require("./OperationsPages");
+    render(<OpsOverviewStrip />);
+    expect(screen.getByText("Registered machines")).toBeInTheDocument();
+    expect(screen.getByText("Execution offline")).toBeInTheDocument();
+    expect(screen.getByText("Recorded closed trades")).toBeInTheDocument();
+    expect(screen.getByText("Historical Engine PnL")).toBeInTheDocument();
+    expect(screen.getByText("85")).toBeInTheDocument();
+  });
 });
