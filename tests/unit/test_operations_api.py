@@ -343,4 +343,90 @@ def test_historical_closed_trades_pnl_and_offline_strategy_status() -> None:
         service._store.close()
 
 
+def test_historical_international_trades_and_postgres_boolean_filtering() -> None:
+    """Historical international trades remain visible while suspect placeholders are excluded."""
+    with ops_sqlite_db("_tmp_ops_intl_hist.db") as url:
+        engine = create_engine(url, future=True)
+        with engine.begin() as conn:
+            now = datetime(2026, 8, 17, 12, 0, tzinfo=UTC)
+            # 1. Real live=1 machine vs demo live=0 machine
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO machines (
+                        id, name, status, live, hostname, last_heartbeat,
+                        last_successful_upload, queue_depth, created_at, updated_at
+                    ) VALUES (
+                        'mch-agent-gcp-1', 'gcp-trading-1', 'online', 1,
+                        'gcp-trading-1', :hb, :hb, 0, :hb, :hb
+                    ), (
+                        'mch-london', 'London VPS', 'offline', 0,
+                        'london-vps', :hb, :hb, 0, :hb, :hb
+                    )
+                    """
+                ),
+                {"hb": now},
+            )
+            # 2. Historical trade on IC Markets with real PnL
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO trades (
+                        id, envelope_id, time, strategy, machine, machine_id,
+                        broker, account, symbol, direction, entry, exit,
+                        quantity, pnl, latency_ms, duration_sec, status, created_at
+                    ) VALUES (
+                        'trd-0033', 'env-hist-1', :time, 'Stat Arb Pairs',
+                        'London VPS', 'mch-agent-gcp-1', 'IC Markets',
+                        'LIVE-003', 'NAS100', 'long', 18729.1, 18770.8,
+                        1, 179.0, 15, 13174, 'closed', :time
+                    )
+                    """
+                ),
+                {"time": now},
+            )
+            # 3. Suspect placeholder row (should be excluded)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO trades (
+                        id, envelope_id, time, strategy, machine, machine_id,
+                        broker, account, symbol, direction, entry, exit,
+                        quantity, pnl, latency_ms, duration_sec, status, created_at
+                    ) VALUES (
+                        'trd-ph-1', 'env-ph-1', :time, '',
+                        'gcp-trading-1', 'mch-agent-gcp-1', '',
+                        '', '', 'long', 0, NULL,
+                        0, 0, 0, 0, 'closed', :time
+                    )
+                    """
+                ),
+                {"time": now},
+            )
+        engine.dispose()
+
+        service = OperationsService(TelemetryStore(url), app_env="test")
+        client = TestClient(_app(service))
+
+        # Machines: Only live=1 machine returned
+        machines = client.get("/api/v1/operations/machines").json()
+        assert len(machines) == 1
+        assert machines[0]["id"] == "mch-agent-gcp-1"
+
+        # Trades: Historical IC Markets trade is returned, placeholder is excluded
+        trades = client.get("/api/v1/operations/trades").json()
+        assert len(trades) == 1
+        assert trades[0]["id"] == "trd-0033"
+        assert trades[0]["broker"] == "IC Markets"
+        assert trades[0]["pnl"] == 179.0
+
+        # Overview: PnL reflects the historical trade
+        overview = client.get("/api/v1/operations/overview").json()
+        assert overview["closed_trade_count"] == 1
+        assert overview["total_pnl"] == 179.0
+
+        service._store.close()
+
+
+
 

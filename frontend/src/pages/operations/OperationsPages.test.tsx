@@ -21,6 +21,7 @@ import {
   EngineStrategiesPage,
   EventsPage,
   MachinesPage,
+  OpsOverviewStrip,
 } from "@/pages/operations/OperationsPages";
 
 describe("operations pages", () => {
@@ -118,7 +119,6 @@ describe("operations pages", () => {
       isLoading: false,
       isError: false,
     });
-    const { OpsOverviewStrip } = require("./OperationsPages");
     render(<OpsOverviewStrip />);
     expect(screen.getByText("Registered machines")).toBeInTheDocument();
     expect(screen.getByText("Execution offline")).toBeInTheDocument();

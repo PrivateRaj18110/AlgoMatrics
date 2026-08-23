@@ -12,9 +12,11 @@ Two production safety rules are enforced from here (see ``main.py``, which calls
   token is fatal, so the telemetry write path can never be published unauthed.
 """
 
+from __future__ import annotations
+
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.security import hash_token
@@ -54,8 +56,15 @@ class Settings(BaseSettings):
     # --- Database (declared, not yet connected) ---------------------------
     # Populate later with the Supabase Postgres connection string.
     database_url: str | None = None
+    ops_database_url: str | None = None
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
+
+    @model_validator(mode="after")
+    def resolve_ops_database_url(self) -> Settings:
+        if not self.database_url and self.ops_database_url:
+            self.database_url = normalize_database_url(self.ops_database_url)
+        return self
 
     # --- AlgoMatrics control plane (live platform data) --------------------
     # When all three are set, the trading-domain endpoints (dashboard,

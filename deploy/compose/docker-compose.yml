@@ -19,7 +19,6 @@ x-backend-env: &backend-env
     # engine (shadow gate) consume it; other backend services ignore it. Set here
     # (not via .env) because this is the fixed in-container path.
     AICIO_DUCKDB_PATH: /data/aicio.duckdb
-    OPS_DATABASE_URL: "${OPS_DATABASE_URL:-}"
   read_only: true
   tmpfs:
     - /tmp
@@ -185,54 +184,8 @@ services:
     image: algo-matrics/ops-api:local
     env_file: ../../.env
     environment:
-      # The platform DATABASE_URL must not leak into the ops service. Point this
-      # at a database dedicated to ops telemetry; blank keeps the in-memory mock,
-      # which is fine for local development but is refused when
-      # ENVIRONMENT=production (telemetry would be lost on every restart and
-      # deduplication would be disabled).
-      #   e.g. postgresql+psycopg://ops:ops@ops-postgres:5432/ops_telemetry
-      DATABASE_URL: "${OPS_DATABASE_URL:-}"
       APP_NAME: "AlgoMatrics Ops API"
       ALGOMATRICS_API_URL: http://api:8000/api/v1
-      # Ingestion credentials. Required for /api/agent/* and /api/ingest/*, which
-      # fail closed when unset — they are never left open. Generate with:
-      #   python -c "import secrets; print(secrets.token_urlsafe(32))"
-      # Prefer machine-scoped RAJ_AGENT_TOKENS ("machine:token,...") in
-      # production; see ops/backend/.env.example.
-      RAJ_AGENT_TOKENS: "${RAJ_AGENT_TOKENS:-}"
-      RAJ_AGENT_TOKEN: "${RAJ_AGENT_TOKEN:-}"
-      # Websocket viewer credential for /api/ws.
-      RAJ_DASHBOARD_TOKEN: "${RAJ_DASHBOARD_TOKEN:-}"
-      # Production requires REST dashboard auth automatically. Keep this knob
-      # for staging/dev parity tests.
-      OPS_REST_AUTH_REQUIRED: "${OPS_REST_AUTH_REQUIRED:-false}"
-      TELEMETRY_RETENTION_DAYS: "${TELEMETRY_RETENTION_DAYS:-0}"
-      OPERATIONAL_EVENT_RETENTION_DAYS: "${OPERATIONAL_EVENT_RETENTION_DAYS:-0}"
-      DEAD_LETTER_RETENTION_DAYS: "${DEAD_LETTER_RETENTION_DAYS:-0}"
-      SESSION_RETENTION_DAYS: "${SESSION_RETENTION_DAYS:-0}"
-      # EOD files are catalogued in the ops database and stored on this volume
-      # in local compose by default. Set EOD_STORAGE_BACKEND=s3 and the S3
-      # values below before horizontally scaling ops-api.
-      EOD_STORAGE_BACKEND: "${EOD_STORAGE_BACKEND:-local}"
-      EOD_STORAGE_ROOT: "${EOD_STORAGE_ROOT:-/var/lib/algomatrics/eod}"
-      EOD_MAX_CHUNK_BYTES: "${EOD_MAX_CHUNK_BYTES:-26214400}"
-      EOD_S3_BUCKET: "${EOD_S3_BUCKET:-}"
-      EOD_S3_PREFIX: "${EOD_S3_PREFIX:-algomatrics/eod}"
-      EOD_S3_REGION: "${EOD_S3_REGION:-}"
-      EOD_S3_ENDPOINT_URL: "${EOD_S3_ENDPOINT_URL:-}"
-      EOD_S3_FORCE_PATH_STYLE: "${EOD_S3_FORCE_PATH_STYLE:-false}"
-      EOD_S3_SERVER_SIDE_ENCRYPTION: "${EOD_S3_SERVER_SIDE_ENCRYPTION:-}"
-      EOD_METADATA_RETENTION_DAYS: "${EOD_METADATA_RETENTION_DAYS:-0}"
-      EOD_RAW_RETENTION_DAYS: "${EOD_RAW_RETENTION_DAYS:-0}"
-      QUANT_MAX_FILE_BYTES: "${QUANT_MAX_FILE_BYTES:-52428800}"
-      QUANT_MAX_ROWS: "${QUANT_MAX_ROWS:-500000}"
-      QUANT_REPLAY_MAX_POINTS: "${QUANT_REPLAY_MAX_POINTS:-2000}"
-      QUANT_SYNTHETIC_MAX_STEPS: "${QUANT_SYNTHETIC_MAX_STEPS:-10000}"
-      QUANT_REPORT_RETENTION_DAYS: "${QUANT_REPORT_RETENTION_DAYS:-0}"
-      # ALGOMATRICS_API_KEY + ALGOMATRICS_ORG_ID come from ../../.env (env_file
-      # above). With them the ops dashboard (now live by default) shows real
-      # platform data; without them the ops-api serves its own mock. See
-      # .env.example and docs/operations/ops-dashboard.md.
     depends_on:
       api: {condition: service_started}
     volumes:

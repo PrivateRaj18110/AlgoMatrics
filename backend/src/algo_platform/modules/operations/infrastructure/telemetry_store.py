@@ -35,15 +35,9 @@ NOT (
 _DEMO_TRADE_SQL = """
 NOT (
     coalesce(machine_id, '') IN ('mch-london', 'mch-gcloud', 'mch-pc')
-    OR coalesce(machine, '') IN ('London VPS', 'Personal Computer')
-    OR (
-        lower(coalesce(broker, '')) IN (
-            'ic markets', 'pepperstone', 'interactive brokers', 'binance'
-        )
-        AND lower(coalesce(account, '')) IN (
-            'live-001', 'live-002', 'live-003', 'prop-114', 'demo-001'
-        )
-    )
+    OR coalesce(id, '') LIKE 'trd-demo-%'
+    OR coalesce(id, '') LIKE 'demo-%'
+    OR coalesce(account, '') IN ('DEMO_MOCK_ACCOUNT', 'MOCK_ACCOUNT')
 )
 """
 
@@ -118,7 +112,7 @@ class TelemetryStore:
                    oldest_pending_age_sec, transport_state, current_session_id,
                    trading_process_state, live
             FROM machines
-            WHERE (live IS TRUE OR live = 1)
+            WHERE live IS TRUE
               AND id NOT IN ('mch-london', 'mch-gcloud', 'mch-pc')
               AND name NOT IN ('London VPS', 'Personal Computer')
             ORDER BY created_at, id
