@@ -2,6 +2,9 @@
 
 export type MarketRegion = "india" | "international";
 
+const INDIA_INDEX_PREFIX =
+  /^(NIFTY|BANKNIFTY|FINNIFTY|MIDCPNIFTY|SENSEX|BANKEX|NIFTYNXT|CRUDEOIL|NATURALGAS|GOLDM|SILVERM)/i;
+
 const INDIA_SYMBOLS = new Set(
   [
     "NIFTY",
@@ -9,9 +12,13 @@ const INDIA_SYMBOLS = new Set(
     "FINNIFTY",
     "MIDCPNIFTY",
     "SENSEX",
+    "BANKEX",
     "NIFTYNXT",
+    "NIFTYNXT50",
     "CRUDEOIL",
     "NATURALGAS",
+    "GOLDM",
+    "SILVERM",
   ].map((value) => value.toUpperCase()),
 );
 
@@ -24,24 +31,61 @@ const INTERNATIONAL_SYMBOLS = new Set(
     "SPX",
     "SP500",
     "NDX",
+    "DJI",
+    "DAX",
+    "FTSE",
     "XAUUSD",
     "XAGUSD",
     "EURUSD",
     "GBPUSD",
     "USDJPY",
     "GBPJPY",
+    "EURGBP",
+    "EURJPY",
+    "AUDUSD",
+    "USDCAD",
+    "USDCHF",
+    "NZDUSD",
     "BTCUSD",
     "ETHUSD",
     "BTCUSDT",
     "ETHUSDT",
+    "SOLUSDT",
   ].map((value) => value.toUpperCase()),
 );
 
-const INDIA_BROKERS = new Set(["zerodha", "angelone", "flattrade", "delta"]);
-const INTERNATIONAL_BROKERS = new Set(["mt5", "binance", "interactive_brokers"]);
+const INDIA_BROKERS = new Set([
+  "zerodha",
+  "angelone",
+  "flattrade",
+  "delta",
+  "dhan",
+  "fyers",
+  "shoonya",
+  "finvasia",
+  "kotak",
+  "icici",
+  "upstox",
+  "groww",
+  "aliceblue",
+  "iifl",
+]);
 
-const INDIA_LOCATION = /india|mumbai|bengaluru|bangalore|hyderabad|nse|bse|kolkata|delhi/i;
-const INTERNATIONAL_LOCATION = /new york|virginia|london|frankfurt|tokyo|forex|nasdaq|nyse|gcp/i;
+const INTERNATIONAL_BROKERS = new Set([
+  "mt4",
+  "mt5",
+  "binance",
+  "interactive_brokers",
+  "ibkr",
+  "oanda",
+  "bybit",
+  "coinbase",
+]);
+
+const INDIA_LOCATION =
+  /india|mumbai|bengaluru|bangalore|hyderabad|nse|bse|kolkata|delhi|chennai|asia-south/i;
+const INTERNATIONAL_LOCATION =
+  /new york|virginia|london|frankfurt|tokyo|forex|nasdaq|nyse|equinix ld4|equinix ny4/i;
 
 function token(value: string | null | undefined): string {
   return (value ?? "").trim().toUpperCase();
@@ -51,13 +95,46 @@ export function classifySymbol(symbol: string | null | undefined): MarketRegion 
   const raw = (symbol ?? "").trim();
   if (!raw) return null;
   const upper = raw.toUpperCase();
-  if (upper.endsWith(".NS") || upper.endsWith(".BO") || upper.endsWith(":NSE") || upper.endsWith(":BSE")) {
+
+  // Explicit exchange suffix
+  if (
+    upper.endsWith(".NS") ||
+    upper.endsWith(".BO") ||
+    upper.endsWith(":NSE") ||
+    upper.endsWith(":BSE") ||
+    upper.endsWith("-EQ") ||
+    upper.endsWith("-BE")
+  ) {
     return "india";
   }
+
+  // Explicit international catalog or forex / crypto
   const head = upper.split(/[\s-]+/)[0] ?? upper;
-  if (INDIA_SYMBOLS.has(head) || INDIA_SYMBOLS.has(upper)) return "india";
-  if (INTERNATIONAL_SYMBOLS.has(head) || INTERNATIONAL_SYMBOLS.has(upper)) return "international";
-  if (/^[A-Z]{6}$/.test(head) && /USD|EUR|GBP|JPY|AUD|CAD|CHF/.test(head)) return "international";
+  if (INTERNATIONAL_SYMBOLS.has(head) || INTERNATIONAL_SYMBOLS.has(upper)) {
+    return "international";
+  }
+  if (/^[A-Z]{6}$/.test(head) && /USD|EUR|GBP|JPY|AUD|CAD|CHF/.test(head)) {
+    return "international";
+  }
+  if (upper.endsWith("USDT") || upper.endsWith("BUSD") || upper.endsWith("USDC")) {
+    return "international";
+  }
+
+  // Indian index or derivative contracts
+  if (INDIA_SYMBOLS.has(head) || INDIA_SYMBOLS.has(upper) || INDIA_INDEX_PREFIX.test(head)) {
+    return "india";
+  }
+
+  // Option derivative notation (CE / PE / FUT)
+  if (/\b(CE|PE|FUT)\b/i.test(upper) || /\d{4,6}\s*(?:CE|PE)\b/i.test(upper)) {
+    return "india";
+  }
+
+  // Standard alphanumeric equity ticker (e.g. RELIANCE, TCS, INFY)
+  if (/^[A-Z0-9&_]+$/.test(head)) {
+    return "india";
+  }
+
   return null;
 }
 
@@ -83,14 +160,18 @@ export function classifyRow(row: {
   hostname?: string | null;
   name?: string | null;
   broker_code?: string | null;
+  broker?: string | null;
+  strategy?: string | null;
+  strategy_name?: string | null;
 }): MarketRegion | null {
   return (
     classifySymbol(row.symbol) ??
-    classifyBroker(row.broker_code) ??
+    classifyBroker(row.broker_code ?? row.broker) ??
     classifyLocation(row.location) ??
     classifyLocation(row.hostname) ??
     classifyLocation(row.machine) ??
-    classifyLocation(row.name)
+    classifyLocation(row.name) ??
+    "india"
   );
 }
 
@@ -114,3 +195,4 @@ export function regionZone(region: MarketRegion): "Asia/Kolkata" | "America/New_
 }
 
 export { token };
+

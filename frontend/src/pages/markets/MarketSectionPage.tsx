@@ -115,12 +115,14 @@ function RegionStrategies({ region }: { region: MarketRegion }) {
   const { data, isLoading, isError } = useOpsStrategies();
   const rows = useMemo(
     () =>
-      (data ?? []).filter((row) =>
-        (row.symbols ?? []).some((symbol) => {
-          const classified = inRegion(region, [{ symbol }]);
-          return classified.length > 0;
-        }),
-      ),
+      (data ?? []).filter((row) => {
+        if (row.symbols && row.symbols.length > 0) {
+          return row.symbols.some(
+            (symbol) => inRegion(region, [{ symbol, machine: row.machine_id }]).length > 0,
+          );
+        }
+        return inRegion(region, [{ machine: row.machine_id, name: row.strategy_name }]).length > 0;
+      }),
     [data, region],
   );
   if (isLoading) return <SkeletonRows rows={4} cols={5} />;
