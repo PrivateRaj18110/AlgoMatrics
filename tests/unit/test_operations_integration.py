@@ -10,7 +10,10 @@ from algo_platform.modules.operations.domain.classification import (
     NON_TRADE_KINDS,
     TRADE_KINDS,
 )
-from algo_platform.modules.operations.infrastructure.telemetry_store import TelemetryStore
+from algo_platform.modules.operations.infrastructure.telemetry_store import (
+    TelemetryStore,
+    _sync_url,
+)
 
 
 def test_classification_contract_matches_f9bee1a() -> None:
@@ -61,3 +64,13 @@ def test_duplicate_envelope_does_not_create_second_trade() -> None:
         assert len(service.closed_trades()) == 1
         assert len(service.events()) == 5
         service._store.close()
+
+
+def test_ops_sync_url_uses_psycopg() -> None:
+    assert _sync_url("postgresql+asyncpg://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
+
+
+def test_psycopg_driver_is_installed() -> None:
+    import psycopg
+
+    assert psycopg is not None

@@ -79,6 +79,15 @@ class TelemetryStore:
                 yield conn
         except SQLAlchemyError as exc:
             raise UnavailableError("ops telemetry database is unavailable") from exc
+        except (ImportError, ModuleNotFoundError) as exc:
+            raise UnavailableError("ops telemetry database is unavailable") from exc
+        except BaseExceptionGroup as exc:
+            if any(
+                isinstance(inner, (SQLAlchemyError, ImportError, ModuleNotFoundError))
+                for inner in exc.exceptions
+            ):
+                raise UnavailableError("ops telemetry database is unavailable") from exc
+            raise
 
     def list_machines(self) -> list[dict[str, Any]]:
         if not self.configured:

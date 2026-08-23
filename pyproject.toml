@@ -6,6 +6,8 @@ requires-python = ">=3.13"
 dependencies = [
   "alembic>=1.14",
   "asyncpg>=0.30",
+  # Sync driver for the read-only ops telemetry store (postgresql+psycopg).
+  "psycopg[binary]>=3.2",
   "cryptography>=44.0",
   # Read-only reader for the AI-CIO market-intelligence DuckDB file.
   "duckdb>=1.0",
