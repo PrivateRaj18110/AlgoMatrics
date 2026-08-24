@@ -14,7 +14,7 @@ import { signed } from "@/lib/format";
 import { formatInZone } from "@/lib/time";
 import { AnalyticsPage } from "@/pages/AnalyticsPage";
 import { BrokersPage } from "@/pages/BrokersPage";
-import { LogsPage } from "@/pages/operations/OperationsPages";
+import { LogsPage, SystemHealthPage } from "@/pages/operations/OperationsPages";
 import { MarketPage } from "@/pages/MarketPage";
 import { PortfolioPage } from "@/pages/PortfolioPage";
 import { PositionsPage } from "@/pages/PositionsPage";
@@ -32,6 +32,7 @@ const SECTIONS = new Set([
   "risk",
   "execution",
   "logs",
+  "system-health",
 ]);
 
 function useActiveRegion(): { region: MarketRegion; section: string } {
@@ -82,6 +83,7 @@ export function MarketSectionPage() {
   if (section === "risk") return <RiskPage />;
   if (section === "execution") return <RegionOrders region={region} />;
   if (section === "logs") return <LogsPage />;
+  if (section === "system-health") return <SystemHealthPage region={region} />;
   return <RegionEmpty region={region} />;
 }
 

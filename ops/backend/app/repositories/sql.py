@@ -53,6 +53,7 @@ from app.models import (
     Metric,
     QuantReport,
     SyncState,
+    SystemHealthSnapshot,
     TradingSession,
     Trade,
     utcnow,
@@ -1098,3 +1099,88 @@ class SqlQuantReportRepository:
                 row.updated_at = now
             s.flush()
             return _quant_report_to_dict(row)
+
+
+def _system_health_to_dict(row: SystemHealthSnapshot) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "machine_id": row.machine_id,
+        "agent_id": row.agent_id,
+        "event_id": row.event_id,
+        "timestamp_utc": _iso(row.timestamp_utc),
+        "tick_rate": row.tick_rate,
+        "tick_delay_ms": row.tick_delay_ms,
+        "queue_size": row.queue_size,
+        "queue_wait_ms": row.queue_wait_ms,
+        "avg_latency_ms": row.avg_latency_ms,
+        "p95_latency_ms": row.p95_latency_ms,
+        "p99_latency_ms": row.p99_latency_ms,
+        "api_success_pct": row.api_success_pct,
+        "signal_fill_rate_pct": row.signal_fill_rate_pct,
+        "cpu_usage_pct": row.cpu_usage_pct,
+        "memory_mb": row.memory_mb,
+        "status": row.status,
+        "created_at": _iso(row.created_at),
+    }
+
+
+class SqlSystemHealthRepository:
+    def insert(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        ts = snapshot.get("timestamp_utc") or snapshot.get("time") or snapshot.get("ts")
+        if isinstance(ts, str):
+            ts = _parse_iso(ts)
+        if ts is None:
+            ts = utcnow()
+        row = SystemHealthSnapshot(
+            id=snapshot["id"],
+            machine_id=snapshot["machine_id"],
+            agent_id=snapshot.get("agent_id"),
+            event_id=snapshot.get("event_id") or snapshot.get("envelope_id"),
+            timestamp_utc=ts,
+            tick_rate=float(snapshot.get("tick_rate", 0.0) or 0.0),
+            tick_delay_ms=float(snapshot.get("tick_delay_ms", 0.0) or 0.0),
+            queue_size=int(snapshot.get("queue_size", 0) or 0),
+            queue_wait_ms=float(snapshot.get("queue_wait_ms", 0.0) or 0.0),
+            avg_latency_ms=float(snapshot.get("avg_latency_ms", 0.0) or 0.0),
+            p95_latency_ms=float(snapshot.get("p95_latency_ms", 0.0) or 0.0),
+            p99_latency_ms=float(snapshot.get("p99_latency_ms", 0.0) or 0.0),
+            api_success_pct=float(
+                snapshot.get("api_success_pct", 100.0)
+                if snapshot.get("api_success_pct") is not None
+                else 100.0
+            ),
+            signal_fill_rate_pct=float(snapshot.get("signal_fill_rate_pct", 0.0) or 0.0),
+            cpu_usage_pct=float(snapshot.get("cpu_usage_pct", 0.0) or 0.0),
+            memory_mb=float(snapshot.get("memory_mb", 0.0) or 0.0),
+            status=str(snapshot.get("status", "STABLE") or "STABLE"),
+            created_at=utcnow(),
+        )
+        with _write_session() as s:
+            s.add(row)
+            s.flush()
+            return _system_health_to_dict(row)
+
+    def query(
+        self,
+        *,
+        machine_id: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        with _read_session() as s:
+            stmt = select(SystemHealthSnapshot)
+            if not allow_mock_fixtures():
+                stmt = stmt.where(
+                    SystemHealthSnapshot.machine_id.not_in(DEMO_MACHINE_IDS),
+                )
+            if machine_id:
+                stmt = stmt.where(SystemHealthSnapshot.machine_id == machine_id)
+            if since is not None:
+                stmt = stmt.where(SystemHealthSnapshot.timestamp_utc >= since)
+            if until is not None:
+                stmt = stmt.where(SystemHealthSnapshot.timestamp_utc <= until)
+            stmt = stmt.order_by(SystemHealthSnapshot.timestamp_utc.asc()).limit(limit)
+            rows = s.execute(stmt).scalars().all()
+            return [_system_health_to_dict(r) for r in rows]
+

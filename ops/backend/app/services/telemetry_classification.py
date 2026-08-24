@@ -30,6 +30,7 @@ SOURCE_EVENT_TYPE_MAP = {
     "api_call": "system_status",
     "counter": "system_status",
     "hybrid_v2_metric": "system_status",
+    "system_health": "system_health",
 }
 
 TRADE_KINDS = frozenset({"trade", "trade_closed"})
@@ -38,7 +39,7 @@ NON_TRADE_KINDS = frozenset({
     "heartbeat", "metrics", "metric", "event", "error",
     "position", "start", "stop", "log",
     "system_status", "strategy_status", "signal", "order", "fill",
-    "pnl", "risk", "sync_status", "recovery",
+    "pnl", "risk", "sync_status", "recovery", "system_health",
 })
 
 

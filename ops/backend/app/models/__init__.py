@@ -18,6 +18,7 @@ from app.models.metric import Metric
 from app.models.quant import QuantReport
 from app.models.session import TradingSession
 from app.models.sync_state import SyncState
+from app.models.system_health import SystemHealthSnapshot
 from app.models.trade import Trade
 
 __all__ = [
@@ -35,4 +36,5 @@ __all__ = [
     "SyncState",
     "TradingSession",
     "DeadLetter",
+    "SystemHealthSnapshot",
 ]

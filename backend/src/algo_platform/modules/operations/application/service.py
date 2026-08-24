@@ -243,3 +243,58 @@ class OperationsService:
             "worst_trade": _float_or_none(row.get("worst_trade")),
             "win_rate": _win_rate(wins, losses),
         }
+
+    def system_health(
+        self,
+        *,
+        machine_id: str | None = None,
+        start: Any = None,
+        end: Any = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        self.ensure_available()
+        machines = self._store.list_machines()
+        selected_machine = None
+        if machine_id:
+            for m in machines:
+                if (
+                    m["id"] == machine_id
+                    or m["name"] == machine_id
+                    or m.get("hostname") == machine_id
+                ):
+                    selected_machine = m
+                    break
+        elif machines:
+            selected_machine = machines[0]
+
+        effective_mid = selected_machine["id"] if selected_machine else machine_id
+        points = self._store.list_system_health(
+            machine_id=effective_mid,
+            start=start,
+            end=end,
+            limit=limit,
+        )
+
+        is_live = False
+        current_exec_status = "offline"
+        current_health_status = None
+        last_health_ts = None
+
+        if selected_machine:
+            current_exec_status = selected_machine.get("status") or "offline"
+            is_live = current_exec_status == "online"
+
+        if points:
+            last_pt = points[-1]
+            last_health_ts = last_pt.get("timestamp")
+            current_health_status = last_pt.get("status")
+
+        return {
+            "machine_id": effective_mid,
+            "machine_name": selected_machine.get("name") if selected_machine else effective_mid,
+            "is_live": is_live,
+            "current_execution_status": current_exec_status,
+            "current_health_status": current_health_status,
+            "last_health_timestamp": last_health_ts,
+            "points": points,
+        }

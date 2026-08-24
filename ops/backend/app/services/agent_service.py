@@ -38,6 +38,7 @@ from app.repositories import (
     reserve_envelope,
     sessions_repo,
     sync_state_repo,
+    system_health_repo,
     trades_repo,
     unit_of_work,
 )
@@ -75,7 +76,7 @@ KNOWN_KINDS = frozenset({
     # Phase 3 vocabulary. Observational telemetry only; no AWS -> Google
     # control path and no broker/order execution authority.
     "system_status", "strategy_status", "signal", "order", "fill",
-    "pnl", "risk", "sync_status", "recovery",
+    "pnl", "risk", "sync_status", "recovery", "system_health",
 })
 
 
@@ -605,6 +606,84 @@ async def _handle_phase3_operational(
     )
 
 
+async def _handle_system_health(
+    machine: str,
+    strategy: str,
+    data: dict[str, Any],
+    *,
+    env_id: str | None = None,
+    mid: str | None = None,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+    sequence_id: int | None = None,
+    event_time: str | None = None,
+) -> None:
+    now = event_time or _now_iso()
+    health_payload = data.get("health") if isinstance(data.get("health"), dict) else data
+
+    tick_rate = float(health_payload.get("tick_rate", 0.0) or 0.0)
+    tick_delay_ms = float(health_payload.get("tick_delay_ms", 0.0) or 0.0)
+    queue_size = int(health_payload.get("queue_size", 0) or 0)
+    queue_wait_ms = float(health_payload.get("queue_wait_ms", 0.0) or 0.0)
+    avg_latency_ms = float(health_payload.get("avg_latency_ms", 0.0) or 0.0)
+    p95_latency_ms = float(health_payload.get("p95_latency_ms", 0.0) or 0.0)
+    p99_latency_ms = float(health_payload.get("p99_latency_ms", 0.0) or 0.0)
+    api_success_pct = float(
+        health_payload.get("api_success_pct", 100.0)
+        if health_payload.get("api_success_pct") is not None
+        else 100.0
+    )
+    signal_fill_rate_pct = float(health_payload.get("signal_fill_rate_pct", 0.0) or 0.0)
+    cpu_usage_pct = float(health_payload.get("cpu_usage_pct", 0.0) or 0.0)
+    memory_mb = float(health_payload.get("memory_mb", 0.0) or 0.0)
+    status = str(health_payload.get("status", "STABLE") or "STABLE").upper()
+
+    snapshot_id = _next_id("hlth")
+    effective_mid = mid or machine_id_for(machine)
+    system_health_repo.insert({
+        "id": snapshot_id,
+        "machine_id": effective_mid,
+        "agent_id": agent_id,
+        "event_id": env_id,
+        "timestamp_utc": now,
+        "tick_rate": tick_rate,
+        "tick_delay_ms": tick_delay_ms,
+        "queue_size": queue_size,
+        "queue_wait_ms": queue_wait_ms,
+        "avg_latency_ms": avg_latency_ms,
+        "p95_latency_ms": p95_latency_ms,
+        "p99_latency_ms": p99_latency_ms,
+        "api_success_pct": api_success_pct,
+        "signal_fill_rate_pct": signal_fill_rate_pct,
+        "cpu_usage_pct": cpu_usage_pct,
+        "memory_mb": memory_mb,
+        "status": status,
+    })
+
+    machine_changes: dict[str, Any] = {
+        "lastEvent": now,
+        "cpu": cpu_usage_pct,
+        "queueDepth": queue_size,
+    }
+    _touch_machine(effective_mid, machine_changes)
+
+    summary = f"status={status}, cpu={cpu_usage_pct}%, lat_avg={avg_latency_ms}ms, p95={p95_latency_ms}ms, queue={queue_size}"
+    await _emit_event(
+        "machine",
+        "info" if status == "STABLE" else "warning",
+        f"{machine} · system_health",
+        f"System Health {status}",
+        envelope_id=env_id,
+        machine_id=effective_mid,
+        event_type="system_health",
+        strategy=strategy,
+        session_id=session_id,
+        sequence_id=sequence_id,
+        payload_summary=summary,
+        event_time=event_time,
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Dispatch (single envelope, transactional + idempotent) + batch
 # --------------------------------------------------------------------------- #
@@ -637,6 +716,11 @@ async def _dispatch_inner(env: Envelope, agent_id: str | None = None) -> None:
         await _handle_stop(machine, strategy, data, env_id, mid, env.session_id, env.sequence_id, event_time)
     elif kind == "log":
         _handle_log(machine, strategy, data, env_id, mid)
+    elif kind == "system_health":
+        await _handle_system_health(
+            machine, strategy, data, env_id=env_id, mid=mid, agent_id=agent,
+            session_id=env.session_id, sequence_id=env.sequence_id, event_time=event_time,
+        )
     elif kind in {
         "system_status", "strategy_status", "signal", "order", "fill",
         "pnl", "risk", "sync_status", "recovery",

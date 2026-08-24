@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -16,6 +17,7 @@ from algo_platform.modules.operations.presentation.schemas import (
     OpsStrategyRow,
     OpsSymbolRow,
     OpsTrade,
+    SystemHealthResponse,
 )
 from algo_platform.modules.organizations.domain.roles import Permission
 
@@ -165,3 +167,34 @@ def operations_analytics(
     strategy: str | None = None,
 ) -> OpsAnalytics:
     return OpsAnalytics.model_validate(service.analytics(strategy))
+
+
+@router.get("/operations/health", response_model=SystemHealthResponse)
+@router.get("/operations/system-health", response_model=SystemHealthResponse)
+def operations_system_health(
+    _tenant: OpsTenant,
+    service: OpsDep,
+    machine_id: str | None = Query(default=None),
+    start: str | None = Query(default=None),
+    end: str | None = Query(default=None),
+    limit: int = Query(500, ge=1, le=1000),
+) -> SystemHealthResponse:
+    start_dt = None
+    end_dt = None
+    if start:
+        try:
+            start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        except Exception:
+            pass
+    if end:
+        try:
+            end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+        except Exception:
+            pass
+    result = service.system_health(
+        machine_id=machine_id,
+        start=start_dt,
+        end=end_dt,
+        limit=limit,
+    )
+    return SystemHealthResponse.model_validate(result)

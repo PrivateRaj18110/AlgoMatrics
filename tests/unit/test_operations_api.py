@@ -428,5 +428,105 @@ def test_historical_international_trades_and_postgres_boolean_filtering() -> Non
         service._store.close()
 
 
+def test_system_health_endpoint_empty_when_no_data() -> None:
+    with ops_sqlite_db("ops_health_empty.db") as url:
+        service = OperationsService(TelemetryStore(url), app_env="test")
+        client = TestClient(_app(service))
+
+        res = client.get("/api/v1/operations/system-health")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["points"] == []
+        assert data["is_live"] is False
+        assert data["current_execution_status"] == "offline"
+
+        # /api/v1/operations/health alias works identically
+        res_alias = client.get("/api/v1/operations/health")
+        assert res_alias.status_code == 200
+        assert res_alias.json()["points"] == []
+
+        service._store.close()
+
+
+def test_system_health_endpoint_with_real_points() -> None:
+    with ops_sqlite_db("ops_health_real.db") as url:
+        now = datetime.now(UTC)
+        engine = create_engine(url, future=True)
+        with engine.begin() as conn:
+            # 1. Insert real machine (online)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO machines (
+                        id, name, location, provider, status, cpu, ram, disk,
+                        internet_ms, broker_ping_ms, python_status, uptime_sec,
+                        last_heartbeat, strategy_count, live, hostname, created_at, updated_at
+                    ) VALUES (
+                        'mch-agent-google-vm-raj-quant-server', 'google-vm-raj-quant-server',
+                        'GCP Asia', 'GCP', 'online', 15.0, 30.0, 45.0,
+                        2.0, 5.0, 'online', 3600,
+                        :time, 2, 1, 'google-vm-raj-quant-server', :time, :time
+                    )
+                    """
+                ),
+                {"time": now},
+            )
+            # 2. Insert system health snapshot
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO system_health_snapshots (
+                        id, machine_id, agent_id, event_id, timestamp_utc,
+                        tick_rate, tick_delay_ms, queue_size, queue_wait_ms,
+                        avg_latency_ms, p95_latency_ms, p99_latency_ms,
+                        api_success_pct, signal_fill_rate_pct, cpu_usage_pct,
+                        memory_mb, status, created_at
+                    ) VALUES (
+                        'hlth-001', 'mch-agent-google-vm-raj-quant-server',
+                        'google-vm-data-agent', 'evt-001', :time,
+                        18.5, 0.4, 1, 2.5,
+                        6.2, 7.8, 8.9,
+                        100.0, 95.0, 14.5,
+                        210.0, 'STABLE', :time
+                    )
+                    """
+                ),
+                {"time": now},
+            )
+        engine.dispose()
+
+        service = OperationsService(TelemetryStore(url), app_env="test")
+        client = TestClient(_app(service))
+
+        res = client.get(
+            "/api/v1/operations/system-health?machine_id=mch-agent-google-vm-raj-quant-server"
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["machine_id"] == "mch-agent-google-vm-raj-quant-server"
+        assert data["is_live"] is True
+        assert data["current_execution_status"] == "online"
+        assert data["current_health_status"] == "STABLE"
+        assert len(data["points"]) == 1
+
+        pt = data["points"][0]
+        assert pt["tick_rate"] == 18.5
+        assert pt["tick_delay_ms"] == 0.4
+        assert pt["queue_size"] == 1
+        assert pt["queue_wait_ms"] == 2.5
+        assert pt["avg_latency_ms"] == 6.2
+        assert pt["p95_latency_ms"] == 7.8
+        assert pt["p99_latency_ms"] == 8.9
+        assert pt["api_success_pct"] == 100.0
+        assert pt["signal_fill_rate_pct"] == 95.0
+        assert pt["cpu_usage_pct"] == 14.5
+        assert pt["memory_mb"] == 210.0
+        assert pt["status"] == "STABLE"
+        assert pt["timestamp"].endswith("Z")
+
+        service._store.close()
+
+
+
 
 

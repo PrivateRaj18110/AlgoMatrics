@@ -33,6 +33,7 @@ const MARKET_LEAVES: MarketLeaf[] = [
   { segment: "risk", label: "Risk" },
   { segment: "execution", label: "Execution" },
   { segment: "logs", label: "Logs" },
+  { segment: "system-health", label: "System Health" },
 ];
 
 const DASHBOARD_NAV: NavItem = {

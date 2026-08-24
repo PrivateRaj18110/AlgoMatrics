@@ -126,3 +126,33 @@ class OpsAnalytics(OpsModel):
     by_symbol: list[OpsSymbolRow] = Field(default_factory=list)
     option_metadata: str
     timestamps: dict[str, Any]
+
+
+class SystemHealthPoint(OpsModel):
+    id: str | None = None
+    machine_id: str
+    agent_id: str | None = None
+    event_id: str | None = None
+    timestamp: str
+    tick_rate: float = 0.0
+    tick_delay_ms: float = 0.0
+    queue_size: int = 0
+    queue_wait_ms: float = 0.0
+    avg_latency_ms: float = 0.0
+    p95_latency_ms: float = 0.0
+    p99_latency_ms: float = 0.0
+    api_success_pct: float = 100.0
+    signal_fill_rate_pct: float = 0.0
+    cpu_usage_pct: float = 0.0
+    memory_mb: float = 0.0
+    status: str = "STABLE"
+
+
+class SystemHealthResponse(OpsModel):
+    machine_id: str | None = None
+    machine_name: str | None = None
+    is_live: bool = False
+    current_execution_status: str = "offline"
+    current_health_status: str | None = None
+    last_health_timestamp: str | None = None
+    points: list[SystemHealthPoint] = Field(default_factory=list)

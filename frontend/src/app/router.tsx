@@ -41,6 +41,7 @@ import {
   EventsPage,
   LogsPage,
   MachinesPage,
+  SystemHealthPage,
   TelemetryAlertsPage,
 } from "@/pages/operations/OperationsPages";
 
@@ -88,6 +89,7 @@ export const router: RouteObject[] = [
       { path: "/app/engine-strategies", element: <EngineStrategiesPage /> },
       { path: "/app/engine-strategies/:strategyName", element: <EngineStrategySymbolsRoute /> },
       { path: "/app/machines", element: <MachinesPage /> },
+      { path: "/app/system-health", element: <SystemHealthPage /> },
       { path: "/app/events", element: <EventsPage /> },
       { path: "/app/closed-trades", element: <ClosedTradesPage /> },
       { path: "/app/execution", element: <EngineOrdersPage /> },

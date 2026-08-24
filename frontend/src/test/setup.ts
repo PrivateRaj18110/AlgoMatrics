@@ -19,3 +19,12 @@ if (!window.matchMedia) {
     dispatchEvent: vi.fn(),
   }));
 }
+
+if (!globalThis.ResizeObserver) {
+  class MockResizeObserver {
+    observe = vi.fn();
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+  }
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+}

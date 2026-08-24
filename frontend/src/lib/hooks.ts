@@ -67,6 +67,7 @@ import type {
   StrategyVersion,
   Subscription,
   SystemHealth,
+  SystemHealthResponse,
   Trade,
   TradingAccount,
   Usage,
@@ -932,6 +933,16 @@ export function useOpsAnalytics(strategy?: string) {
     queryFn: () =>
       api<OpsAnalytics>("/operations/analytics", { query: { strategy } }),
     enabled: ready,
+  });
+}
+
+export function useOpsSystemHealth(params: { machine_id?: string; start?: string; end?: string; limit?: number } = {}) {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["ops-system-health", orgKey(), params],
+    queryFn: () => api<SystemHealthResponse>("/operations/system-health", { query: params }),
+    enabled: ready,
+    refetchInterval: 30000,
   });
 }
 

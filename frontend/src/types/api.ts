@@ -955,3 +955,33 @@ export interface OpsAnalytics {
   option_metadata: string;
 }
 
+export interface SystemHealthPoint {
+  id?: string | null;
+  machine_id: string;
+  agent_id?: string | null;
+  event_id?: string | null;
+  timestamp: string;
+  tick_rate: number;
+  tick_delay_ms: number;
+  queue_size: number;
+  queue_wait_ms: number;
+  avg_latency_ms: number;
+  p95_latency_ms: number;
+  p99_latency_ms: number;
+  api_success_pct: number;
+  signal_fill_rate_pct: number;
+  cpu_usage_pct: number;
+  memory_mb: number;
+  status: string;
+}
+
+export interface SystemHealthResponse {
+  machine_id: string | null;
+  machine_name: string | null;
+  is_live: boolean;
+  current_execution_status: string;
+  current_health_status: string | null;
+  last_health_timestamp: string | null;
+  points: SystemHealthPoint[];
+}
+

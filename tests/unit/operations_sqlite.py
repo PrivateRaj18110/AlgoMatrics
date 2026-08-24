@@ -89,6 +89,26 @@ CREATE TABLE logs (
     logger TEXT,
     message TEXT
 );
+CREATE TABLE system_health_snapshots (
+    id TEXT PRIMARY KEY,
+    machine_id TEXT NOT NULL,
+    agent_id TEXT,
+    event_id TEXT,
+    timestamp_utc TIMESTAMP NOT NULL,
+    tick_rate REAL DEFAULT 0,
+    tick_delay_ms REAL DEFAULT 0,
+    queue_size INTEGER DEFAULT 0,
+    queue_wait_ms REAL DEFAULT 0,
+    avg_latency_ms REAL DEFAULT 0,
+    p95_latency_ms REAL DEFAULT 0,
+    p99_latency_ms REAL DEFAULT 0,
+    api_success_pct REAL DEFAULT 100.0,
+    signal_fill_rate_pct REAL DEFAULT 0,
+    cpu_usage_pct REAL DEFAULT 0,
+    memory_mb REAL DEFAULT 0,
+    status TEXT DEFAULT 'STABLE',
+    created_at TIMESTAMP NOT NULL
+);
 """
 
 

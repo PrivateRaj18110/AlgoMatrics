@@ -416,3 +416,67 @@ class TelemetryStore:
         with self._connect() as conn:
             rows = conn.execute(sql, params).mappings().all()
         return [dict(row) for row in rows]
+
+    def list_system_health(
+        self,
+        *,
+        machine_id: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        if not self.configured:
+            return []
+        clauses = [
+            "machine_id NOT IN ('mch-london', 'mch-gcloud', 'mch-pc')",
+        ]
+        params: dict[str, Any] = {"limit": limit}
+        if machine_id:
+            clauses.append("machine_id = :machine_id")
+            params["machine_id"] = machine_id
+        if start:
+            clauses.append("timestamp_utc >= :start")
+            params["start"] = start
+        if end:
+            clauses.append("timestamp_utc <= :end")
+            params["end"] = end
+
+        where = " AND ".join(clauses)
+        sql = text(
+            f"""
+            SELECT id, machine_id, agent_id, event_id, timestamp_utc,
+                   tick_rate, tick_delay_ms, queue_size, queue_wait_ms,
+                   avg_latency_ms, p95_latency_ms, p99_latency_ms,
+                   api_success_pct, signal_fill_rate_pct, cpu_usage_pct,
+                   memory_mb, status, created_at
+            FROM system_health_snapshots
+            WHERE {where}
+            ORDER BY timestamp_utc ASC
+            LIMIT :limit
+            """
+        )
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).mappings().all()
+        return [
+            {
+                "id": row["id"],
+                "machine_id": row["machine_id"],
+                "agent_id": _blank_to_none(row["agent_id"]),
+                "event_id": _blank_to_none(row["event_id"]),
+                "timestamp": to_utc_z(row["timestamp_utc"]),
+                "tick_rate": row["tick_rate"],
+                "tick_delay_ms": row["tick_delay_ms"],
+                "queue_size": row["queue_size"],
+                "queue_wait_ms": row["queue_wait_ms"],
+                "avg_latency_ms": row["avg_latency_ms"],
+                "p95_latency_ms": row["p95_latency_ms"],
+                "p99_latency_ms": row["p99_latency_ms"],
+                "api_success_pct": row["api_success_pct"],
+                "signal_fill_rate_pct": row["signal_fill_rate_pct"],
+                "cpu_usage_pct": row["cpu_usage_pct"],
+                "memory_mb": row["memory_mb"],
+                "status": row["status"],
+                "created_at": to_utc_z(row["created_at"]),
+            }
+            for row in rows
+        ]

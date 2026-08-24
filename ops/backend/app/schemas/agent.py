@@ -114,8 +114,12 @@ class Envelope(BaseModel):
             return value
         data = dict(value)
         payload = data.get("payload")
-        if not data.get("data") and isinstance(payload, dict):
-            data["data"] = payload
+        health = data.get("health")
+        if not data.get("data"):
+            if isinstance(payload, dict):
+                data["data"] = payload
+            elif isinstance(health, dict):
+                data["data"] = {"health": health, **health}
         if not data.get("id"):
             data["id"] = data.get("event_id") or data.get("eventId")
         if (not data.get("machine") or data.get("machine") == "unknown") and (

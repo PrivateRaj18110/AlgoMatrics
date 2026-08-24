@@ -384,6 +384,32 @@ class _InMemoryQuantReportRepository:
         return self.get(report["reportId"]) or row
 
 
+class _InMemorySystemHealthRepository:
+    def __init__(self) -> None:
+        self._rows: list[dict[str, Any]] = []
+
+    def insert(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        self._rows.append(snapshot)
+        return snapshot
+
+    def query(
+        self,
+        *,
+        machine_id: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        rows = self._rows
+        if machine_id:
+            rows = [r for r in rows if r.get("machine_id") == machine_id]
+        if since is not None:
+            rows = [r for r in rows if str(r.get("timestamp_utc", "")) >= since.isoformat()]
+        if until is not None:
+            rows = [r for r in rows if str(r.get("timestamp_utc", "")) <= until.isoformat()]
+        return sorted(rows, key=lambda r: str(r.get("timestamp_utc", "")))[:limit]
+
+
 from app.repositories.sql import (
     SqlDeadLetterRepository,
     SqlEodRepository,
@@ -394,6 +420,7 @@ from app.repositories.sql import (
     SqlQuantReportRepository,
     SqlSessionsRepository,
     SqlSyncStateRepository,
+    SqlSystemHealthRepository,
     SqlTradesRepository,
 )
 
@@ -428,6 +455,7 @@ sessions_repo = _RepositoryProxy(SqlSessionsRepository, _InMemorySessionsReposit
 dead_letter_repo = _RepositoryProxy(SqlDeadLetterRepository, _InMemoryDeadLetterRepository)
 eod_repo = _RepositoryProxy(SqlEodRepository, _InMemoryEodRepository)
 quant_report_repo = _RepositoryProxy(SqlQuantReportRepository, _InMemoryQuantReportRepository)
+system_health_repo = _RepositoryProxy(SqlSystemHealthRepository, _InMemorySystemHealthRepository)
 
 # Idempotency + transaction primitives (no-ops in mock mode).
 from app.repositories.sql import prune_dedup, reserve_envelope, unit_of_work  # noqa: E402
@@ -452,7 +480,7 @@ __all__ = [
     "machines_repo", "strategies_repo", "trades_repo", "brokers_repo",
     "accounts_repo", "alerts_repo", "events_repo", "logs_repo", "metrics_repo",
     "sync_state_repo", "sessions_repo", "dead_letter_repo", "eod_repo",
-    "quant_report_repo",
+    "quant_report_repo", "system_health_repo",
     "dashboard_doc", "analytics_doc", "risk_doc", "execution_doc", "build_event",
     "reserve_envelope", "unit_of_work", "prune_dedup",
 ]
