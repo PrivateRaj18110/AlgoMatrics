@@ -32,6 +32,8 @@ def configure_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("RAJ_AGENT_TOKENS", f"{SCOPED_MACHINE}:{SCOPED_TOKEN}")
     monkeypatch.setenv("RAJ_DASHBOARD_TOKEN", DASHBOARD_TOKEN)
     monkeypatch.delenv("ENVIRONMENT", raising=False)
+    monkeypatch.delenv("OPS_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     _reset_settings()
     yield
     _reset_settings()
@@ -41,7 +43,7 @@ def configure_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 def unconfigured_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Remove every ingestion credential — the fail-closed case."""
     for key in ("RAJ_AGENT_TOKEN", "RAJ_AGENT_TOKENS", "RAJ_DASHBOARD_TOKEN",
-                "OPS_JWT_PUBLIC_KEY"):
+                "OPS_JWT_PUBLIC_KEY", "OPS_DATABASE_URL", "DATABASE_URL"):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.delenv("ENVIRONMENT", raising=False)
     _reset_settings()

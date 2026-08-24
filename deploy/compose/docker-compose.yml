@@ -186,6 +186,8 @@ services:
     environment:
       APP_NAME: "AlgoMatrics Ops API"
       ALGOMATRICS_API_URL: http://api:8000/api/v1
+      DATABASE_URL: ${OPS_DATABASE_URL:-postgresql+psycopg://algo:algo@postgres:5432/ops_telemetry}
+      OPS_DATABASE_URL: ${OPS_DATABASE_URL:-postgresql+psycopg://algo:algo@postgres:5432/ops_telemetry}
     depends_on:
       api: {condition: service_started}
     volumes:

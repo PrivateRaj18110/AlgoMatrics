@@ -15,6 +15,7 @@ Two production safety rules are enforced from here (see ``main.py``, which calls
 from __future__ import annotations
 
 from functools import lru_cache
+import os
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -26,6 +27,13 @@ def normalize_database_url(url: str | None) -> str | None:
     """Use the installed psycopg v3 driver for standard PostgreSQL URLs."""
     if url is None:
         return None
+    url = url.strip()
+    if not url:
+        return None
+    if url.startswith("postgresql+asyncpg://"):
+        return f"postgresql+psycopg://{url.removeprefix('postgresql+asyncpg://')}"
+    if url.startswith("postgresql+psycopg2://"):
+        return f"postgresql+psycopg://{url.removeprefix('postgresql+psycopg2://')}"
     if url.startswith("postgres://"):
         return f"postgresql+psycopg://{url.removeprefix('postgres://')}"
     if url.startswith("postgresql://"):
@@ -62,8 +70,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def resolve_ops_database_url(self) -> Settings:
-        if not self.database_url and self.ops_database_url:
-            self.database_url = normalize_database_url(self.ops_database_url)
+        target = self.ops_database_url if self.ops_database_url is not None else self.database_url
+        if target is not None:
+            self.database_url = normalize_database_url(target)
+        else:
+            self.database_url = None
         return self
 
     # --- AlgoMatrics control plane (live platform data) --------------------
@@ -252,4 +263,6 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Return a cached Settings instance (single source of truth)."""
+    if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("DISABLE_DOTENV"):
+        return Settings(_env_file=None)
     return Settings()

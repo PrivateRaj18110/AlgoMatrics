@@ -31,6 +31,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 _PROD = {
     "ENVIRONMENT": "production",
     "DATABASE_URL": "postgresql+psycopg://u:p@db:5432/ops",
+    "OPS_DATABASE_URL": None,
     "RAJ_AGENT_TOKEN": "prod-agent-token",
     "RAJ_DASHBOARD_TOKEN": "prod-dashboard-token",
 }
@@ -38,7 +39,7 @@ _PROD = {
 
 def _settings(**overrides: str | None) -> Settings:
     values = {**_PROD, **overrides}
-    return Settings(**{k.lower(): v for k, v in values.items() if v is not None})
+    return Settings(**{k.lower(): v for k, v in values.items()})
 
 
 # --------------------------------------------------------------------------- #

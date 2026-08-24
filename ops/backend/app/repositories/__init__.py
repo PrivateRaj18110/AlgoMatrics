@@ -384,44 +384,50 @@ class _InMemoryQuantReportRepository:
         return self.get(report["reportId"]) or row
 
 
-# --------------------------------------------------------------------------- #
-# Scoped repositories: PostgreSQL when DATABASE_URL is set, else in-memory mock.
-# --------------------------------------------------------------------------- #
-if database_enabled():
-    from app.repositories.sql import (
-        SqlDeadLetterRepository,
-        SqlEodRepository,
-        SqlEventsRepository,
-        SqlLogsRepository,
-        SqlMachinesRepository,
-        SqlMetricsRepository,
-        SqlQuantReportRepository,
-        SqlSessionsRepository,
-        SqlSyncStateRepository,
-        SqlTradesRepository,
-    )
+from app.repositories.sql import (
+    SqlDeadLetterRepository,
+    SqlEodRepository,
+    SqlEventsRepository,
+    SqlLogsRepository,
+    SqlMachinesRepository,
+    SqlMetricsRepository,
+    SqlQuantReportRepository,
+    SqlSessionsRepository,
+    SqlSyncStateRepository,
+    SqlTradesRepository,
+)
 
-    machines_repo = SqlMachinesRepository()
-    events_repo = SqlEventsRepository()
-    logs_repo = SqlLogsRepository()
-    trades_repo = SqlTradesRepository()
-    metrics_repo = SqlMetricsRepository()
-    sync_state_repo = SqlSyncStateRepository()
-    sessions_repo = SqlSessionsRepository()
-    dead_letter_repo = SqlDeadLetterRepository()
-    eod_repo = SqlEodRepository()
-    quant_report_repo = SqlQuantReportRepository()
-else:
-    machines_repo = MachinesRepository(_data.MACHINES)
-    events_repo = EventsRepository(_data.EVENTS)
-    logs_repo = LogsRepository(_data.LOGS)
-    trades_repo = _MockTradesRepository(_data.TRADES)
-    metrics_repo = _NullMetricsRepository()
-    sync_state_repo = _NullSyncStateRepository()
-    sessions_repo = _InMemorySessionsRepository()
-    dead_letter_repo = _InMemoryDeadLetterRepository()
-    eod_repo = _InMemoryEodRepository()
-    quant_report_repo = _InMemoryQuantReportRepository()
+
+class _RepositoryProxy:
+    def __init__(self, sql_factory, mock_factory):
+        self._sql_factory = sql_factory
+        self._mock_factory = mock_factory
+        self._sql_instance = None
+        self._mock_instance = None
+
+    def _get_target(self):
+        if database_enabled():
+            if self._sql_instance is None:
+                self._sql_instance = self._sql_factory()
+            return self._sql_instance
+        if self._mock_instance is None:
+            self._mock_instance = self._mock_factory()
+        return self._mock_instance
+
+    def __getattr__(self, name: str):
+        return getattr(self._get_target(), name)
+
+
+machines_repo = _RepositoryProxy(SqlMachinesRepository, lambda: MachinesRepository(_data.MACHINES))
+events_repo = _RepositoryProxy(SqlEventsRepository, lambda: EventsRepository(_data.EVENTS))
+logs_repo = _RepositoryProxy(SqlLogsRepository, lambda: LogsRepository(_data.LOGS))
+trades_repo = _RepositoryProxy(SqlTradesRepository, lambda: _MockTradesRepository(_data.TRADES))
+metrics_repo = _RepositoryProxy(SqlMetricsRepository, _NullMetricsRepository)
+sync_state_repo = _RepositoryProxy(SqlSyncStateRepository, _NullSyncStateRepository)
+sessions_repo = _RepositoryProxy(SqlSessionsRepository, _InMemorySessionsRepository)
+dead_letter_repo = _RepositoryProxy(SqlDeadLetterRepository, _InMemoryDeadLetterRepository)
+eod_repo = _RepositoryProxy(SqlEodRepository, _InMemoryEodRepository)
+quant_report_repo = _RepositoryProxy(SqlQuantReportRepository, _InMemoryQuantReportRepository)
 
 # Idempotency + transaction primitives (no-ops in mock mode).
 from app.repositories.sql import prune_dedup, reserve_envelope, unit_of_work  # noqa: E402
