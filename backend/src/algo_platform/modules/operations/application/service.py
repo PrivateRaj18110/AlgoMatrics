@@ -265,7 +265,18 @@ class OperationsService:
                     selected_machine = m
                     break
         elif machines:
-            selected_machine = machines[0]
+            google = next(
+                (
+                    m
+                    for m in machines
+                    if m["id"] == "mch-agent-google-vm-raj-quant-server"
+                    or m["name"] == "google-vm-raj-quant-server"
+                    or m.get("hostname") == "google-vm-raj-quant-server"
+                ),
+                None,
+            )
+            online = next((m for m in machines if m.get("status") == "online"), None)
+            selected_machine = google or online or machines[0]
 
         effective_mid = selected_machine["id"] if selected_machine else machine_id
         points = self._store.list_system_health(
