@@ -1,5 +1,7 @@
 import type { RouteObject } from "react-router";
-import { Navigate } from "react-router";
+import { Navigate, useParams } from "react-router";
+
+import { INTERNATIONAL_MARKET_ENABLED } from "@/lib/marketRegion";
 
 import { AppLayout } from "@/app/AppLayout";
 import {
@@ -45,6 +47,26 @@ import {
   TelemetryAlertsPage,
 } from "@/pages/operations/OperationsPages";
 
+export function InternationalRootRedirect() {
+  return (
+    <Navigate
+      to={INTERNATIONAL_MARKET_ENABLED ? "/app/international/overview" : "/app/india/overview"}
+      replace
+    />
+  );
+}
+
+export function InternationalRouteHandler() {
+  const { section } = useParams();
+  if (INTERNATIONAL_MARKET_ENABLED) {
+    return <MarketSectionPage />;
+  }
+  if (section) {
+    return <Navigate to={`/app/india/${section}`} replace />;
+  }
+  return <Navigate to="/app/india/overview" replace />;
+}
+
 export const router: RouteObject[] = [
   { path: "/", element: <RootRedirect /> },
   {
@@ -80,8 +102,8 @@ export const router: RouteObject[] = [
       { path: "/app/dashboard", element: <DashboardPage /> },
       { path: "/app/india", element: <Navigate to="/app/india/overview" replace /> },
       { path: "/app/india/:section", element: <MarketSectionPage /> },
-      { path: "/app/international", element: <Navigate to="/app/international/overview" replace /> },
-      { path: "/app/international/:section", element: <MarketSectionPage /> },
+      { path: "/app/international", element: <InternationalRootRedirect /> },
+      { path: "/app/international/:section", element: <InternationalRouteHandler /> },
       { path: "/app/todo", element: <TodoPage /> },
       { path: "/app/calendar", element: <CalendarPage /> },
       { path: "/app/strategies", element: <StrategiesPage /> },

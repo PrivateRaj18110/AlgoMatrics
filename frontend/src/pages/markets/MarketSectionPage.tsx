@@ -3,6 +3,7 @@ import { useLocation, useParams } from "react-router";
 
 import { Card, EmptyState, PageHeader, SkeletonRows, Table, Td } from "@/components/ui";
 import {
+  INTERNATIONAL_MARKET_ENABLED,
   inRegion,
   regionEmptyCopy,
   regionLabel,
@@ -38,9 +39,10 @@ const SECTIONS = new Set([
 function useActiveRegion(): { region: MarketRegion; section: string } {
   const location = useLocation();
   const params = useParams();
-  const region: MarketRegion = location.pathname.startsWith("/app/international")
-    ? "international"
-    : "india";
+  const region: MarketRegion =
+    INTERNATIONAL_MARKET_ENABLED && location.pathname.startsWith("/app/international")
+      ? "international"
+      : "india";
   const section = params.section && SECTIONS.has(params.section) ? params.section : "overview";
   return { region, section };
 }

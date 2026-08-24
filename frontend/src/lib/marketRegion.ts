@@ -1,6 +1,14 @@
-/** Classify real telemetry into India vs International. Never invent symbols. */
-
 export type MarketRegion = "india" | "international";
+
+/**
+ * Single source of truth for market availability in the UI.
+ * Set to `true` to re-enable the International market selector and routes.
+ */
+export const INTERNATIONAL_MARKET_ENABLED = false;
+
+export const VISIBLE_MARKETS: readonly MarketRegion[] = INTERNATIONAL_MARKET_ENABLED
+  ? (["india", "international"] as const)
+  : (["india"] as const);
 
 const INDIA_INDEX_PREFIX =
   /^(NIFTY|BANKNIFTY|FINNIFTY|MIDCPNIFTY|SENSEX|BANKEX|NIFTYNXT|CRUDEOIL|NATURALGAS|GOLDM|SILVERM)/i;

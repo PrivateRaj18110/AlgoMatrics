@@ -6,6 +6,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Badge, Button, Field, Input, Modal } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
+import { INTERNATIONAL_MARKET_ENABLED } from "@/lib/marketRegion";
 import { liveChannel } from "@/lib/ws";
 import { activeOrg, useAuth } from "@/stores/auth";
 import { toastError, toastSuccess } from "@/stores/toast";
@@ -51,8 +52,8 @@ const GLOBAL_NAV: NavItem[] = [
     label: "Market Intelligence",
     icon: "M12 3a9 9 0 100 18 9 9 0 000-18zm0 4a5 5 0 100 10 5 5 0 000-10z",
   },
-  { to: "/app/watchlists", label: "Watchlists", icon: "M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7zm0 3a4 4 0 110 8 4 4 0 010-8z" },
   { to: "/app/audit-log", label: "Audit Log", icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
+  { to: "/app/system-health", label: "System Health", icon: "M22 12h-4l-3 9L9 3l-3 9H2" },
   { to: "/app/settings", label: "Settings", icon: "M12 15a3 3 0 100-6 3 3 0 000 6z" },
 ];
 
@@ -127,7 +128,7 @@ export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [indiaOpen, setIndiaOpen] = useState(location.pathname.startsWith("/app/india"));
   const [internationalOpen, setInternationalOpen] = useState(
-    location.pathname.startsWith("/app/international"),
+    INTERNATIONAL_MARKET_ENABLED && location.pathname.startsWith("/app/international"),
   );
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
   const [organizationName, setOrganizationName] = useState("");
@@ -142,7 +143,9 @@ export function AppLayout() {
   useEffect(() => {
     setMobileOpen(false);
     if (location.pathname.startsWith("/app/india")) setIndiaOpen(true);
-    if (location.pathname.startsWith("/app/international")) setInternationalOpen(true);
+    if (INTERNATIONAL_MARKET_ENABLED && location.pathname.startsWith("/app/international")) {
+      setInternationalOpen(true);
+    }
   }, [location.pathname]);
 
   // Keyboard shortcut: "g" then a key jumps between sections.
@@ -237,13 +240,15 @@ export function AppLayout() {
             onToggle={() => setIndiaOpen((value) => !value)}
             activePath={location.pathname}
           />
-          <MarketGroup
-            label="International"
-            root="/app/international"
-            open={internationalOpen}
-            onToggle={() => setInternationalOpen((value) => !value)}
-            activePath={location.pathname}
-          />
+          {INTERNATIONAL_MARKET_ENABLED && (
+            <MarketGroup
+              label="International"
+              root="/app/international"
+              open={internationalOpen}
+              onToggle={() => setInternationalOpen((value) => !value)}
+              activePath={location.pathname}
+            />
+          )}
           {GLOBAL_NAV.map((item) => (
             <NavLink key={item.to} to={item.to} className={({ isActive }) => navClass(isActive)}>
               <Icon path={item.icon} />
