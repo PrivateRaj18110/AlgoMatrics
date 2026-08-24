@@ -342,14 +342,30 @@ class SqlMachinesRepository:
     def upsert(self, machine: dict) -> dict:
         cols = _to_machine_columns(machine)
         mid = cols.get("id") or machine.get("id")
+        _defaults = {
+            "cpu": 0.0,
+            "ram": 0.0,
+            "disk": 0.0,
+            "internet_ms": 0.0,
+            "broker_ping_ms": 0.0,
+            "python_status": "online",
+            "uptime_sec": 0,
+            "strategy_count": 0,
+            "live": True,
+            "hostname": "",
+            "environment": "",
+        }
         with _write_session() as s:
             obj = s.get(Machine, mid)
             if obj is None:
+                for k, default in _defaults.items():
+                    if cols.get(k) is None:
+                        cols[k] = default
                 obj = Machine(**cols)
                 s.add(obj)
             else:
                 for key, val in cols.items():
-                    if key != "id":
+                    if key != "id" and val is not None:
                         setattr(obj, key, val)
             s.flush()
             return _machine_to_dict(obj, utcnow())
@@ -361,7 +377,7 @@ class SqlMachinesRepository:
             if obj is None:
                 return None
             for key, val in cols.items():
-                if key != "id":
+                if key != "id" and val is not None:
                     setattr(obj, key, val)
             s.flush()
             return _machine_to_dict(obj, utcnow())
