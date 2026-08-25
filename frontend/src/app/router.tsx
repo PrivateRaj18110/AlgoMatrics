@@ -25,6 +25,7 @@ import { MarketplacePage } from "@/pages/MarketplacePage";
 import { LoginPage } from "@/pages/auth/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { NotificationsPage } from "@/pages/NotificationsPage";
+import { PersonalHealthPage } from "@/pages/personalHealth/PersonalHealthPage";
 import { ResetPasswordPage } from "@/pages/auth/ResetPasswordPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 import { StrategiesPage } from "@/pages/StrategiesPage";
@@ -106,6 +107,7 @@ export const router: RouteObject[] = [
       { path: "/app/international/:section", element: <InternationalRouteHandler /> },
       { path: "/app/todo", element: <TodoPage /> },
       { path: "/app/calendar", element: <CalendarPage /> },
+      { path: "/app/personal-health", element: <PersonalHealthPage /> },
       { path: "/app/strategies", element: <StrategiesPage /> },
       { path: "/app/strategies/:strategyId", element: <StrategyDetailPage /> },
       { path: "/app/engine-strategies", element: <EngineStrategiesPage /> },

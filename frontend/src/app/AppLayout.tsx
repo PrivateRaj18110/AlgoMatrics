@@ -46,6 +46,11 @@ const DASHBOARD_NAV: NavItem = {
 const GLOBAL_NAV: NavItem[] = [
   { to: "/app/todo", label: "To Do List", icon: "M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" },
   { to: "/app/calendar", label: "Calendar", icon: "M7 3v3M17 3v3M4 8h16M5 5h14v16H5z" },
+  {
+    to: "/app/personal-health",
+    label: "Personal Health",
+    icon: "M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z",
+  },
   { to: "/app/market-update", label: "Market Update", icon: "M4 20V10M10 20V4M16 20v-8M22 20H2M2 4l5 3 5-5 5 4 5-2" },
   {
     to: "/app/market-intelligence",

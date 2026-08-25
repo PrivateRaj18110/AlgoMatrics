@@ -79,6 +79,35 @@ describe("AppLayout navigation", () => {
     expect(healthIdx).toBeLessThan(settingsIdx);
   });
 
+  it("renders Personal Health navigation item directly below Calendar", () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <AppLayout />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const todoLink = screen.getByRole("link", { name: /To Do List/i });
+    const calendarLink = screen.getByRole("link", { name: /Calendar/i });
+    const personalHealthLink = screen.getByRole("link", { name: /Personal Health/i });
+    const marketUpdateLink = screen.getByRole("link", { name: /Market Update/i });
+
+    expect(calendarLink).toBeInTheDocument();
+    expect(personalHealthLink).toBeInTheDocument();
+    expect(personalHealthLink).toHaveAttribute("href", "/app/personal-health");
+
+    const links = screen.getAllByRole("link");
+    const todoIdx = links.indexOf(todoLink);
+    const calIdx = links.indexOf(calendarLink);
+    const healthIdx = links.indexOf(personalHealthLink);
+    const marketIdx = links.indexOf(marketUpdateLink);
+
+    expect(todoIdx).toBeLessThan(calIdx);
+    expect(calIdx).toBeLessThan(healthIdx);
+    expect(healthIdx).toBeLessThan(marketIdx);
+  });
+
   it("renders India market section and hides International market section by default", () => {
     render(
       <QueryClientProvider client={queryClient}>
