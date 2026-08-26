@@ -936,13 +936,16 @@ export function useOpsAnalytics(strategy?: string) {
   });
 }
 
-export function useOpsSystemHealth(params: { machine_id?: string; start?: string; end?: string; limit?: number } = {}) {
+export function useOpsSystemHealth(
+  params: { machine_id?: string; start?: string; end?: string; limit?: number } = {},
+  options: { refetchInterval?: number | false } = {}
+) {
   const ready = useTenantReady();
   return useQuery({
     queryKey: ["ops-system-health", orgKey(), params],
     queryFn: () => api<SystemHealthResponse>("/operations/system-health", { query: params }),
     enabled: ready,
-    refetchInterval: 30000,
+    refetchInterval: options.refetchInterval ?? 8000,
   });
 }
 

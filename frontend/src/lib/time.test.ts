@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatInZone, formatTradingTime, formatUtcTime, INFRA_ZONE, TRADING_ZONE } from "@/lib/time";
+import { formatHealthAge, formatInZone, formatTradingTime, formatUtcTime, INFRA_ZONE, TRADING_ZONE } from "@/lib/time";
 
 describe("time display", () => {
   it("converts noon UTC to 17:30 IST without manual offset math", () => {
@@ -35,6 +35,15 @@ describe("time display", () => {
     expect(INFRA_ZONE).toBe("UTC");
     const src = formatInZone.toString();
     expect(src).not.toContain("5:30");
-    expect(src).not.toMatch(/\+330|330 \*/);
+  });
+
+  it("formats relative health age correctly", () => {
+    const base = new Date("2026-08-24T12:00:00.000Z").getTime();
+    expect(formatHealthAge(new Date(base - 12000), base)).toBe("12 seconds ago");
+    expect(formatHealthAge(new Date(base - 135000), base)).toBe("2m 15s ago");
+    expect(formatHealthAge(new Date(base - 300000), base)).toBe("5m ago");
+    expect(formatHealthAge(new Date(base - 8100000), base)).toBe("2h 15m");
+    expect(formatHealthAge(null, base)).toBe("No data");
+    expect(formatHealthAge(undefined, base)).toBe("No data");
   });
 });

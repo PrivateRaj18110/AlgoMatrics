@@ -389,6 +389,11 @@ class _InMemorySystemHealthRepository:
         self._rows: list[dict[str, Any]] = []
 
     def insert(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        event_id = snapshot.get("event_id") or snapshot.get("envelope_id")
+        if event_id:
+            for r in self._rows:
+                if r.get("event_id") == event_id:
+                    return r
         self._rows.append(snapshot)
         return snapshot
 

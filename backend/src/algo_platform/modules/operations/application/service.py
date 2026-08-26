@@ -290,15 +290,33 @@ class OperationsService:
         current_exec_status = "offline"
         current_health_status = None
         last_health_ts = None
+        latest_pt = None
 
         if selected_machine:
             current_exec_status = selected_machine.get("status") or "offline"
-            is_live = current_exec_status == "online"
 
         if points:
-            last_pt = points[-1]
-            last_health_ts = last_pt.get("timestamp")
-            current_health_status = last_pt.get("status")
+            latest_pt = points[-1]
+            last_health_ts = latest_pt.get("timestamp")
+            current_health_status = latest_pt.get("status")
+
+            # Check health snapshot freshness (<=60s is live, >120s is offline/historical)
+            if last_health_ts:
+                try:
+                    dt = datetime.fromisoformat(last_health_ts.replace("Z", "+00:00"))
+                    now_utc = datetime.now(timezone.utc)
+                    age_sec = max(0.0, (now_utc - dt).total_seconds())
+                    if age_sec > 120.0:
+                        current_exec_status = "offline"
+                        is_live = False
+                    elif age_sec <= 60.0 and current_exec_status != "offline":
+                        is_live = True
+                    else:
+                        is_live = current_exec_status == "online"
+                except Exception:
+                    is_live = current_exec_status == "online"
+        else:
+            is_live = False
 
         return {
             "machine_id": effective_mid,
@@ -307,5 +325,7 @@ class OperationsService:
             "current_execution_status": current_exec_status,
             "current_health_status": current_health_status,
             "last_health_timestamp": last_health_ts,
+            "latest": latest_pt,
             "points": points,
+            "snapshots": points,
         }

@@ -129,6 +129,90 @@ class NotificationService:
         if Channel.WEBHOOK in channels and delivery.webhook_url:
             await delivery.dispatcher.send_webhook(notification, url=delivery.webhook_url)
 
+    async def _sync_telemetry_notifications(self, organization_id: UUID) -> None:
+        try:
+            from algo_platform.modules.operations.infrastructure.telemetry_store import TelemetryStore
+            store = TelemetryStore()
+            if not store.configured:
+                return
+
+            existing_stmt = select(NotificationModel).where(
+                NotificationModel.organization_id == organization_id,
+                NotificationModel.type.in_(["system_start", "system_offline"]),
+            )
+            existing_rows = (await self._session.execute(existing_stmt)).scalars().all()
+            existing_event_ids = {
+                str(r.payload.get("event_id"))
+                for r in existing_rows
+                if isinstance(r.payload, dict) and r.payload.get("event_id")
+            }
+            existing_offline_keys = {
+                (str(r.payload.get("machine_id")), str(r.payload.get("heartbeat")))
+                for r in existing_rows
+                if isinstance(r.payload, dict) and r.payload.get("machine_id") and r.payload.get("heartbeat")
+            }
+
+            events = store.list_events(limit=50)
+            for ev in events:
+                if ev.get("event_type") == "system_start":
+                    ev_id = str(ev.get("id"))
+                    if ev_id and ev_id not in existing_event_ids:
+                        ts_str = ev.get("time") or ev.get("event_ts")
+                        created_at = None
+                        if ts_str:
+                            try:
+                                created_at = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                            except Exception:
+                                pass
+                        created_at = created_at or utc_now()
+                        machine = ev.get("machine_id") or "google-vm-raj-quant-server"
+                        machine_name = "Index Option Local Mac" if ("mac" in machine.lower() or "index-option" in machine.lower()) else "Google execution VM"
+                        model = NotificationModel(
+                            organization_id=organization_id,
+                            user_id=None,
+                            type="system_start",
+                            severity="success",
+                            title="🟢 System Started",
+                            body=f"{machine_name} is online.\nMachine: {machine}",
+                            payload={
+                                "event_id": ev_id,
+                                "machine_id": machine,
+                                "timestamp": ts_str,
+                            },
+                            created_at=created_at,
+                        )
+                        self._session.add(model)
+                        existing_event_ids.add(ev_id)
+
+            machines = store.list_machines()
+            for m in machines:
+                if m.get("status") == "offline" and m.get("last_heartbeat"):
+                    hb_iso = str(m["last_heartbeat"])
+                    mid = str(m["id"])
+                    key = (mid, hb_iso)
+                    if key not in existing_offline_keys:
+                        machine_name = "Index Option Local Mac" if ("mac" in mid.lower() or "mac" in str(m.get("name", "")).lower()) else "Google execution VM"
+                        model = NotificationModel(
+                            organization_id=organization_id,
+                            user_id=None,
+                            type="system_offline",
+                            severity="warning",
+                            title="🔴 System Offline",
+                            body=f"{machine_name} is offline.\nMachine: {mid}",
+                            payload={
+                                "machine_id": mid,
+                                "heartbeat": hb_iso,
+                                "timestamp": utc_now().isoformat(),
+                            },
+                            created_at=utc_now(),
+                        )
+                        self._session.add(model)
+                        existing_offline_keys.add(key)
+
+            await self._session.flush()
+        except Exception:
+            pass
+
     async def list_for_user(
         self,
         *,
@@ -138,6 +222,7 @@ class NotificationService:
         limit: int = 50,
         offset: int = 0,
     ) -> list[NotificationDTO]:
+        await self._sync_telemetry_notifications(organization_id)
         read_exists = (
             select(NotificationReadModel.id)
             .where(
@@ -188,6 +273,7 @@ class NotificationService:
         ]
 
     async def unread_count(self, *, organization_id: UUID, user_id: UUID) -> int:
+        await self._sync_telemetry_notifications(organization_id)
         read_exists = (
             select(NotificationReadModel.id)
             .where(

@@ -265,7 +265,7 @@ def test_no_agent_route_reaches_a_write_beyond_telemetry() -> None:
     """
     allowed = {
         "machines_repo", "events_repo", "logs_repo", "trades_repo", "metrics_repo",
-        "sync_state_repo", "sessions_repo", "dead_letter_repo",
+        "sync_state_repo", "sessions_repo", "dead_letter_repo", "system_health_repo",
         "reserve_envelope", "unit_of_work", "prune_dedup",
     }
     source = (APP_DIR / "services" / "agent_service.py").read_text(encoding="utf-8")

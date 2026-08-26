@@ -36,7 +36,7 @@ import {
   useOpsTrades,
 } from "@/lib/hooks";
 import { money, signed } from "@/lib/format";
-import { formatInZone, formatTradingTime, formatUtcTime } from "@/lib/time";
+import { formatHealthAge, formatInZone, formatTradingTime, formatUtcTime } from "@/lib/time";
 import { unknownMs, unknownPercent } from "@/lib/unknown";
 
 function Dash(value: string | number | null | undefined): string {
@@ -515,6 +515,62 @@ function ChartTooltip({ active, payload, label }: ChartTooltipProps) {
   );
 }
 
+type HealthTimeRange = "15m" | "30m" | "1h" | "3h" | "6h" | "24h";
+
+const HEALTH_TIME_RANGES: { label: string; value: HealthTimeRange; ms: number }[] = [
+  { label: "15 minutes", value: "15m", ms: 15 * 60 * 1000 },
+  { label: "30 minutes", value: "30m", ms: 30 * 60 * 1000 },
+  { label: "1 hour", value: "1h", ms: 60 * 60 * 1000 },
+  { label: "3 hours", value: "3h", ms: 3 * 60 * 60 * 1000 },
+  { label: "6 hours", value: "6h", ms: 6 * 60 * 60 * 1000 },
+  { label: "24 hours", value: "24h", ms: 24 * 60 * 60 * 1000 },
+];
+
+function HealthMetricCard({
+  title,
+  value,
+  unit = "",
+  trend,
+  timestamp,
+  status,
+  statusColor = "slate",
+}: {
+  title: string;
+  value: string | number | null | undefined;
+  unit?: string;
+  trend?: string | null;
+  timestamp?: string | null;
+  status?: string;
+  statusColor?: "green" | "amber" | "red" | "slate" | "blue" | "violet";
+}) {
+  const displayVal =
+    value !== null && value !== undefined && value !== ""
+      ? `${value}${unit ? " " + unit : ""}`
+      : "—";
+
+  return (
+    <Card className="flex flex-col justify-between">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-xs font-medium text-slate-500">{title}</span>
+        {status && <Badge color={statusColor}>{status}</Badge>}
+      </div>
+      <div className="my-2">
+        <p className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white tabular-nums">
+          {displayVal}
+        </p>
+        {trend && <p className="mt-0.5 text-xs text-slate-400">{trend}</p>}
+      </div>
+      <div className="border-t border-slate-100 pt-2 dark:border-surface-800 text-[11px] text-slate-400 flex items-center justify-between">
+        <span>{timestamp ? `${timestamp}` : "No timestamp"}</span>
+      </div>
+    </Card>
+  );
+}
+
+function getRangeStartTime(rangeMs: number): string {
+  return new Date(Date.now() - rangeMs).toISOString();
+}
+
 export function SystemHealthPage({ region: _region }: { region?: string } = {}) {
   const { data: machines } = useOpsMachines();
   const validMachines = useMemo(() => {
@@ -528,7 +584,17 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
   }, [machines]);
 
   const [selectedMid, setSelectedMid] = useState<string>("");
-  const [range, setRange] = useState<"1H" | "6H" | "24H" | "7D">("1H");
+  const [range, setRange] = useState<HealthTimeRange>("30m");
+  const [startTime, setStartTime] = useState<string>(() => getRangeStartTime(30 * 60 * 1000));
+
+  const handleRangeChange = (newRange: HealthTimeRange) => {
+    setRange(newRange);
+    const cfg = HEALTH_TIME_RANGES.find((r) => r.value === newRange) || HEALTH_TIME_RANGES[1];
+    setStartTime(getRangeStartTime(cfg.ms));
+  };
+
+  const selectedRangeConfig =
+    HEALTH_TIME_RANGES.find((r) => r.value === range) || HEALTH_TIME_RANGES[1];
 
   const activeMid = useMemo(() => {
     if (selectedMid && validMachines.some((m) => m.id === selectedMid)) {
@@ -543,16 +609,9 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
     return validMachines[0]?.id || "";
   }, [selectedMid, validMachines]);
 
-  const startTime = useMemo(() => {
-    const now = Date.now();
-    const rangeMap = {
-      "1H": 60 * 60 * 1000,
-      "6H": 6 * 60 * 60 * 1000,
-      "24H": 24 * 60 * 60 * 1000,
-      "7D": 7 * 24 * 60 * 60 * 1000,
-    };
-    return new Date(now - rangeMap[range]).toISOString();
-  }, [range]);
+  const selectedMachineObj = useMemo(() => {
+    return validMachines.find((m) => m.id === activeMid);
+  }, [validMachines, activeMid]);
 
   const { data: healthData, isLoading: healthLoading, isError } = useOpsSystemHealth({
     machine_id: activeMid || undefined,
@@ -560,16 +619,18 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
     limit: 500,
   });
 
+  const healthPoints = healthData?.points;
+
   const chartData = useMemo(() => {
-    if (!healthData?.points) return [];
-    return healthData.points.map((pt) => ({
+    if (!healthPoints) return [];
+    return healthPoints.map((pt) => ({
       time: pt.timestamp,
       label: formatInZone(pt.timestamp, "Asia/Kolkata", {
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
         hour12: false,
-        ...(range === "7D" ? { month: "short", day: "numeric" } : {}),
+        ...(range === "24h" ? { month: "short", day: "numeric" } : {}),
       }),
       cpu: pt.cpu_usage_pct,
       memory: pt.memory_mb,
@@ -584,22 +645,54 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
       signal_fill: pt.signal_fill_rate_pct,
       status: pt.status,
     }));
-  }, [healthData?.points, range]);
+  }, [healthPoints, range]);
+
+  const points = healthData?.points || [];
+  const latest = points.length > 0 ? points[points.length - 1] : null;
+  const prior = points.length > 1 ? points[points.length - 2] : null;
 
   const isLive = healthData?.is_live ?? false;
   const execStatus = healthData?.current_execution_status ?? "offline";
-  const healthStatus = healthData?.current_health_status ?? "—";
-  const lastUpdated = healthData?.last_health_timestamp;
+  const rawHealthStatus = healthData?.current_health_status;
+  const lastHealthTimestamp = healthData?.last_health_timestamp;
+  const lastHeartbeat = selectedMachineObj?.last_heartbeat;
+
+  const authoritativeStatus = useMemo(() => {
+    if (!healthData?.points || healthData.points.length === 0) {
+      return execStatus === "offline" ? "OFFLINE" : "NO DATA";
+    }
+    if (rawHealthStatus) return rawHealthStatus.toUpperCase();
+    if (execStatus === "offline") return "OFFLINE";
+    return "STABLE";
+  }, [healthData?.points, rawHealthStatus, execStatus]);
+
+  const healthAgeText = useMemo(() => {
+    return formatHealthAge(lastHealthTimestamp);
+  }, [lastHealthTimestamp]);
+
+  const latestTimeStr = useMemo(() => {
+    if (!latest?.timestamp) return null;
+    return (
+      formatInZone(latest.timestamp, "Asia/Kolkata", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }) + " IST"
+    );
+  }, [latest]);
+
+  const hasAnyTelemetry = Boolean(latest || healthData?.last_health_timestamp);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="System Health"
-        description="Execution VM performance, latency percentiles, and system stability telemetry."
+        description="Live execution infrastructure and strategy health"
       />
       <TimezoneCaption />
 
-      {/* Control Strip */}
+      {/* Machine Selector & Time Controls */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <label htmlFor="health-machine-select" className="text-xs font-medium text-slate-500">
@@ -620,53 +713,73 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
         </div>
 
         <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 dark:border-surface-700 dark:bg-surface-900">
-          {(["1H", "6H", "24H", "7D"] as const).map((r) => (
+          {HEALTH_TIME_RANGES.map((r) => (
             <button
-              key={r}
+              key={r.value}
               type="button"
-              onClick={() => setRange(r)}
+              onClick={() => handleRangeChange(r.value)}
               className={clsx(
                 "rounded px-2.5 py-1 text-xs font-medium transition-colors",
-                range === r
+                range === r.value
                   ? "bg-white text-slate-900 shadow-sm dark:bg-surface-800 dark:text-white"
                   : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
               )}
             >
-              {r}
+              {r.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Machine & Health Status Header Card */}
+      {/* Prominent Machine & Health Status Header Card */}
       <Card>
         <div className="grid gap-4 sm:grid-cols-4">
           <div>
             <p className="text-xs text-slate-500">Execution Machine</p>
             <p className="mt-1 font-semibold text-slate-900 dark:text-white">
-              {healthData?.machine_name || activeMid || "—"}
+              {healthData?.machine_name || selectedMachineObj?.name || activeMid || "—"}
             </p>
             <div className="mt-1 flex items-center gap-1.5">
               <span
                 className={clsx(
                   "inline-block h-2 w-2 rounded-full",
-                  isLive ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
+                  isLive
+                    ? "bg-emerald-500 animate-pulse"
+                    : execStatus === "online"
+                    ? "bg-emerald-500"
+                    : "bg-slate-400"
                 )}
               />
-              <span className="text-xs text-slate-500">
-                {isLive ? "LIVE TELEMETRY" : "Historical telemetry"}
+              <span className="text-xs font-medium text-slate-500">
+                {isLive
+                  ? "LIVE"
+                  : execStatus === "offline" && hasAnyTelemetry
+                  ? "HISTORICAL"
+                  : execStatus === "offline"
+                  ? "OFFLINE"
+                  : "NO DATA"}
               </span>
             </div>
           </div>
 
           <div>
-            <p className="text-xs text-slate-500">Execution Status</p>
-            <div className="mt-1">
-              <Badge color={execStatus === "online" ? "green" : "slate"}>
+            <p className="text-xs text-slate-500">Status</p>
+            <div className="mt-1 flex items-center gap-1.5">
+              <span
+                className={clsx(
+                  "inline-block h-2 w-2 rounded-full",
+                  execStatus === "online" ? "bg-emerald-500" : "bg-slate-400"
+                )}
+              />
+              <span className="text-sm font-semibold uppercase text-slate-900 dark:text-white">
                 {execStatus.toUpperCase()}
-              </Badge>
+              </span>
             </div>
-            <p className="mt-1 text-xs text-slate-400">Heartbeat liveness</p>
+            <p className="mt-1 text-xs text-slate-400">
+              {lastHeartbeat
+                ? `Last heartbeat: ${formatTradingTime(lastHeartbeat)}`
+                : "No heartbeat received"}
+            </p>
           </div>
 
           <div>
@@ -674,267 +787,498 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
             <div className="mt-1">
               <Badge
                 color={
-                  healthStatus === "STABLE"
+                  authoritativeStatus === "STABLE"
                     ? "green"
-                    : healthStatus === "DEGRADED"
+                    : authoritativeStatus === "DEGRADED"
                     ? "amber"
-                    : healthStatus === "CRITICAL"
+                    : authoritativeStatus === "UNSTABLE" || authoritativeStatus === "CRITICAL"
                     ? "red"
                     : "slate"
                 }
               >
-                {healthStatus}
+                {authoritativeStatus}
               </Badge>
             </div>
-            <p className="mt-1 text-xs text-slate-400">Performance snapshot</p>
+            <p className="mt-1 text-xs text-slate-400">Authoritative status</p>
           </div>
 
           <div>
-            <p className="text-xs text-slate-500">Last Snapshot (IST)</p>
-            <p className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-300">
-              {lastUpdated ? formatTradingTime(lastUpdated) : "—"}
+            <p className="text-xs text-slate-500">
+              {execStatus === "offline" ? "Last health" : "Last update"}
             </p>
-            <p className="mt-1 text-xs text-slate-400">Asia/Kolkata timezone</p>
+            <p className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-300">
+              {lastHealthTimestamp ? formatTradingTime(lastHealthTimestamp) : "—"}
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              {lastHealthTimestamp ? `Health age: ${healthAgeText}` : "Asia/Kolkata timezone"}
+            </p>
           </div>
         </div>
+
+        {/* Offline Notice Banner */}
+        {execStatus === "offline" && hasAnyTelemetry && (
+          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-surface-700 dark:bg-surface-900 dark:text-slate-300">
+            <span className="font-semibold text-slate-700 dark:text-slate-200">
+              Execution VM offline.
+            </span>{" "}
+            Displaying historical health data through{" "}
+            <span className="font-medium text-slate-900 dark:text-white">
+              {lastHealthTimestamp ? formatTradingTime(lastHealthTimestamp) : "last recorded snapshot"}
+            </span>
+            . No continuous telemetry is streaming.
+          </div>
+        )}
       </Card>
 
-      {/* Charts Section */}
+      {/* Health Loading / Error / Empty State Check */}
       {healthLoading ? (
         <Card>
           <SkeletonRows rows={8} cols={4} />
         </Card>
       ) : isError ? (
         <TelemetryError />
-      ) : !chartData.length ? (
+      ) : !hasAnyTelemetry ? (
         <Card>
           <EmptyState
-            title="No system health telemetry available."
-            body="No performance snapshots have been recorded for this machine within the selected time window. Production never renders mock data."
+            title="No system health telemetry yet."
+            body="The execution VM has not submitted a system_health snapshot. Production never renders mock data."
           />
         </Card>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Chart 1: CPU Usage & Memory */}
-          <Card>
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-slate-900 dark:text-white">CPU Usage & Memory</h3>
-              <span className="text-xs text-slate-400">CPU (0–100%) · Memory (MB)</span>
-            </div>
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
-                <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
-                <YAxis
-                  yAxisId="cpu"
-                  stroke="#64748b"
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  width={40}
-                  unit="%"
-                  domain={[0, 100]}
-                />
-                <YAxis
-                  yAxisId="mem"
-                  orientation="right"
-                  stroke="#64748b"
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  width={50}
-                  unit="MB"
-                />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
-                <Line
-                  yAxisId="cpu"
-                  type="monotone"
-                  dataKey="cpu"
-                  name="CPU Usage (%)"
-                  stroke="#3b82f6"
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-                <Line
-                  yAxisId="mem"
-                  type="monotone"
-                  dataKey="memory"
-                  name="Memory (MB)"
-                  stroke="#8b5cf6"
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
+        <>
+          {/* Section: 11 Health Summary Cards */}
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">
+              Health Metrics Summary
+            </h3>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+              {/* 1. CPU Usage */}
+              <HealthMetricCard
+                title="CPU Usage"
+                value={latest ? latest.cpu_usage_pct.toFixed(1) : null}
+                unit="%"
+                status={
+                  !latest
+                    ? "No data"
+                    : latest.cpu_usage_pct < 70
+                    ? "Healthy"
+                    : latest.cpu_usage_pct < 90
+                    ? "Warning"
+                    : "Critical"
+                }
+                statusColor={
+                  !latest
+                    ? "slate"
+                    : latest.cpu_usage_pct < 70
+                    ? "green"
+                    : latest.cpu_usage_pct < 90
+                    ? "amber"
+                    : "red"
+                }
+                trend={
+                  latest && prior
+                    ? `${latest.cpu_usage_pct >= prior.cpu_usage_pct ? "+" : ""}${(
+                        latest.cpu_usage_pct - prior.cpu_usage_pct
+                      ).toFixed(1)}% vs prev`
+                    : "Current snapshot"
+                }
+                timestamp={latestTimeStr}
+              />
 
-          {/* Chart 2: Latency Profile */}
-          <Card>
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-slate-900 dark:text-white">Latency Profile</h3>
-              <span className="text-xs text-slate-400">Avg · P95 · P99 (ms)</span>
-            </div>
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
-                <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
-                <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={45} unit="ms" />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
-                <Line
-                  type="monotone"
-                  dataKey="avg_latency"
-                  name="Avg Latency (ms)"
-                  stroke="#0ea5e9"
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="p95_latency"
-                  name="P95 Latency (ms)"
-                  stroke="#f59e0b"
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="p99_latency"
-                  name="P99 Latency (ms)"
-                  stroke="#ef4444"
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
+              {/* 2. Memory */}
+              <HealthMetricCard
+                title="Memory"
+                value={latest ? Math.round(latest.memory_mb) : null}
+                unit="MB"
+                status={!latest ? "No data" : "Nominal"}
+                statusColor="slate"
+                trend={
+                  latest && prior
+                    ? `${latest.memory_mb >= prior.memory_mb ? "+" : ""}${Math.round(
+                        latest.memory_mb - prior.memory_mb
+                      )} MB vs prev`
+                    : "RAM allocation"
+                }
+                timestamp={latestTimeStr}
+              />
 
-          {/* Chart 3: Tick Rate & Delay */}
-          <Card>
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-slate-900 dark:text-white">Tick Rate & Tick Delay</h3>
-              <span className="text-xs text-slate-400">Ticks/sec · Delay (ms)</span>
-            </div>
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
-                <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
-                <YAxis yAxisId="rate" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={45} unit="/s" />
-                <YAxis
-                  yAxisId="delay"
-                  orientation="right"
-                  stroke="#64748b"
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  width={45}
-                  unit="ms"
-                />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
-                <Line
-                  yAxisId="rate"
-                  type="monotone"
-                  dataKey="tick_rate"
-                  name="Tick Rate (ticks/s)"
-                  stroke="#10b981"
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-                <Line
-                  yAxisId="delay"
-                  type="monotone"
-                  dataKey="tick_delay"
-                  name="Tick Delay (ms)"
-                  stroke="#f97316"
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
+              {/* 3. Tick Rate */}
+              <HealthMetricCard
+                title="Tick Rate"
+                value={latest ? latest.tick_rate.toFixed(1) : null}
+                unit="/s"
+                status={!latest ? "No data" : latest.tick_rate > 0 ? "Feed active" : "Idle"}
+                statusColor={!latest ? "slate" : latest.tick_rate > 0 ? "green" : "amber"}
+                trend={
+                  latest && prior
+                    ? `${latest.tick_rate >= prior.tick_rate ? "+" : ""}${(
+                        latest.tick_rate - prior.tick_rate
+                      ).toFixed(1)} /s vs prev`
+                    : "Market ticks"
+                }
+                timestamp={latestTimeStr}
+              />
 
-          {/* Chart 4: Queue Health */}
-          <Card>
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-slate-900 dark:text-white">Queue Health</h3>
-              <span className="text-xs text-slate-400">Queue Size (count) · Wait (ms)</span>
-            </div>
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
-                <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
-                <YAxis yAxisId="size" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={40} />
-                <YAxis
-                  yAxisId="wait"
-                  orientation="right"
-                  stroke="#64748b"
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  width={45}
-                  unit="ms"
-                />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
-                <Line
-                  yAxisId="size"
-                  type="monotone"
-                  dataKey="queue_size"
-                  name="Queue Size"
-                  stroke="#6366f1"
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-                <Line
-                  yAxisId="wait"
-                  type="monotone"
-                  dataKey="queue_wait"
-                  name="Queue Wait (ms)"
-                  stroke="#ec4899"
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
+              {/* 4. Tick Delay */}
+              <HealthMetricCard
+                title="Tick Delay"
+                value={latest ? latest.tick_delay_ms.toFixed(2) : null}
+                unit="ms"
+                status={!latest ? "No data" : latest.tick_delay_ms < 5 ? "Low delay" : "Elevated"}
+                statusColor={!latest ? "slate" : latest.tick_delay_ms < 5 ? "green" : "amber"}
+                trend={
+                  latest && prior
+                    ? `${latest.tick_delay_ms >= prior.tick_delay_ms ? "+" : ""}${(
+                        latest.tick_delay_ms - prior.tick_delay_ms
+                      ).toFixed(2)} ms vs prev`
+                    : "Feed latency"
+                }
+                timestamp={latestTimeStr}
+              />
 
-          {/* Chart 5: Reliability & Signal Fill */}
-          <Card className="lg:col-span-2">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-slate-900 dark:text-white">
-                API Reliability & Signal Fill Rate
-              </h3>
-              <span className="text-xs text-slate-400">API Success (%) · Signal Fill (%)</span>
+              {/* 5. Queue Size */}
+              <HealthMetricCard
+                title="Queue Size"
+                value={latest ? latest.queue_size : null}
+                status={!latest ? "No data" : latest.queue_size === 0 ? "Optimal" : "Buffering"}
+                statusColor={!latest ? "slate" : latest.queue_size === 0 ? "green" : "amber"}
+                trend="Internal queue depth"
+                timestamp={latestTimeStr}
+              />
+
+              {/* 6. Queue Wait */}
+              <HealthMetricCard
+                title="Queue Wait"
+                value={latest ? latest.queue_wait_ms.toFixed(2) : null}
+                unit="ms"
+                status={!latest ? "No data" : latest.queue_wait_ms < 5 ? "Nominal" : "Elevated"}
+                statusColor={!latest ? "slate" : latest.queue_wait_ms < 5 ? "green" : "amber"}
+                trend={
+                  latest && prior
+                    ? `${latest.queue_wait_ms >= prior.queue_wait_ms ? "+" : ""}${(
+                        latest.queue_wait_ms - prior.queue_wait_ms
+                      ).toFixed(2)} ms vs prev`
+                    : "Dispatch latency"
+                }
+                timestamp={latestTimeStr}
+              />
+
+              {/* 7. Avg Latency */}
+              <HealthMetricCard
+                title="Avg Latency"
+                value={latest ? latest.avg_latency_ms.toFixed(2) : null}
+                unit="ms"
+                status={!latest ? "No data" : latest.avg_latency_ms < 10 ? "Fast" : "Elevated"}
+                statusColor={!latest ? "slate" : latest.avg_latency_ms < 10 ? "green" : "amber"}
+                trend={
+                  latest && prior
+                    ? `${latest.avg_latency_ms >= prior.avg_latency_ms ? "+" : ""}${(
+                        latest.avg_latency_ms - prior.avg_latency_ms
+                      ).toFixed(2)} ms vs prev`
+                    : "Route average"
+                }
+                timestamp={latestTimeStr}
+              />
+
+              {/* 8. P95 Latency */}
+              <HealthMetricCard
+                title="P95 Latency"
+                value={latest ? latest.p95_latency_ms.toFixed(2) : null}
+                unit="ms"
+                status={!latest ? "No data" : latest.p95_latency_ms < 20 ? "Nominal" : "High"}
+                statusColor={!latest ? "slate" : latest.p95_latency_ms < 20 ? "green" : "amber"}
+                trend="95th percentile"
+                timestamp={latestTimeStr}
+              />
+
+              {/* 9. P99 Latency */}
+              <HealthMetricCard
+                title="P99 Latency"
+                value={latest ? latest.p99_latency_ms.toFixed(2) : null}
+                unit="ms"
+                status={!latest ? "No data" : latest.p99_latency_ms < 50 ? "Nominal" : "Tail delay"}
+                statusColor={!latest ? "slate" : latest.p99_latency_ms < 50 ? "green" : "red"}
+                trend="99th percentile tail"
+                timestamp={latestTimeStr}
+              />
+
+              {/* 10. API Success */}
+              <HealthMetricCard
+                title="API Success"
+                value={latest ? latest.api_success_pct.toFixed(1) : null}
+                unit="%"
+                status={!latest ? "No data" : latest.api_success_pct >= 99 ? "Healthy" : "Degraded"}
+                statusColor={!latest ? "slate" : latest.api_success_pct >= 99 ? "green" : "red"}
+                trend="HTTP/WS reliability"
+                timestamp={latestTimeStr}
+              />
+
+              {/* 11. Signal Fill Rate */}
+              <HealthMetricCard
+                title="Signal Fill Rate"
+                value={latest ? latest.signal_fill_rate_pct.toFixed(1) : null}
+                unit="%"
+                status={!latest ? "No data" : latest.signal_fill_rate_pct >= 95 ? "Nominal" : "Partial"}
+                statusColor={!latest ? "slate" : latest.signal_fill_rate_pct >= 95 ? "green" : "amber"}
+                trend="Signal conversion"
+                timestamp={latestTimeStr}
+              />
             </div>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
-                <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
-                <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={40} unit="%" domain={[0, 100]} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
-                <Line
-                  type="monotone"
-                  dataKey="api_success"
-                  name="API Success Rate (%)"
-                  stroke="#10b981"
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="signal_fill"
-                  name="Signal Fill Rate (%)"
-                  stroke="#3b82f6"
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
-        </div>
+          </div>
+
+          {/* Section: Time-Series Graphs */}
+          {!chartData.length ? (
+            <Card>
+              <EmptyState
+                title="No health telemetry available for this period."
+                body={`No snapshots found within the selected ${selectedRangeConfig.label} window. Try choosing a longer time window above.`}
+              />
+            </Card>
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Chart A: Tick / Feed Health */}
+              <Card>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">
+                      Tick / Feed Health
+                    </h3>
+                    <p className="text-xs text-slate-400">Market quote feed tick rate and arrival delay</p>
+                  </div>
+                  <span className="text-xs font-mono text-slate-400">Ticks/sec · ms</span>
+                </div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
+                    <YAxis yAxisId="rate" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={45} unit="/s" />
+                    <YAxis
+                      yAxisId="delay"
+                      orientation="right"
+                      stroke="#64748b"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      width={45}
+                      unit="ms"
+                    />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                    <Line
+                      yAxisId="rate"
+                      type="monotone"
+                      dataKey="tick_rate"
+                      name="Tick Rate"
+                      stroke="#10b981"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                    <Line
+                      yAxisId="delay"
+                      type="monotone"
+                      dataKey="tick_delay"
+                      name="Tick Delay"
+                      stroke="#f59e0b"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Card>
+
+              {/* Chart B: Execution Latency */}
+              <Card>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">
+                      Execution Latency
+                    </h3>
+                    <p className="text-xs text-slate-400">Average, 95th, and 99th percentile order round-trip</p>
+                  </div>
+                  <span className="text-xs font-mono text-slate-400">Avg · P95 · P99 (ms)</span>
+                </div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={45} unit="ms" />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                    <Line
+                      type="monotone"
+                      dataKey="avg_latency"
+                      name="Avg Latency"
+                      stroke="#0ea5e9"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="p95_latency"
+                      name="P95 Latency"
+                      stroke="#f59e0b"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="p99_latency"
+                      name="P99 Latency"
+                      stroke="#ef4444"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Card>
+
+              {/* Chart C: Queue Health */}
+              <Card>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">Queue Health</h3>
+                    <p className="text-xs text-slate-400">Pending telemetry queue depth and dispatch wait time</p>
+                  </div>
+                  <span className="text-xs font-mono text-slate-400">Count · ms</span>
+                </div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
+                    <YAxis yAxisId="size" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={40} />
+                    <YAxis
+                      yAxisId="wait"
+                      orientation="right"
+                      stroke="#64748b"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      width={45}
+                      unit="ms"
+                    />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                    <Line
+                      yAxisId="size"
+                      type="monotone"
+                      dataKey="queue_size"
+                      name="Queue Size"
+                      stroke="#6366f1"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                    <Line
+                      yAxisId="wait"
+                      type="monotone"
+                      dataKey="queue_wait"
+                      name="Queue Wait"
+                      stroke="#ec4899"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Card>
+
+              {/* Chart D: API / Execution Quality */}
+              <Card>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">
+                      API / Execution Quality
+                    </h3>
+                    <p className="text-xs text-slate-400">Broker API connectivity and signal fill rate</p>
+                  </div>
+                  <span className="text-xs font-mono text-slate-400">Percentage %</span>
+                </div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={40} unit="%" domain={[0, 100]} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                    <Line
+                      type="monotone"
+                      dataKey="api_success"
+                      name="API Success %"
+                      stroke="#10b981"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="signal_fill"
+                      name="Signal Fill Rate %"
+                      stroke="#3b82f6"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Card>
+
+              {/* Chart E: Resource Usage */}
+              <Card className="lg:col-span-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">
+                      Resource Usage
+                    </h3>
+                    <p className="text-xs text-slate-400">CPU utilization and allocated heap memory</p>
+                  </div>
+                  <span className="text-xs font-mono text-slate-400">CPU % · Memory MB</span>
+                </div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
+                    <YAxis
+                      yAxisId="cpu"
+                      stroke="#64748b"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      width={40}
+                      unit="%"
+                      domain={[0, 100]}
+                    />
+                    <YAxis
+                      yAxisId="mem"
+                      orientation="right"
+                      stroke="#64748b"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      width={50}
+                      unit="MB"
+                    />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                    <Line
+                      yAxisId="cpu"
+                      type="monotone"
+                      dataKey="cpu"
+                      name="CPU %"
+                      stroke="#3b82f6"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                    <Line
+                      yAxisId="mem"
+                      type="monotone"
+                      dataKey="memory"
+                      name="Memory MB"
+                      stroke="#8b5cf6"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Card>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -208,3 +208,65 @@ def test_token_index_stores_only_digests(configure_env: None) -> None:
     assert FLEET_TOKEN not in index
     assert index[hash_token(FLEET_TOKEN)] is None            # fleet-wide
     assert index[hash_token(SCOPED_TOKEN)] == SCOPED_MACHINE  # machine-scoped
+
+
+def test_multi_machine_scoped_tokens_authorization(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import get_settings
+    from main import app
+
+    google_token = "test-google-token-do-not-use-in-prod"
+    mac_token = "test-mac-token-do-not-use-in-prod"
+    google_machine = "google-vm-raj-quant-server"
+    mac_machine = "index-option-local-mac"
+    mac_agent = "index-option-local-mac-data-agent"
+
+    monkeypatch.delenv("RAJ_AGENT_TOKEN", raising=False)
+    monkeypatch.setenv(
+        "RAJ_AGENT_TOKENS",
+        f"{google_machine}:{google_token},{mac_machine}:{mac_token}",
+    )
+    get_settings.cache_clear()
+
+    with TestClient(app) as test_client:
+        # 1. Mac with Mac token -> 200
+        res = test_client.post(
+            "/api/agent/batch",
+            json={"agentId": mac_agent, "machine": mac_machine, "items": []},
+            headers={"X-Raj-Agent-Token": mac_token, "X-Raj-Agent-Id": mac_agent},
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["accepted"] is True
+        assert res.json()["machineId"] == f"mch-agent-{mac_machine}"
+
+        # 2. Google with Google token -> 200
+        res_g = test_client.post(
+            "/api/agent/batch",
+            json={"agentId": "google-vm-data-agent", "machine": google_machine, "items": []},
+            headers={"X-Raj-Agent-Token": google_token, "X-Raj-Agent-Id": "google-vm-data-agent"},
+        )
+        assert res_g.status_code == 200, res_g.text
+        assert res_g.json()["machineId"] == f"mch-agent-{google_machine}"
+
+        # 3. Mac with Google token -> 403 Forbidden
+        res_cross1 = test_client.post(
+            "/api/agent/batch",
+            json={"agentId": mac_agent, "machine": mac_machine, "items": []},
+            headers={"X-Raj-Agent-Token": google_token, "X-Raj-Agent-Id": mac_agent},
+        )
+        assert res_cross1.status_code == 403
+
+        # 4. Google with Mac token -> 403 Forbidden
+        res_cross2 = test_client.post(
+            "/api/agent/batch",
+            json={"agentId": "google-vm-data-agent", "machine": google_machine, "items": []},
+            headers={"X-Raj-Agent-Token": mac_token, "X-Raj-Agent-Id": "google-vm-data-agent"},
+        )
+        assert res_cross2.status_code == 403
+
+        # 5. Mac with no token -> 401 Unauthorized
+        res_unauthed = test_client.post(
+            "/api/agent/batch",
+            json={"agentId": mac_agent, "machine": mac_machine, "items": []},
+        )
+        assert res_unauthed.status_code == 401
+

@@ -134,6 +134,7 @@ class SystemHealthPoint(OpsModel):
     agent_id: str | None = None
     event_id: str | None = None
     timestamp: str
+    generated_at: str | None = None
     tick_rate: float = 0.0
     tick_delay_ms: float = 0.0
     queue_size: int = 0
@@ -142,10 +143,15 @@ class SystemHealthPoint(OpsModel):
     p95_latency_ms: float = 0.0
     p99_latency_ms: float = 0.0
     api_success_pct: float = 100.0
+    api_success_rate: float | None = None
     signal_fill_rate_pct: float = 0.0
+    signal_fill_rate: float | None = None
     cpu_usage_pct: float = 0.0
+    cpu_usage: float | None = None
     memory_mb: float = 0.0
     status: str = "STABLE"
+    created_at: str | None = None
+    received_at: str | None = None
 
 
 class SystemHealthResponse(OpsModel):
@@ -155,4 +161,6 @@ class SystemHealthResponse(OpsModel):
     current_execution_status: str = "offline"
     current_health_status: str | None = None
     last_health_timestamp: str | None = None
+    latest: SystemHealthPoint | None = None
     points: list[SystemHealthPoint] = Field(default_factory=list)
+    snapshots: list[SystemHealthPoint] = Field(default_factory=list)

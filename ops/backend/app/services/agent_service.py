@@ -77,6 +77,7 @@ KNOWN_KINDS = frozenset({
     # control path and no broker/order execution authority.
     "system_status", "strategy_status", "signal", "order", "fill",
     "pnl", "risk", "sync_status", "recovery", "system_health",
+    "system_start",
 })
 
 
@@ -618,28 +619,61 @@ async def _handle_system_health(
     sequence_id: int | None = None,
     event_time: str | None = None,
 ) -> None:
-    now = event_time or _now_iso()
+    now = (
+        data.get("generated_at")
+        or (data.get("health") if isinstance(data.get("health"), dict) else {}).get("generated_at")
+        or event_time
+        or _now_iso()
+    )
     health_payload = data.get("health") if isinstance(data.get("health"), dict) else data
 
-    tick_rate = float(health_payload.get("tick_rate", 0.0) or 0.0)
-    tick_delay_ms = float(health_payload.get("tick_delay_ms", 0.0) or 0.0)
-    queue_size = int(health_payload.get("queue_size", 0) or 0)
-    queue_wait_ms = float(health_payload.get("queue_wait_ms", 0.0) or 0.0)
-    avg_latency_ms = float(health_payload.get("avg_latency_ms", 0.0) or 0.0)
-    p95_latency_ms = float(health_payload.get("p95_latency_ms", 0.0) or 0.0)
-    p99_latency_ms = float(health_payload.get("p99_latency_ms", 0.0) or 0.0)
-    api_success_pct = float(
-        health_payload.get("api_success_pct", 100.0)
-        if health_payload.get("api_success_pct") is not None
-        else 100.0
-    )
-    signal_fill_rate_pct = float(health_payload.get("signal_fill_rate_pct", 0.0) or 0.0)
-    cpu_usage_pct = float(health_payload.get("cpu_usage_pct", 0.0) or 0.0)
-    memory_mb = float(health_payload.get("memory_mb", 0.0) or 0.0)
-    status = str(health_payload.get("status", "STABLE") or "STABLE").upper()
+    def _get_num(*keys: str, default: float = 0.0) -> float:
+        for k in keys:
+            v = health_payload.get(k) if isinstance(health_payload, dict) else None
+            if v is None and isinstance(data, dict):
+                v = data.get(k)
+            if v is not None:
+                try:
+                    return float(v)
+                except (ValueError, TypeError):
+                    pass
+        return default
+
+    def _get_pct(pct_key: str, rate_key: str, default: float = 0.0) -> float:
+        v = _get_num(pct_key, default=-1.0)
+        if v >= 0.0:
+            return v
+        r = _get_num(rate_key, default=-1.0)
+        if r >= 0.0:
+            return r * 100.0 if 0.0 < r <= 1.0 else r
+        return default
+
+    tick_rate = _get_num("tick_rate")
+    tick_delay_ms = _get_num("tick_delay_ms")
+    queue_size = int(_get_num("queue_size"))
+    queue_wait_ms = _get_num("queue_wait_ms")
+    avg_latency_ms = _get_num("avg_latency_ms")
+    p95_latency_ms = _get_num("p95_latency_ms")
+    p99_latency_ms = _get_num("p99_latency_ms")
+    api_success_pct = _get_pct("api_success_pct", "api_success_rate", default=100.0)
+    signal_fill_rate_pct = _get_pct("signal_fill_rate_pct", "signal_fill_rate", default=0.0)
+    cpu_usage_pct = _get_pct("cpu_usage_pct", "cpu_usage", default=0.0)
+    memory_mb = _get_num("memory_mb")
+    status = str(
+        (health_payload.get("status") if isinstance(health_payload, dict) else None)
+        or (data.get("status") if isinstance(data, dict) else None)
+        or "STABLE"
+    ).upper()
 
     snapshot_id = _next_id("hlth")
-    effective_mid = mid or machine_id_for(machine)
+    effective_mid = (
+        data.get("machine_id")
+        or (data.get("health") if isinstance(data.get("health"), dict) else {}).get("machine_id")
+        or mid
+        or machine_id_for(machine)
+    )
+    if effective_mid not in LIVE_MACHINE_IDS:
+        await handle_register(AgentRegister(agentId=agent_id or effective_mid, machine=machine))
     system_health_repo.insert({
         "id": snapshot_id,
         "machine_id": effective_mid,
@@ -684,6 +718,53 @@ async def _handle_system_health(
     )
 
 
+async def _handle_system_start(
+    machine: str,
+    strategy: str,
+    data: dict[str, Any],
+    *,
+    env_id: str | None = None,
+    mid: str | None = None,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+    sequence_id: int | None = None,
+    event_time: str | None = None,
+) -> None:
+    now = event_time or _now_iso()
+    effective_mid = (
+        data.get("machine_id")
+        or mid
+        or machine_id_for(machine)
+    )
+    if effective_mid not in LIVE_MACHINE_IDS:
+        await handle_register(AgentRegister(agentId=agent_id or effective_mid, machine=machine))
+    machine_changes: dict[str, Any] = {
+        "status": "online",
+        "lastHeartbeat": now,
+        "lastEvent": now,
+        "pythonStatus": "online",
+        "transportState": "active",
+    }
+    _touch_machine(effective_mid, machine_changes)
+
+    summary = f"machine={machine}, status=online"
+    await _emit_event(
+        "system",
+        _coerce_severity(data.get("severity"), "info"),
+        f"{machine} · system_start",
+        data.get("message") or ("Google execution VM is online." if machine == "google-vm-raj-quant-server" else f"{machine} is online."),
+        envelope_id=env_id,
+        machine_id=effective_mid,
+        event_type="system_start",
+        strategy=strategy,
+        session_id=session_id,
+        sequence_id=sequence_id,
+        payload_summary=summary,
+        event_time=now,
+    )
+    _log("system", "info", "raj.system", f"system_start {machine} ({effective_mid})", envelope_id=env_id, machine_id=effective_mid)
+
+
 # --------------------------------------------------------------------------- #
 # Dispatch (single envelope, transactional + idempotent) + batch
 # --------------------------------------------------------------------------- #
@@ -718,6 +799,11 @@ async def _dispatch_inner(env: Envelope, agent_id: str | None = None) -> None:
         _handle_log(machine, strategy, data, env_id, mid)
     elif kind == "system_health":
         await _handle_system_health(
+            machine, strategy, data, env_id=env_id, mid=mid, agent_id=agent,
+            session_id=env.session_id, sequence_id=env.sequence_id, event_time=event_time,
+        )
+    elif kind == "system_start":
+        await _handle_system_start(
             machine, strategy, data, env_id=env_id, mid=mid, agent_id=agent,
             session_id=env.session_id, sequence_id=env.sequence_id, event_time=event_time,
         )

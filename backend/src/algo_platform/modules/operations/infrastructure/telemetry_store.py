@@ -432,8 +432,12 @@ class TelemetryStore:
         ]
         params: dict[str, Any] = {"limit": limit}
         if machine_id:
-            clauses.append("machine_id = :machine_id")
+            slug_mid = f"mch-agent-{machine_id}" if not machine_id.startswith("mch-") else machine_id
+            raw_mid = machine_id.replace("mch-agent-", "")
+            clauses.append("(machine_id = :machine_id OR machine_id = :slug_mid OR machine_id = :raw_mid)")
             params["machine_id"] = machine_id
+            params["slug_mid"] = slug_mid
+            params["raw_mid"] = raw_mid
         if start:
             clauses.append("timestamp_utc >= :start")
             params["start"] = start
@@ -449,10 +453,18 @@ class TelemetryStore:
                    avg_latency_ms, p95_latency_ms, p99_latency_ms,
                    api_success_pct, signal_fill_rate_pct, cpu_usage_pct,
                    memory_mb, status, created_at
-            FROM system_health_snapshots
-            WHERE {where}
+            FROM (
+                SELECT id, machine_id, agent_id, event_id, timestamp_utc,
+                       tick_rate, tick_delay_ms, queue_size, queue_wait_ms,
+                       avg_latency_ms, p95_latency_ms, p99_latency_ms,
+                       api_success_pct, signal_fill_rate_pct, cpu_usage_pct,
+                       memory_mb, status, created_at
+                FROM system_health_snapshots
+                WHERE {where}
+                ORDER BY timestamp_utc DESC
+                LIMIT :limit
+            ) sub
             ORDER BY timestamp_utc ASC
-            LIMIT :limit
             """
         )
         with self._connect() as conn:
@@ -464,6 +476,7 @@ class TelemetryStore:
                 "agent_id": _blank_to_none(row["agent_id"]),
                 "event_id": _blank_to_none(row["event_id"]),
                 "timestamp": to_utc_z(row["timestamp_utc"]),
+                "generated_at": to_utc_z(row["timestamp_utc"]),
                 "tick_rate": row["tick_rate"],
                 "tick_delay_ms": row["tick_delay_ms"],
                 "queue_size": row["queue_size"],
@@ -472,11 +485,15 @@ class TelemetryStore:
                 "p95_latency_ms": row["p95_latency_ms"],
                 "p99_latency_ms": row["p99_latency_ms"],
                 "api_success_pct": row["api_success_pct"],
+                "api_success_rate": row["api_success_pct"],
                 "signal_fill_rate_pct": row["signal_fill_rate_pct"],
+                "signal_fill_rate": row["signal_fill_rate_pct"],
                 "cpu_usage_pct": row["cpu_usage_pct"],
+                "cpu_usage": row["cpu_usage_pct"],
                 "memory_mb": row["memory_mb"],
                 "status": row["status"],
                 "created_at": to_utc_z(row["created_at"]),
+                "received_at": to_utc_z(row["created_at"]),
             }
             for row in rows
         ]

@@ -1131,31 +1131,39 @@ class SqlSystemHealthRepository:
             ts = _parse_iso(ts)
         if ts is None:
             ts = utcnow()
-        row = SystemHealthSnapshot(
-            id=snapshot["id"],
-            machine_id=snapshot["machine_id"],
-            agent_id=snapshot.get("agent_id"),
-            event_id=snapshot.get("event_id") or snapshot.get("envelope_id"),
-            timestamp_utc=ts,
-            tick_rate=float(snapshot.get("tick_rate", 0.0) or 0.0),
-            tick_delay_ms=float(snapshot.get("tick_delay_ms", 0.0) or 0.0),
-            queue_size=int(snapshot.get("queue_size", 0) or 0),
-            queue_wait_ms=float(snapshot.get("queue_wait_ms", 0.0) or 0.0),
-            avg_latency_ms=float(snapshot.get("avg_latency_ms", 0.0) or 0.0),
-            p95_latency_ms=float(snapshot.get("p95_latency_ms", 0.0) or 0.0),
-            p99_latency_ms=float(snapshot.get("p99_latency_ms", 0.0) or 0.0),
-            api_success_pct=float(
-                snapshot.get("api_success_pct", 100.0)
-                if snapshot.get("api_success_pct") is not None
-                else 100.0
-            ),
-            signal_fill_rate_pct=float(snapshot.get("signal_fill_rate_pct", 0.0) or 0.0),
-            cpu_usage_pct=float(snapshot.get("cpu_usage_pct", 0.0) or 0.0),
-            memory_mb=float(snapshot.get("memory_mb", 0.0) or 0.0),
-            status=str(snapshot.get("status", "STABLE") or "STABLE"),
-            created_at=utcnow(),
-        )
+        event_id = snapshot.get("event_id") or snapshot.get("envelope_id")
         with _write_session() as s:
+            if event_id:
+                existing = s.execute(
+                    select(SystemHealthSnapshot).where(SystemHealthSnapshot.event_id == event_id)
+                ).scalars().first()
+                if existing is not None:
+                    return _system_health_to_dict(existing)
+
+            row = SystemHealthSnapshot(
+                id=snapshot["id"],
+                machine_id=snapshot["machine_id"],
+                agent_id=snapshot.get("agent_id"),
+                event_id=event_id,
+                timestamp_utc=ts,
+                tick_rate=float(snapshot.get("tick_rate", 0.0) or 0.0),
+                tick_delay_ms=float(snapshot.get("tick_delay_ms", 0.0) or 0.0),
+                queue_size=int(snapshot.get("queue_size", 0) or 0),
+                queue_wait_ms=float(snapshot.get("queue_wait_ms", 0.0) or 0.0),
+                avg_latency_ms=float(snapshot.get("avg_latency_ms", 0.0) or 0.0),
+                p95_latency_ms=float(snapshot.get("p95_latency_ms", 0.0) or 0.0),
+                p99_latency_ms=float(snapshot.get("p99_latency_ms", 0.0) or 0.0),
+                api_success_pct=float(
+                    snapshot.get("api_success_pct", 100.0)
+                    if snapshot.get("api_success_pct") is not None
+                    else 100.0
+                ),
+                signal_fill_rate_pct=float(snapshot.get("signal_fill_rate_pct", 0.0) or 0.0),
+                cpu_usage_pct=float(snapshot.get("cpu_usage_pct", 0.0) or 0.0),
+                memory_mb=float(snapshot.get("memory_mb", 0.0) or 0.0),
+                status=str(snapshot.get("status", "STABLE") or "STABLE"),
+                created_at=utcnow(),
+            )
             s.add(row)
             s.flush()
             return _system_health_to_dict(row)

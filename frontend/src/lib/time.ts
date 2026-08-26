@@ -31,3 +31,28 @@ export function formatTradingTime(value: string | Date | null | undefined): stri
 export function formatUtcTime(value: string | Date | null | undefined): string {
   return formatInZone(value, INFRA_ZONE);
 }
+
+export function formatHealthAge(
+  value: string | Date | null | undefined,
+  nowMs: number = Date.now()
+): string {
+  if (value === null || value === undefined || value === "") return "No data";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "No data";
+  const elapsedSec = Math.max(0, Math.floor((nowMs - date.getTime()) / 1000));
+  if (elapsedSec < 60) {
+    return `${elapsedSec} seconds ago`;
+  }
+  const minutes = Math.floor(elapsedSec / 60);
+  if (minutes < 60) {
+    const sec = elapsedSec % 60;
+    return sec > 0 ? `${minutes}m ${sec}s ago` : `${minutes}m ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remMin = minutes % 60;
+  if (hours < 24) {
+    return remMin > 0 ? `${hours}h ${remMin}m` : `${hours}h`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
