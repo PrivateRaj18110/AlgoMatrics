@@ -23,6 +23,7 @@ from app.api.routers import (
     ingest,
     logs,
     machines,
+    monitoring,
     quant,
     recovery,
     risk,
@@ -90,3 +91,8 @@ api_router.include_router(ingest.router, prefix="/ingest")
 
 # Raj Local Agent ingestion (one agent per machine -> backend)
 api_router.include_router(agent.router, prefix="/agent")
+
+# monitoring.v1 — the LLS Monitoring Export boundary. A separate protocol from
+# the agent path above, with its own credentials, tables and semantics; the two
+# are deliberately not merged. See docs/DATA_CONTRACT.md.
+api_router.include_router(monitoring.router, prefix="/monitoring/v1")

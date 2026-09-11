@@ -59,6 +59,14 @@ const GLOBAL_NAV: NavItem[] = [
   },
   { to: "/app/audit-log", label: "Audit Log", icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
   { to: "/app/system-health", label: "System Health", icon: "M22 12h-4l-3 9L9 3l-3 9H2" },
+  // monitoring.v1 from the LLS Monitoring Backend. Separate entry from
+  // System Health, which shows the Raj agent telemetry — two independent
+  // sources, and merging them in the sidebar would imply they agree.
+  {
+    to: "/app/lls-monitoring",
+    label: "LLS Monitoring",
+    icon: "M3 12h4l3 8 4-16 3 8h4",
+  },
   { to: "/app/settings", label: "Settings", icon: "M12 15a3 3 0 100-6 3 3 0 000 6z" },
 ];
 

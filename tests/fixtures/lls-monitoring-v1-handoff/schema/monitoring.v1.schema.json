@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lls:monitoring:v1",
+  "title": "LLS Monitoring Export v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "message_id",
+    "message_type",
+    "source_id",
+    "source_instance",
+    "source_sequence",
+    "generated_at",
+    "source_as_of",
+    "runtime",
+    "environment",
+    "coverage",
+    "freshness",
+    "trust",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "monitoring.v1"
+    },
+    "message_id": {
+      "type": "string",
+      "pattern": "^mon1/[0-9a-f]{64}$"
+    },
+    "message_type": {
+      "enum": [
+        "monitoring.events",
+        "monitoring.forensic_reference",
+        "monitoring.incidents",
+        "monitoring.snapshot"
+      ]
+    },
+    "source_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]{1,80}$"
+    },
+    "source_instance": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]{1,80}$"
+    },
+    "source_sequence": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,18}$"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_as_of": {
+      "type": "object"
+    },
+    "runtime": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "maxLength": 4096
+      }
+    },
+    "environment": {
+      "enum": [
+        "offline_fixture",
+        "replay",
+        "offline_live_shaped",
+        "live_market_paper",
+        "broker_sandbox",
+        "live_trading",
+        "unknown"
+      ]
+    },
+    "coverage": {
+      "type": "object"
+    },
+    "freshness": {
+      "type": "object"
+    },
+    "trust": {
+      "type": "object"
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "message_type": {
+            "const": "monitoring.snapshot"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "capture_ref",
+              "definition",
+              "system",
+              "feed",
+              "processing",
+              "strategy",
+              "risk",
+              "execution",
+              "orders",
+              "fills",
+              "positions",
+              "pnl",
+              "latency",
+              "errors",
+              "incidents",
+              "reconciliation",
+              "observer",
+              "evidence"
+            ],
+            "properties": {
+              "capture_ref": {},
+              "definition": {},
+              "system": {},
+              "feed": {},
+              "processing": {},
+              "strategy": {},
+              "risk": {},
+              "execution": {},
+              "orders": {},
+              "fills": {},
+              "positions": {},
+              "pnl": {},
+              "latency": {},
+              "errors": {},
+              "incidents": {},
+              "reconciliation": {},
+              "observer": {},
+              "evidence": {}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "message_type": {
+            "const": "monitoring.events"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "capture_ref",
+              "items",
+              "offset",
+              "available",
+              "next_offset",
+              "order"
+            ],
+            "properties": {
+              "capture_ref": {},
+              "items": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "object"
+                }
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "available": {},
+              "next_offset": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "order": {}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "message_type": {
+            "const": "monitoring.incidents"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "capture_ref",
+              "items",
+              "offset",
+              "available",
+              "next_offset"
+            ],
+            "properties": {
+              "capture_ref": {},
+              "items": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "object"
+                }
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "available": {},
+              "next_offset": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "message_type": {
+            "const": "monitoring.forensic_reference"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "case_id",
+              "sha256",
+              "bytes",
+              "coverage",
+              "retrieval"
+            ],
+            "properties": {
+              "case_id": {},
+              "sha256": {},
+              "bytes": {},
+              "coverage": {},
+              "retrieval": {}
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$comment": "Normative additional limits: 1048576 UTF-8 bytes, 100 elements per array, depth 24, 30000 nodes, no duplicate keys or non-finite numbers, no secret/path fields. message_id is SHA-256 of canonical JSON excluding message_id. See ALGOMATRIC_MONITORING_CONTRACT.md."
+}

@@ -5,6 +5,10 @@ pydantic>=2.7,<3.0
 pydantic-settings>=2.3,<3.0
 httpx>=0.27,<1.0
 boto3>=1.35,<2.0
+# monitoring.v1 receiver: validates every message against the published
+# JSON Schemas before it can reach a projection. A runtime dependency, not a
+# test one — a receiver that cannot validate refuses to accept data.
+jsonschema>=4.20,<5.0
 
 # Database layer (declared now; activated once Supabase Postgres is wired up)
 SQLAlchemy>=2.0,<3.0

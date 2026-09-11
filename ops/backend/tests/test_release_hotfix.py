@@ -78,7 +78,7 @@ def test_mock_mode_still_starts_and_serves_data() -> None:
             events = client.get("/api/events")
         print(json.dumps({
             "database_enabled": database_enabled(),
-            "repository": type(events_repo).__name__,
+            "repository": events_repo.__class__.__name__,
             "health": health.status_code,
             "events": events.status_code,
         }))
@@ -234,6 +234,17 @@ def test_websocket_notifications_and_api_contract_are_unchanged() -> None:
             "/api/quant/replays/synthetic", "/api/quant/reports", "/api/recovery/summary",
             "/api/risk/overview", "/api/sessions", "/api/sessions/{session_id}", "/api/settings",
             "/api/strategies", "/api/strategies/{strategy_id}", "/api/trades",
+            # monitoring.v1 — the canonical LLS wire contract, on its own
+            # /api/monitoring/v1 prefix. Pinned for the same reason as every
+            # route above: so a change to the published surface has to be
+            # deliberate. Nothing in the agent contract moved to make room.
+            "/api/monitoring/v1/evidence/{message_id}",
+            "/api/monitoring/v1/health",
+            "/api/monitoring/v1/history",
+            "/api/monitoring/v1/messages",
+            "/api/monitoring/v1/quarantine",
+            "/api/monitoring/v1/sources",
+            "/api/monitoring/v1/state",
         }
         paths_unchanged = set(app.openapi()["paths"]) == expected_paths
         agent_headers = {"X-Raj-Agent-Token": "hotfix-agent-token",

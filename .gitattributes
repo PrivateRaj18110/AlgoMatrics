@@ -1,0 +1,9 @@
+# The LLS monitoring.v1 handoff package and the canonical contract copied from it
+# are vendored **verbatim**. Their bytes are load-bearing: `message_id` is a
+# content address over canonical JSON, the request digest is a SHA-256 of the
+# exact bytes, and two tests assert our copies are byte-identical to the
+# producer's. Any end-of-line normalisation silently breaks all of that.
+#
+# -text disables every conversion in both directions.
+tests/fixtures/lls-monitoring-v1-handoff/** -text
+schemas/monitoring-v1/** -text

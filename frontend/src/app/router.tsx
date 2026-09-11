@@ -9,7 +9,6 @@ import {
   RequireAdmin,
   RequireAnonymous,
   RequireAuth,
-  RootRedirect,
 } from "@/app/guards";
 import { AdminPage } from "@/pages/AdminPage";
 import { AnalyticsPage } from "@/pages/AnalyticsPage";
@@ -47,6 +46,7 @@ import {
   SystemHealthPage,
   TelemetryAlertsPage,
 } from "@/pages/operations/OperationsPages";
+import { MonitoringPage } from "@/pages/operations/MonitoringPage";
 
 export function InternationalRootRedirect() {
   return (
@@ -69,7 +69,14 @@ export function InternationalRouteHandler() {
 }
 
 export const router: RouteObject[] = [
-  { path: "/", element: <RootRedirect /> },
+  {
+    path: "/",
+    element: (
+      <RequireAnonymous>
+        <LoginPage />
+      </RequireAnonymous>
+    ),
+  },
   {
     path: "/login",
     element: (
@@ -114,6 +121,10 @@ export const router: RouteObject[] = [
       { path: "/app/engine-strategies/:strategyName", element: <EngineStrategySymbolsRoute /> },
       { path: "/app/machines", element: <MachinesPage /> },
       { path: "/app/system-health", element: <SystemHealthPage /> },
+      // monitoring.v1 — observations published by the LLS Monitoring Backend.
+      // Distinct from /app/system-health, which shows the Raj agent telemetry:
+      // two independent protocols, presented separately on purpose.
+      { path: "/app/lls-monitoring", element: <MonitoringPage /> },
       { path: "/app/events", element: <EventsPage /> },
       { path: "/app/closed-trades", element: <ClosedTradesPage /> },
       { path: "/app/execution", element: <EngineOrdersPage /> },

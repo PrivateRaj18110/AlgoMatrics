@@ -4,3 +4,8 @@
 pytest>=8.0,<9.0
 httpx>=0.27,<1.0
 ruff>=0.5,<1.0
+# tests/test_system_health.py uses @pytest.mark.asyncio. The monorepo root
+# declares this plugin and sets asyncio_mode, but pytest.ini here anchors
+# rootdir to the ops backend so that config does not apply — leaving those
+# tests unable to run at all. Declared explicitly for this suite instead.
+pytest-asyncio>=0.25,<2.0

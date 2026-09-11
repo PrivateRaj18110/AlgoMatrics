@@ -1,0 +1,310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://algomatric.in/schemas/monitoring-export/v1/qualifiers.schema.json",
+  "title": "Monitoring Export v1 — qualifier vocabulary",
+  "description": "Shared definitions for every value the LLS Monitoring Backend exports to algomatric.in.\n\nThe central rule: a monitored value is never a bare scalar. It is a QualifiedValue carrying an explicit knowledge state, so that absence of knowledge survives transport and reaches the screen as absence of knowledge. The dashboard is forbidden from collapsing UNKNOWN into 0 / false / healthy / flat, and this schema makes that collapse impossible to express on the wire.",
+
+  "$defs": {
+
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 / ISO 8601 with an explicit offset. UTC (trailing Z) is preferred. A timestamp without an offset is a schema violation, not something to guess at.",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?([Zz]|[+-]\\d{2}:\\d{2})$"
+    },
+
+    "KnowledgeState": {
+      "type": "string",
+      "description": "What the Monitoring Backend actually knows about this value.\n\nKNOWN            — observed, current, trusted. The only state that means 'this is the value'.\nUNKNOWN          — the source cannot say. No value is carried. Never render as zero/empty/healthy.\nSTALE            — a value was known, but it is past its validity point. Carries the value AND as_of.\nUNTRUSTED        — a value exists but the source does not vouch for it (degraded input, failed check).\nINCOMPLETE       — a partial answer: some contributing inputs are missing. May carry a partial value.\nUNSUPPORTED      — this source/build cannot produce this field at all. Structurally absent, not missing.\nNOT_APPLICABLE   — the field has no meaning in this context (e.g. fill price on an unfilled order).\nSIMULATED        — produced by simulation/replay, not live observation. Carries a value; never 'live'.\nSYNTHETIC_CLOCK  — produced under an artificial clock. Carries a value; timings are not wall-clock.",
+      "enum": [
+        "KNOWN",
+        "UNKNOWN",
+        "STALE",
+        "UNTRUSTED",
+        "INCOMPLETE",
+        "UNSUPPORTED",
+        "NOT_APPLICABLE",
+        "SIMULATED",
+        "SYNTHETIC_CLOCK"
+      ]
+    },
+
+    "QualifiedValue": {
+      "type": "object",
+      "description": "Base shape for every exported value. Specialisations below constrain the type of `value`; the presence rules are identical for all of them.",
+      "properties": {
+        "state": { "$ref": "#/$defs/KnowledgeState" },
+        "value": {
+          "description": "The value itself. Present only for states that carry one (see the allOf rules). Its absence is meaningful and must not be filled in downstream."
+        },
+        "as_of": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "The instant this value was last true. Required when state is STALE; useful on any state."
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "Why the state is not KNOWN, in the source's own words. Displayed verbatim; never parsed for meaning by the dashboard."
+        },
+        "source_state": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "The raw state token used inside LLS, preserved unmapped. Lets a forensic view show what the source actually said even after normalisation."
+        }
+      },
+      "required": ["state"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "state": { "enum": ["KNOWN", "STALE", "UNTRUSTED", "SIMULATED", "SYNTHETIC_CLOCK"] } },
+            "required": ["state"]
+          },
+          "then": { "required": ["value"] }
+        },
+        {
+          "if": {
+            "properties": { "state": { "enum": ["UNKNOWN", "UNSUPPORTED", "NOT_APPLICABLE"] } },
+            "required": ["state"]
+          },
+          "then": { "not": { "required": ["value"] } }
+        },
+        {
+          "if": {
+            "properties": { "state": { "const": "STALE" } },
+            "required": ["state"]
+          },
+          "then": { "required": ["as_of"] }
+        }
+      ]
+    },
+
+    "QualifiedNumber": {
+      "$ref": "#/$defs/QualifiedValue",
+      "properties": { "value": { "type": "number" } }
+    },
+
+    "QualifiedInteger": {
+      "$ref": "#/$defs/QualifiedValue",
+      "properties": { "value": { "type": "integer" } }
+    },
+
+    "QualifiedString": {
+      "$ref": "#/$defs/QualifiedValue",
+      "properties": { "value": { "type": "string", "maxLength": 1024 } }
+    },
+
+    "QualifiedBoolean": {
+      "$ref": "#/$defs/QualifiedValue",
+      "properties": { "value": { "type": "boolean" } }
+    },
+
+    "QualifiedTimestamp": {
+      "$ref": "#/$defs/QualifiedValue",
+      "properties": { "value": { "$ref": "#/$defs/Timestamp" } }
+    },
+
+    "QualifiedRatio": {
+      "$ref": "#/$defs/QualifiedValue",
+      "description": "A fraction in [0,1] supplied by the source. The dashboard must never compute one of these from counts it happens to hold.",
+      "properties": { "value": { "type": "number", "minimum": 0, "maximum": 1 } }
+    },
+
+    "QualifiedDurationMs": {
+      "$ref": "#/$defs/QualifiedValue",
+      "description": "A duration in milliseconds, already computed by the Monitoring Backend from timestamps it knows to be clock-compatible.",
+      "properties": { "value": { "type": "number", "minimum": 0 } }
+    },
+
+    "ClockDomain": {
+      "type": "string",
+      "description": "Which clock a timestamp was read from. Two timestamps may only be subtracted when they share a domain and both carry acceptable quality — the Monitoring Backend enforces this and exports the resulting interval, not the operands.",
+      "enum": [
+        "CORE_MONOTONIC",
+        "CORE_WALL",
+        "FEED_EXCHANGE",
+        "FEED_GATEWAY",
+        "BROKER_REPORTED",
+        "BLACKBOX_WALL",
+        "MONITORING_WALL",
+        "SYNTHETIC",
+        "UNKNOWN"
+      ]
+    },
+
+    "ClockQuality": {
+      "type": "string",
+      "description": "How much the source trusts the clock behind a timestamp.\n\nDISCIPLINED   — synchronised, bounded error.\nDEGRADED      — synchronisation suspect; intervals are indicative only.\nUNDISCIPLINED — free-running; do not derive intervals.\nSYNTHETIC     — artificial time (replay/simulation).\nUNKNOWN       — the source cannot characterise it.",
+      "enum": ["DISCIPLINED", "DEGRADED", "UNDISCIPLINED", "SYNTHETIC", "UNKNOWN"]
+    },
+
+    "Clock": {
+      "type": "object",
+      "description": "Clock characterisation attached to a timestamp or an interval calculation.",
+      "properties": {
+        "domain": { "$ref": "#/$defs/ClockDomain" },
+        "quality": { "$ref": "#/$defs/ClockQuality" },
+        "offset_ms": {
+          "$ref": "#/$defs/QualifiedNumber",
+          "description": "Source's estimate of this clock's offset from reference, if it has one."
+        }
+      },
+      "required": ["domain", "quality"],
+      "additionalProperties": false
+    },
+
+    "FreshnessState": {
+      "type": "string",
+      "enum": ["FRESH", "STALE", "UNKNOWN"]
+    },
+
+    "Freshness": {
+      "type": "object",
+      "description": "The source's own statement of how long this observation stays valid. The dashboard compares its display time against `stale_after` — it does not invent a staleness policy of its own, and it does not decide something is still fresh because it looks recent.",
+      "properties": {
+        "data_as_of": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "The instant the payload describes. Distinct from when the message was generated."
+        },
+        "stale_after": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "After this instant the dashboard MUST present the payload as STALE, whether or not newer data has arrived. Omitted only when the source genuinely has no validity horizon."
+        },
+        "state": {
+          "$ref": "#/$defs/FreshnessState",
+          "description": "The source's assessment at generation time. `stale_after` governs afterwards."
+        },
+        "expected_interval_ms": {
+          "$ref": "#/$defs/QualifiedDurationMs",
+          "description": "How often this observation is expected to be republished. Lets the dashboard show 'overdue' without guessing a cadence."
+        }
+      },
+      "required": ["data_as_of", "state"],
+      "additionalProperties": false
+    },
+
+    "TrustLevel": {
+      "type": "string",
+      "description": "How the Monitoring Backend came to believe this, strongest first.\n\nAUTHORITATIVE — from the system of record for this fact.\nCORROBORATED  — independently agreed by two or more sources.\nREPORTED      — single-source assertion, unverified.\nINFERRED      — derived by correlation/reconstruction, not directly observed.\nUNTRUSTED     — retained as evidence, explicitly not to be relied on.\nUNKNOWN       — the backend cannot characterise its own confidence.",
+      "enum": ["AUTHORITATIVE", "CORROBORATED", "REPORTED", "INFERRED", "UNTRUSTED", "UNKNOWN"]
+    },
+
+    "Trust": {
+      "type": "object",
+      "properties": {
+        "level": { "$ref": "#/$defs/TrustLevel" },
+        "basis": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "Why this level. Free text, shown verbatim in forensic views."
+        },
+        "confidence": {
+          "$ref": "#/$defs/QualifiedRatio",
+          "description": "Numeric confidence, only when the backend genuinely produces one."
+        }
+      },
+      "required": ["level"],
+      "additionalProperties": false
+    },
+
+    "Coverage": {
+      "type": "object",
+      "description": "How much of what should have been observed actually was. Every number here is supplied by the Monitoring Backend. The dashboard renders UNKNOWN rather than dividing `observed` by `expected` itself — a coverage figure the source did not assert is a fabricated figure.",
+      "properties": {
+        "ratio": { "$ref": "#/$defs/QualifiedRatio" },
+        "observed": { "$ref": "#/$defs/QualifiedInteger" },
+        "expected": { "$ref": "#/$defs/QualifiedInteger" },
+        "missing": { "$ref": "#/$defs/QualifiedInteger" },
+        "excluded": { "$ref": "#/$defs/QualifiedInteger" },
+        "basis": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "What population the ratio is over, in the source's words."
+        }
+      },
+      "required": ["ratio"],
+      "additionalProperties": false
+    },
+
+    "SourceAuthority": {
+      "type": "string",
+      "description": "Whose version of reality a fact represents. Positions and fills in particular must stay attributable — a Core-asserted position and a broker-reported position are different claims and are displayed as such, never merged into one number.",
+      "enum": [
+        "CORE_ASSERTED",
+        "EXTERNAL_OBSERVED",
+        "BLACKBOX_RECONSTRUCTED",
+        "BROKER_REPORTED",
+        "EXCHANGE_REPORTED",
+        "MONITORING_DERIVED",
+        "UNKNOWN"
+      ]
+    },
+
+    "Derivation": {
+      "type": "string",
+      "description": "How this observation came to exist.",
+      "enum": ["OBSERVED", "CORRELATED", "RECONSTRUCTED", "DERIVED", "UNKNOWN"]
+    },
+
+    "EvidenceRef": {
+      "type": "object",
+      "description": "An opaque pointer into Black Box evidence. algomatric.in stores and displays these; it never dereferences them into LLS, and never alters them.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Evidence class, e.g. 'capture', 'log_segment', 'frame'. Opaque to the dashboard."
+        },
+        "ref": { "type": "string", "maxLength": 512, "description": "Opaque identifier within the Black Box." },
+        "digest": { "type": "string", "maxLength": 128, "description": "Content digest, when the source computes one." },
+        "label": { "type": "string", "maxLength": 256, "description": "Human-readable label for display." }
+      },
+      "required": ["kind", "ref"],
+      "additionalProperties": false
+    },
+
+    "Provenance": {
+      "type": "object",
+      "description": "Where this observation came from and what produced it.",
+      "properties": {
+        "derivation": { "$ref": "#/$defs/Derivation" },
+        "authority": { "$ref": "#/$defs/SourceAuthority" },
+        "capture_id": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Black Box capture this observation belongs to, where the concept applies."
+        },
+        "producer": {
+          "type": "object",
+          "properties": {
+            "component": { "type": "string", "maxLength": 128 },
+            "version": { "type": "string", "maxLength": 64 }
+          },
+          "required": ["component"],
+          "additionalProperties": false
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EvidenceRef" },
+          "maxItems": 64
+        }
+      },
+      "required": ["derivation", "authority"],
+      "additionalProperties": false
+    },
+
+    "Qualifiers": {
+      "type": "object",
+      "description": "The qualifier block carried by every observation payload. Together these answer the six questions a live panel must be able to answer: when was this generated, when received, what is it valid as of, is it stale, is the source healthy, is the data complete.",
+      "properties": {
+        "freshness": { "$ref": "#/$defs/Freshness" },
+        "trust": { "$ref": "#/$defs/Trust" },
+        "coverage": { "$ref": "#/$defs/Coverage" },
+        "provenance": { "$ref": "#/$defs/Provenance" },
+        "clock": { "$ref": "#/$defs/Clock" }
+      },
+      "required": ["freshness", "trust", "provenance"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -102,6 +102,37 @@ class Settings(BaseSettings):
     raj_agent_token: str | None = None
     raj_agent_tokens: str | None = None
 
+    # --- monitoring.v1 ingress (LLS Monitoring Export) ---------------------
+    # A completely separate protocol from the Raj agent path above. Credentials
+    # are upload-only and scoped to one source_id:
+    #
+    #   MONITORING_SOURCE_TOKENS="lls-monitoring-prod:<token>,lls-mon-stg:<token>"
+    #
+    # Optionally restrict which environments a source may publish into:
+    #
+    #   MONITORING_SOURCE_ENVIRONMENTS="lls-monitoring-prod:production"
+    #
+    # Neither is ever written back out — see `monitoring_token_index`.
+    monitoring_source_tokens: str | None = None
+    monitoring_source_environments: str | None = None
+    # Where the published JSON Schemas live. Empty = the repository default
+    # (<repo>/schemas/monitoring-export/v1). The receiver refuses to accept data
+    # it cannot validate, so a wrong path fails loudly rather than silently.
+    monitoring_schema_dir: str | None = None
+    # Contract transport limits (docs/DATA_CONTRACT.md §2).
+    monitoring_max_batch_items: int = 1000
+    monitoring_max_body_bytes: int = 8 * 1024 * 1024
+    monitoring_max_envelope_bytes: int = 256 * 1024
+    # Administrative credential for inspecting quarantined material. Kept
+    # separate from every upload credential: the identity that writes
+    # monitoring data must not be able to read what was rejected.
+    monitoring_admin_token: str | None = None
+    # THIS receiver's deployment tier: production / staging / development / test.
+    # Deliberately separate from the LLS `environment` field, which describes
+    # market reality (live_trading, offline_fixture, ...) and says nothing about
+    # where this receiver runs. Never inferred from a message; UNKNOWN when unset.
+    monitoring_deployment_environment: str | None = None
+
     # --- Dashboard (websocket) credential ---------------------------------
     # Viewer credential for `/api/ws`. See app/api/dependencies/dashboard_auth.py
     # for the accepted forms and the documented limitation of a shared token.
@@ -209,6 +240,48 @@ class Settings(BaseSettings):
     @property
     def agent_auth_configured(self) -> bool:
         return bool(self.agent_token_index)
+
+    @property
+    def monitoring_token_index(self) -> dict[str, str]:
+        """Map ``sha256(token) -> source_id`` for the monitoring.v1 ingress.
+
+        Only digests are kept, so a memory dump or an accidental ``repr`` of the
+        index cannot yield a usable credential. Deliberately separate from
+        ``agent_token_index``: an agent credential must never authorise a
+        monitoring upload, or the two protocols' security boundaries merge.
+        """
+        index: dict[str, str] = {}
+        for entry in (self.monitoring_source_tokens or "").split(","):
+            entry = entry.strip()
+            if not entry or ":" not in entry:
+                continue
+            source_id, _, token = entry.partition(":")
+            source_id, token = source_id.strip(), token.strip()
+            if source_id and token:
+                index[hash_token(token)] = source_id
+        return index
+
+    def monitoring_environment_scope(self, source_id: str) -> frozenset[str]:
+        """Environments ``source_id`` may publish into; empty = unrestricted."""
+        allowed: set[str] = set()
+        for entry in (self.monitoring_source_environments or "").split(","):
+            entry = entry.strip()
+            if not entry or ":" not in entry:
+                continue
+            configured_source, _, environment = entry.partition(":")
+            if configured_source.strip() == source_id and environment.strip():
+                allowed.add(environment.strip().lower())
+        return frozenset(allowed)
+
+    @property
+    def monitoring_auth_configured(self) -> bool:
+        return bool(self.monitoring_token_index)
+
+    @property
+    def monitoring_admin_digest(self) -> str | None:
+        """sha256 of the administrative credential, or None when unset."""
+        token = (self.monitoring_admin_token or "").strip()
+        return hash_token(token) if token else None
 
     @property
     def dashboard_auth_configured(self) -> bool:

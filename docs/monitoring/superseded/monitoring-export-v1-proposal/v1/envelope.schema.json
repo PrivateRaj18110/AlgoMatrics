@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://algomatric.in/schemas/monitoring-export/v1/envelope.schema.json",
+  "title": "LLS Monitoring Export v1 — envelope",
+  "description": "One monitoring update published by the LLS Monitoring Backend to algomatric.in.\n\nThe envelope carries identity, ordering and timing. The observation inside it carries the monitored facts and their qualifiers. The split matters: algomatric.in can decide idempotency, ordering and conflict purely from the envelope, without interpreting a single trading fact.\n\nThis schema is the entire coupling between the two systems. LLS does not import dashboard code; the dashboard does not import LLS code. Either side may evolve behind a version bump.",
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "message_id",
+    "source_id",
+    "source_instance",
+    "sequence",
+    "generated_at",
+    "runtime",
+    "environment",
+    "observation"
+  ],
+
+  "properties": {
+
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.\\d+$",
+      "description": "Contract version of THIS envelope, major.minor.\n\nMajor is a breaking change: a receiver that does not implement the major version MUST quarantine the message rather than guess at it.\nMinor is additive: a receiver implementing 1.0 accepts 1.3, ignores fields it does not know, and records that it applied compatibility handling.\n\nNever inferred from payload shape."
+    },
+
+    "message_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "description": "Stable, globally unique identity for this message, assigned once by the Monitoring Backend and reused verbatim on every retransmission.\n\nThis is the idempotency key. Redelivering the same message_id MUST NOT produce a second event, trade, fill, incident or metric. A retry that generates a fresh id is a contract violation and will duplicate data."
+    },
+
+    "source_id": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$",
+      "description": "Logical publisher identity, stable across restarts and deployments (e.g. 'lls-monitoring-prod'). Ingestion credentials are scoped to this value; a message whose source_id is outside the credential's scope is rejected 403."
+    },
+
+    "source_instance": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$",
+      "description": "Physical publisher instance — the process/host/run that produced this message. Changes on restart. `sequence` is monotonic within one (source_id, source_instance) pair and restarts from 0 when this changes, which is how the dashboard tells a restart apart from data loss."
+    },
+
+    "sequence": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonically increasing per (source_id, source_instance), no gaps intended.\n\nUsed for loss detection and ordering only. It is NOT an idempotency key and a gap is never grounds for rejecting a message — it is recorded and surfaced as missing data."
+    },
+
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Restatement counter for the entity named in `entity`. A later revision supersedes an earlier one for display purposes, while the earlier one is retained as received evidence. Two messages with the same entity and the same revision but different content are a conflict, recorded as such and never silently resolved."
+    },
+
+    "entity": {
+      "type": "object",
+      "description": "What this message makes a statement about. Lets the receiver detect restatements and conflicts without interpreting the payload. Omitted for pure point-in-time observations that restate nothing.",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Entity class, e.g. 'order', 'incident', 'position'. Opaque to the receiver beyond equality."
+        },
+        "id": { "type": "string", "maxLength": 256 }
+      }
+    },
+
+    "supersedes": {
+      "type": "string",
+      "format": "uuid",
+      "description": "message_id this message restates, when the source can name it. The superseded message is retained; only the current projection moves."
+    },
+
+    "generated_at": {
+      "$ref": "qualifiers.schema.json#/$defs/Timestamp",
+      "description": "When the Monitoring Backend produced this message. Monitoring-backend wall clock."
+    },
+
+    "source_time": {
+      "$ref": "qualifiers.schema.json#/$defs/Timestamp",
+      "description": "When the underlying thing happened, in the source's own clock domain (see observation.qualifiers.clock). Absent when the observation has no single point in time."
+    },
+
+    "data_as_of": {
+      "$ref": "qualifiers.schema.json#/$defs/Timestamp",
+      "description": "Envelope-level validity point. Mirrors observation.qualifiers.freshness.data_as_of and exists so the receiver can order and age messages without opening the payload."
+    },
+
+    "capture_id": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Black Box capture this message belongs to, where the concept applies."
+    },
+
+    "runtime": {
+      "type": "string",
+      "enum": ["LIVE", "SIMULATED", "HISTORICAL", "REPLAY", "UNKNOWN"],
+      "description": "What kind of reality produced this.\n\nLIVE       — real trading, real clock.\nSIMULATED  — synthetic execution.\nHISTORICAL — a past period being restated.\nREPLAY     — recorded input re-processed.\nUNKNOWN    — the source cannot say.\n\nThe dashboard must label non-LIVE data as such everywhere it appears. Simulated data presented as live is the failure this field exists to prevent."
+    },
+
+    "environment": {
+      "type": "string",
+      "enum": ["production", "staging", "development", "test"],
+      "description": "Which LLS environment published this. The receiver keeps environments separated; a staging message must never appear on a production panel."
+    },
+
+    "correlation": {
+      "type": "object",
+      "description": "Identifiers linking this message into wider stories. Present only where the Monitoring Backend has already established the link — algomatric.in does not correlate on its own.",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": { "type": "string", "maxLength": 128 },
+        "trade_id": { "type": "string", "maxLength": 128 },
+        "order_id": { "type": "string", "maxLength": 128 },
+        "incident_id": { "type": "string", "maxLength": 128 },
+        "signal_id": { "type": "string", "maxLength": 128 },
+        "instrument": { "type": "string", "maxLength": 64 }
+      }
+    },
+
+    "integrity": {
+      "type": "object",
+      "description": "Optional payload integrity metadata. When present the receiver verifies it before the message becomes visible and quarantines on mismatch.",
+      "additionalProperties": false,
+      "required": ["algorithm", "digest"],
+      "properties": {
+        "algorithm": { "type": "string", "enum": ["sha256"] },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Hex sha256 over the canonical JSON serialisation of `observation`."
+        }
+      }
+    },
+
+    "observation": {
+      "$ref": "observations.schema.json",
+      "description": "The monitored facts. Discriminated by `kind`."
+    }
+  }
+}
