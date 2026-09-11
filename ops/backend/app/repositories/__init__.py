@@ -446,6 +446,10 @@ class _RepositoryProxy:
             self._mock_instance = self._mock_factory()
         return self._mock_instance
 
+    @property
+    def __class__(self):
+        return type(self._get_target())
+
     def __getattr__(self, name: str):
         return getattr(self._get_target(), name)
 

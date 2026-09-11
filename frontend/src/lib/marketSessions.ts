@@ -103,20 +103,26 @@ export type DayMarketStatus =
   | { type: "weekend"; reason: "Market Closed" }
   | { type: "holiday"; reason: string; holidayName: string };
 
-/** Determine the Indian market schedule status for a given day in Asia/Kolkata. */
 export function getIndianMarketDaySchedule(date: Date): DayMarketStatus {
-  const weekday = weekdayInZone(date, "Asia/Kolkata");
-  if (weekday === 0 || weekday === 6) {
-    return { type: "weekend", reason: "Market Closed" };
-  }
-
   const holiday = getIndianMarketHoliday(date);
   if (holiday) {
+    if (holiday.isMuhuratTrading) {
+      return {
+        type: "holiday",
+        reason: `Special Trading — ${holiday.name} (Muhurat Trading applies - timings separately notified)`,
+        holidayName: `${holiday.name} (Muhurat Trading)`,
+      };
+    }
     return {
       type: "holiday",
       reason: `Market Closed — ${holiday.name}`,
       holidayName: holiday.name,
     };
+  }
+
+  const weekday = weekdayInZone(date, "Asia/Kolkata");
+  if (weekday === 0 || weekday === 6) {
+    return { type: "weekend", reason: "Market Closed" };
   }
 
   return {

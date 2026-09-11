@@ -6,13 +6,16 @@ import { useCalendarStore } from "@/stores/calendarEvents";
 
 describe("CalendarPage", () => {
   beforeEach(() => {
+    const d = new Date();
+    const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
     // Reset calendar store state
     useCalendarStore.setState({
       events: [
         {
           id: "test-gym",
           title: "Gym Workout",
-          date: "2026-08-24",
+          date: todayStr,
           startTime: "07:00",
           endTime: "08:00",
           category: "gym",

@@ -247,12 +247,13 @@ describe("operations pages", () => {
     expect(screen.getByText("API Success")).toBeInTheDocument();
     expect(screen.getByText("Signal Fill Rate")).toBeInTheDocument();
 
-    // 5 Chart Panels
-    expect(screen.getByText("Tick / Feed Health")).toBeInTheDocument();
-    expect(screen.getByText("Execution Latency")).toBeInTheDocument();
-    expect(screen.getByText("Queue Health")).toBeInTheDocument();
-    expect(screen.getByText("API / Execution Quality")).toBeInTheDocument();
-    expect(screen.getByText("Resource Usage")).toBeInTheDocument();
+    // 6 Independent Chart Panels
+    expect(screen.getByText("1. Tick Rate")).toBeInTheDocument();
+    expect(screen.getByText("2. Tick Delay")).toBeInTheDocument();
+    expect(screen.getByText("3. Queue Size")).toBeInTheDocument();
+    expect(screen.getByText("4. Queue Wait")).toBeInTheDocument();
+    expect(screen.getByText("5. CPU Utilization")).toBeInTheDocument();
+    expect(screen.getByText("6. Memory Allocation")).toBeInTheDocument();
 
     // 6 Time Range Buttons
     expect(screen.getByText("15 minutes")).toBeInTheDocument();
