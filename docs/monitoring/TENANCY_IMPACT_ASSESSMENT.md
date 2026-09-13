@@ -249,7 +249,7 @@ The order matters, and step 1 is not engineering.
 ## 8. Status
 
     TENANCY                    = ORGANISATION-PARTITIONED (owner decision, 2026-09-13)
-    IMPLEMENTATION             = NOT STARTED — assessment only
+    IMPLEMENTATION             = ATTEMPTED 2026-09-13, STOPPED AT PHASE 1 — see 9, 10
     BLOCKING PREREQUISITE      = source_id -> organisation mapping (OWNER INPUT, absent)
     PRODUCTION DEPLOYMENT      = BLOCKED
     HISTORICAL ATTRIBUTION     = NOT AN ISSUE — no production message has been accepted
@@ -258,3 +258,132 @@ The order matters, and step 1 is not engineering.
 The receiver as built is correct for the *other* reading of this question. It is
 not defective; it is scoped to a decision that has now gone the other way, and
 the work to change it is real, bounded, and enumerated above.
+
+---
+
+## 9. Findings added by the 2026-09-13 implementation attempt
+
+Implementation was attempted and stopped at the Phase 1 acceptance boundary (§10).
+The inspection that preceded the stop produced three findings this document did
+not previously contain. All three were verified against the code, and two of them
+change the plan in §7.
+
+### 9.1 There is a SECOND read surface, and it is the one the UI actually uses
+
+§3.2 documents the four `ops/backend` endpoints. It misses the platform-side
+surface entirely:
+
+```
+frontend  /app/lls-monitoring
+   -> GET /operations/monitoring/state
+      GET /operations/monitoring/sources
+      GET /operations/monitoring/history
+   -> backend/src/algo_platform/modules/operations/presentation/router.py
+   -> MonitoringStore  (.../operations/infrastructure/monitoring_store.py)
+   -> raw SQL, second engine, straight at the ops database
+```
+
+`MonitoringStore` opens its own connection to the ops database and reads
+`monitoring_projections`, `monitoring_sequence_state` and `monitoring_evidence`
+with hand-written SQL. **It does not go through the ops API**, so tenant filtering
+added to the `ops/backend` router would not protect it.
+
+The same discard pattern is present here as on the ops side:
+
+```python
+def monitoring_sources(_tenant: OpsTenant, store: MonitoringDep) -> ...:
+    return [MonitoringSourceRow.model_validate(row) for row in store.sources()]
+```
+
+`OpsTenant` is `Annotated[TenantContext, Depends(require_ops_read)]` and
+`TenantContext` already carries `tenant_id: TenantId`. It is bound and dropped on
+all three endpoints, and `MonitoringStore.sources()` has no `WHERE` clause at all.
+
+**Consequence for §7:** step 5 must cover *both* read surfaces, or partitioning is
+partial in exactly the way §1 warns about. There is no platform-side monitoring
+table to secure — the platform owns none; it reads the receiver's.
+
+### 9.2 A real foreign key to the organisation registry is not possible
+
+The deployed topology puts the two tables in different databases on different
+servers:
+
+| Table | Database | Server | Roles |
+|---|---|---|---|
+| `organizations` | `algo` | `postgres:5432` | platform |
+| `monitoring_*` | `ops_telemetry` | `ops-postgres:5432` | `ops_owner` / `ops_receiver` |
+
+PostgreSQL has no cross-database foreign keys, so
+`monitoring_evidence.organisation_id -> organizations.id` **cannot be declared**
+in the production topology. (`Settings.resolve_ops_database_url` does let
+`OPS_DATABASE_URL` fall back to `DATABASE_URL`, so a single-database deployment is
+possible — but `deploy/k8s/46-ops-db.yaml` deliberately separates them, and the
+role separation that protects append-only evidence depends on that separation.)
+
+This is a genuine conflict with a stated requirement, recorded rather than worked
+around. What is achievable instead, and must be decided before step 3:
+
+* `organisation_id UUID NOT NULL` on the receiver side with **no** FK, plus
+  startup validation of every configured mapping against the authoritative
+  registry, fail-closed; or
+* a mirrored `monitoring_organisations` table inside `ops_telemetry` that the
+  monitoring tables *can* reference, fed from the platform registry — a real FK
+  locally, at the cost of a synchronisation path that can drift.
+
+Neither is free. Choosing silently would be the wrong outcome.
+
+### 9.3 The read path needs no new owner input — only the write path does
+
+This narrows the blocker. Tenant identity already exists on both read surfaces:
+
+* Platform JWTs already carry the organisation: `jwt_service.py` encodes
+  `"org": str(organization_id)` and decodes it back to `organization_id: UUID`.
+* `ops/backend` already verifies platform-issued JWTs (`_verify_jwt`, with
+  `ops_jwt_public_key`) — it simply reads `sub` and `permissions` and drops `org`.
+* The platform side already has `TenantContext.tenant_id`.
+
+So `Viewer` gaining an organisation is ordinary engineering against an existing
+authoritative claim. **No owner decision is required for the read path.**
+
+The write path is the part that has no source of truth, because the authenticated
+publisher identity is `MONITORING_SOURCE_TOKENS` (`source_id:token`) and nothing
+in the system relates a `source_id` to an organisation.
+
+---
+
+## 10. What the owner must supply, exactly
+
+Implementation is stopped here. This is the complete input required to restart it.
+
+**Configuration location:** `ops/backend/app/core/config.py`, a new `Settings`
+field alongside `monitoring_source_tokens` / `monitoring_source_environments`,
+supplied by environment variable and injected as a Kubernetes Secret through
+`deploy/k8s/45-ops.yaml`. It must not be committed to git.
+
+**Proposed variable and format** (following the existing `source:value` idiom):
+
+```
+MONITORING_SOURCE_ORGANISATIONS="<source_id>:<organisation_uuid>[,<source_id>:<organisation_uuid>]"
+```
+
+**The two values that do not exist anywhere in this repository:**
+
+1. **The production `source_id`.** It must be *byte-identical* to the value the
+   LLS producer puts in the message body, because acceptance already requires
+   `principal.authorizes_source(body["source_id"])`. The frozen fixtures use
+   `lls-contract-fixture`, which is a fixture identifier and explicitly **not** a
+   production one. Engineering cannot derive this — it is an LLS deployment fact.
+2. **The organisation UUID**, which must be an existing `organizations.id` in the
+   platform `algo` database — `Organization.id` is `TenantId`, a `NewType` over
+   `uuid.UUID`, serialised as a plain UUID string. The slug is a label and must
+   not be used as the security identity.
+
+Both must satisfy the §2 constraints: the mapping is injective, `source_id` is
+unique across organisations, and the mapping is stable for the life of the
+evidence it attributes.
+
+**Why no placeholder was created.** A mapping invented to make a migration run
+would attribute real customer evidence to a guessed organisation, and
+`monitoring_evidence` is append-only behind a database trigger with no UPDATE
+grant for the receiver role — so the attribution could never be corrected. A
+wrong value here is permanent in a way a missing value is not.
