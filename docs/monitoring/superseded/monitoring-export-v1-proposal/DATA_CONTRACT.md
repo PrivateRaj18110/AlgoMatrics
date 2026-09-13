@@ -16,7 +16,7 @@
 The versioned interface between the **LLS Monitoring Backend** (publisher) and
 **algomatric.in** (receiver).
 
-This document and the JSON Schemas in [`schemas/monitoring-export/v1/`](../schemas/monitoring-export/v1)
+This document and the JSON Schemas in [`schemas/monitoring-export/v1/`](v1)
 are the *entire* coupling between the two systems. Neither side imports code
 from the other. LLS has no inbound route from here; algomatric.in has no
 database, filesystem, process or broker connection into LLS. If a dashboard
@@ -60,8 +60,8 @@ than no dashboard, because it manufactures confidence. Making the collapse
 | | |
 |---|---|
 | **Endpoint** | `POST /api/v1/monitoring/export` |
-| **Body** | [`batch.schema.json`](../schemas/monitoring-export/v1/batch.schema.json) |
-| **Response** | [`ack.schema.json`](../schemas/monitoring-export/v1/ack.schema.json) |
+| **Body** | [`batch.schema.json`](v1/batch.schema.json) |
+| **Response** | [`ack.schema.json`](v1/ack.schema.json) |
 | **Direction** | Outbound from LLS only. The dashboard never initiates a connection to LLS. |
 | **Encoding** | `application/json`, UTF-8. `Content-Encoding: gzip` supported. |
 
@@ -192,7 +192,7 @@ production and staging strictly separated in storage and in every view.
 
 ## 5. Qualified values
 
-Defined in [`qualifiers.schema.json`](../schemas/monitoring-export/v1/qualifiers.schema.json).
+Defined in [`qualifiers.schema.json`](v1/qualifiers.schema.json).
 
 | State | Carries a value? | Means |
 |---|---|---|
@@ -269,7 +269,7 @@ clock is labelled rather than read as fact.
 
 ## 7. Observation kinds
 
-Defined in [`observations.schema.json`](../schemas/monitoring-export/v1/observations.schema.json).
+Defined in [`observations.schema.json`](v1/observations.schema.json).
 
 | `kind` | Feeds | Notes |
 |---|---|---|
@@ -380,7 +380,7 @@ RECEIVED  →  VALIDATED  →  CURRENT PROJECTION  →  UI VIEW
 
 ## 11. Validation
 
-The schemas are executable. [`ops/backend/tests/test_monitoring_export_contract.py`](../ops/backend/tests/test_monitoring_export_contract.py)
+The schemas are executable. `ops/backend/tests/test_monitoring_export_contract.py` (removed with this proposal)
 validates them directly — 46 checks covering valid messages, missing fields,
 unknown fields, invalid enums, oversized batches, version compatibility, the
 knowledge-state rules, and a structural guard that fails the build if any field

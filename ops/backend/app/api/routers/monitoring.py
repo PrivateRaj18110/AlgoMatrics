@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from app.api.dependencies.dashboard_auth import require_dashboard_viewer
 from app.api.dependencies.monitoring_auth import (
@@ -69,7 +70,71 @@ async def receive_message(
     """
     # Read after authentication, never before — a body must not be parsed on
     # behalf of a caller whose credential has not been established.
-    raw_body = await request.body()
+    #
+    # A body far beyond the contract's ceiling is refused without reading it.
+    #
+    # The threshold is the *preservation* cap, not the contract limit, and the
+    # gap between them is deliberate. A message modestly over the limit is
+    # something an operator will want to investigate, so it must still reach the
+    # normal path and be quarantined with its bytes kept. Only traffic too large
+    # to be worth preserving is refused here — and for that, reading it would be
+    # paying for a body nothing will ever look at.
+    #
+    # Content-Length is the sender's claim, not a fact, so the real limit is
+    # enforced again inside the receiver over the bytes that actually arrived.
+    ceiling = receiver.MAX_PRESERVED_REQUEST_BYTES
+
+    def too_large(observed: str) -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail={
+                "reason": "structural_limit",
+                "detail": (
+                    f"{observed} bytes exceeds the {contract.LIMITS.request_bytes} byte limit"
+                ),
+                "quarantine_id": None,
+            },
+        )
+
+    async def drain() -> None:
+        """Finish reading the upload without keeping it.
+
+        413 is a terminal outcome in the retry contract; closing the connection
+        early would reach the producer as a retryable transport error instead,
+        and it would keep resending a message that can never be accepted.
+        """
+        async for _ in request.stream():
+            pass
+
+    # Fast path: a declared Content-Length over the ceiling is refused without
+    # reading the body at all.
+    declared_length = request.headers.get("content-length")
+    if declared_length and declared_length.isdigit() and int(declared_length) > ceiling:
+        await drain()
+        raise too_large(declared_length)
+
+    # Slow path, and the one that actually bounds memory: read the body a chunk
+    # at a time and stop at the ceiling. Content-Length is the sender's claim,
+    # not a fact — it can be wrong, and a chunked upload does not send one at
+    # all — so the check above cannot be the only one. Without this, a chunked
+    # request with no Content-Length is materialised in full before the
+    # contract's limit is ever consulted.
+    raw = bytearray()
+    over_ceiling = False
+    async for chunk in request.stream():
+        if over_ceiling:
+            # Keep consuming so the client still receives the 413, but stop
+            # keeping any of it. The request body can only be iterated once, so
+            # this has to happen here rather than in a second pass.
+            continue
+        raw += chunk
+        if len(raw) > ceiling:
+            over_ceiling = True
+            raw = bytearray()  # release it now, not at the end of the request
+
+    if over_ceiling:
+        raise too_large(f"more than {ceiling}")
+    raw_body = bytes(raw)
 
     try:
         ack = receiver.ingest_message(
@@ -209,22 +274,43 @@ def sources(
 
 
 @router.get("/health", summary="Receiver health — not LLS health")
-def health(session=Depends(_session)) -> dict:
+def health(response: Response, session=Depends(_session)) -> dict:
     """The health of **this** receiver.
 
     Deliberately says nothing about LLS. A healthy ingress means messages can be
     received; whether the trading system is well is a question only the
     Monitoring Backend answers, and it answers it in its own payloads.
+
+    ``storageConfigured`` and ``databaseReachable`` are separate facts and are
+    reported separately. A configured database that has gone away is the exact
+    situation an operator most needs to see, and staging measurement showed the
+    endpoint previously answering it with a bare 500 — safe, because it never
+    claimed health, but silent about why.
+
+    A count that cannot be read is reported as ``UNKNOWN``, never as zero.
+    "No quarantined messages" and "could not ask" are different answers.
     """
-    quarantined = session.execute(select(MonitoringQuarantine.quarantine_id).limit(1000)).all()
+    database_reachable = False
+    quarantined: int | str = "UNKNOWN"
+    try:
+        rows = session.execute(select(MonitoringQuarantine.quarantine_id).limit(1000)).all()
+        quarantined = len(rows)
+        database_reachable = True
+    except OperationalError:
+        # Fail closed and say so, rather than reporting zeros we did not read.
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
     return {
         "receiver": "monitoring.v1",
         "contractAvailable": contract.contract_available(),
         "supportedSchemaVersion": contract.MONITORING_SCHEMA_VERSION,
         "ackSchemaVersion": receiver.ACK_SCHEMA_VERSION,
+        # Is a database configured at all.
         "storageConfigured": database_enabled(),
+        # Did it answer just now. Never inferred from the line above.
+        "databaseReachable": database_reachable,
         "receiverDeploymentEnvironment": _deployment(),
-        "quarantinedMessages": len(quarantined),
+        "quarantinedMessages": quarantined,
         # Stated explicitly so no caller mistakes this for a verdict on LLS.
         "llsHealth": "NOT_DETERMINED_HERE",
     }

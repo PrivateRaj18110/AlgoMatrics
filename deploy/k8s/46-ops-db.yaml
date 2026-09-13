@@ -21,7 +21,54 @@ metadata:
 type: Opaque
 stringData:
   # Template ONLY — populate via your secret manager at deploy time.
-  # Must match the credentials embedded in ops-secrets.DATABASE_URL.
+  #
+  # This is the instance SUPERUSER created by the postgres image. It must NOT be
+  # the credential the application runs as.
+  #
+  # Three roles, and the separation is load-bearing rather than tidiness:
+  #
+  #   POSTGRES_USER (superuser)  bootstraps the database and creates the roles
+  #                              below. Used by an operator, never by a pod.
+  #
+  #   ops_owner                  owns the tables, runs Alembic. Supplied to the
+  #                              ops-migrate initContainer through
+  #                              ops-migration-secrets.DATABASE_URL.
+  #
+  #   ops_receiver               the running application. Supplied through
+  #                              ops-secrets.DATABASE_URL.
+  #
+  # monitoring_evidence is append-only, enforced by a row-level trigger. A
+  # trigger does not fire for TRUNCATE, and TRUNCATE cannot be revoked from a
+  # table's owner or from a superuser — so if the application ran as either, its
+  # own everyday credential could empty the forensic record in one statement.
+  # Staging measured exactly that before the roles were split.
+  #
+  # Bootstrap, run once by an operator against this instance:
+  #
+  #   CREATE ROLE ops_owner    LOGIN PASSWORD '<owner-password>';
+  #   CREATE ROLE ops_receiver LOGIN PASSWORD '<receiver-password>';
+  #   ALTER DATABASE ops_telemetry OWNER TO ops_owner;
+  #   REVOKE CONNECT ON DATABASE ops_telemetry FROM PUBLIC;
+  #   GRANT  CONNECT ON DATABASE ops_telemetry TO ops_owner, ops_receiver;
+  #
+  # Then, as ops_owner AFTER the first migration has created the tables:
+  #
+  #   GRANT USAGE ON SCHEMA public TO ops_receiver;
+  #   GRANT SELECT, INSERT, UPDATE, DELETE
+  #     ON ALL TABLES IN SCHEMA public TO ops_receiver;
+  #   REVOKE ALL ON monitoring_evidence FROM ops_receiver;
+  #   GRANT SELECT, INSERT ON monitoring_evidence TO ops_receiver;
+  #   GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ops_receiver;
+  #   ALTER DEFAULT PRIVILEGES FOR ROLE ops_owner IN SCHEMA public
+  #     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ops_receiver;
+  #
+  # The last line matters on every future migration: without it a newly created
+  # table is unreachable by the application until someone grants it by hand.
+  # monitoring_evidence must be re-revoked if a migration ever recreates it.
+  #
+  # Verified in staging: with these grants the receiver cannot TRUNCATE, DELETE,
+  # UPDATE or DROP evidence, nor disable the trigger, and can still INSERT and
+  # rebuild projections — with the producer's acceptance harness passing 11/11.
   POSTGRES_USER: ""
   POSTGRES_PASSWORD: ""
   POSTGRES_DB: "ops_telemetry"
@@ -58,6 +105,21 @@ spec:
       containers:
         - name: postgres
           image: postgres:16-alpine
+          # Pinned, not inherited. These are the PostgreSQL defaults, so this
+          # changes nothing today — it stops a future image or tuning change
+          # from quietly turning them on.
+          #
+          # Why they matter here: an INSERT into monitoring_evidence carries the
+          # entire monitoring message as a bound parameter. Raising
+          # log_parameter_max_length_on_error above 0, or setting log_statement
+          # to 'all'/'mod', would copy full message bodies into the database log
+          # — which has different retention and access control from the evidence
+          # table the messages are supposed to live in.
+          args:
+            - -c
+            - log_statement=none
+            - -c
+            - log_parameter_max_length_on_error=0
           ports:
             - containerPort: 5432
           envFrom:
@@ -90,6 +152,46 @@ spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            # Measured telemetry is ~2 MB/day/agent; 10Gi is years of headroom
-            # with the configured retention. Size up before adding many agents.
-            storage: 10Gi
+            # Sized for agent telemetry AND monitoring.v1 evidence, which are
+            # very different workloads sharing this volume.
+            #
+            # Agent telemetry: ~2 MB/day/agent MEASURED, with retention
+            # configured, so effectively bounded.
+            #
+            # monitoring.v1 evidence: append-only and currently never deleted —
+            # there is no approved retention policy (see
+            # docs/monitoring/RETENTION_POLICY.md).
+            #
+            # MEASURED over 750,400 stored messages, all-snapshot mix:
+            #   evidence          5,505 bytes/message
+            #   audit               269 bytes/message
+            #   projection row    4,128 bytes/row
+            #   WAL floor         0.386 GB steady state (recycled, not growth)
+            #
+            # Projection growth has TWO scenarios and the contract does not
+            # choose between them. capture_ref is part of the projection key,
+            # and whether it changes between production cycles is UNKNOWN. Both
+            # were measured:
+            #   Scenario A  stable capture_ref     5,774 B/msg   18.2 GB/yr
+            #   Scenario B  capture_ref per message 9,902 B/msg  31.2 GB/yr
+            # (one publisher, contract maximum 0.1 msg/s, nothing deleted)
+            #
+            # 10Gi was therefore well under one year for a single publisher, on
+            # a volume that also holds agent telemetry.
+            #
+            # 100Gi (107.0 GB usable after the WAL floor) covers ONE publisher
+            # at the contract maximum for 5.9 years under Scenario A, or 3.4
+            # years under Scenario B.
+            #
+            # It is NOT a capacity decision for any other publisher count, and
+            # the margin disappears quickly: capacity falls below one year at 6
+            # publishers (Scenario A) or 4 (Scenario B). Multiply by the agreed
+            # publisher count and revisit once a retention policy exists —
+            # docs/monitoring/PRODUCTION_CAPACITY_MODEL.md §8 has the table.
+            #
+            # This sizing covers DATABASE growth only. Backups, WAL archiving,
+            # PITR and replication are NOT MEASURED and are not included, so the
+            # horizons above are upper bounds. Production message mix is
+            # UNKNOWN; the all-snapshot figure is a scenario bound, not a
+            # prediction.
+            storage: 100Gi

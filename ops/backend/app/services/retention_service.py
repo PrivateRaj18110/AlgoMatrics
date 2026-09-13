@@ -23,6 +23,8 @@ from app.models import (
     Event,
     Log,
     Metric,
+    MonitoringQuarantine,
+    MonitoringRawRequest,
     QuantReport,
     Trade,
     TradingSession,
@@ -227,6 +229,49 @@ def _eod_raw_retention(settings: Settings, dry_run: bool) -> RetentionOutcome:
         session.close()
 
 
+def _monitoring_rejected_retention(settings: Settings, dry_run: bool) -> list[RetentionOutcome]:
+    """Retention for monitoring.v1 **rejected** traffic. Never for evidence.
+
+    Owner decision 2, recorded 2026-09-13: quarantine rows and stored raw
+    rejected request bodies are kept for 30 days. That closes the one growth
+    path a holder of a valid publisher credential could drive deliberately —
+    malformed or oversized uploads cost storage on the refusal path.
+
+    Three tables are deliberately **not** here, and the omissions are the point:
+
+    * ``monitoring_evidence`` — owner decision 1 is INDEFINITE retention. It is
+      also append-only behind a database trigger, so a DELETE here would raise
+      rather than quietly succeed. Nothing in this module may target it.
+    * ``monitoring_audit`` — the security record of *every* ingest attempt,
+      accepted and rejected alike. It is not "rejected traffic", and pruning it
+      would erase the record that a refusal ever happened while leaving the
+      refused bytes' absence unexplained.
+    * ``monitoring_projections`` / ``monitoring_sequence_state`` — derived and
+      per-instance state, not traffic.
+
+    Both tables in scope carry ``received_at`` and share one cutoff, so a
+    quarantine row and the raw body it describes age out together rather than
+    leaving a dangling half of the forensic record.
+    """
+    days = settings.monitoring_rejected_retention_days
+    return [
+        _simple_table_retention(
+            policy="monitoring.quarantine",
+            table=MonitoringQuarantine,
+            time_column=MonitoringQuarantine.received_at,
+            days=days,
+            dry_run=dry_run,
+        ),
+        _simple_table_retention(
+            policy="monitoring.raw_requests",
+            table=MonitoringRawRequest,
+            time_column=MonitoringRawRequest.received_at,
+            days=days,
+            dry_run=dry_run,
+        ),
+    ]
+
+
 def run_retention(*, dry_run: bool = True, settings: Settings | None = None) -> dict[str, Any]:
     """Run every configured retention policy and return an auditable summary."""
     if not database_enabled():
@@ -253,6 +298,7 @@ def run_retention(*, dry_run: bool = True, settings: Settings | None = None) -> 
             dry_run=dry_run,
         )
     )
+    outcomes.extend(_monitoring_rejected_retention(settings, dry_run))
     outcomes.append(_session_retention(settings, dry_run))
     outcomes.append(_eod_raw_retention(settings, dry_run))
     outcomes.append(_eod_metadata_retention(settings, dry_run))

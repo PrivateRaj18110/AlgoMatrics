@@ -130,7 +130,7 @@ def upgrade() -> None:
         sa.Column("existing_generated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("incoming_generated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("detected_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("acknowledged", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("acknowledged", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.PrimaryKeyConstraint("conflict_id"),
     )
     op.create_index(
@@ -186,7 +186,7 @@ def upgrade() -> None:
         sa.Column("trust_level", sa.String(length=16), nullable=True),
         sa.Column("schema_version", sa.String(length=16), nullable=False),
         sa.Column("observation_json", sa.Text(), nullable=False),
-        sa.Column("has_conflict", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("has_conflict", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(

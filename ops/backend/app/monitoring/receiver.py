@@ -33,15 +33,15 @@ Two orderings inside that are load-bearing and worth stating:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import hashlib
 import json
-from typing import Any
 import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.monitoring_auth import MonitoringPrincipal
@@ -62,6 +62,19 @@ ACK_SCHEMA_VERSION = "monitoring.ack.v1"
 
 ACCEPTED = "accepted"
 DUPLICATE = "duplicate"
+
+#: How much of a refused request body is kept verbatim.
+#:
+#: Set *above* the contract's own 1 MiB request ceiling, on purpose. A message
+#: refused for being marginally too large is the case an investigator most wants
+#: to see whole — how far over, and what was in the tail — and a cap set exactly
+#: at the limit would clip precisely that. The headroom keeps every realistic
+#: near-limit refusal intact while still bounding the deliberately oversized
+#: traffic this exists to stop.
+#:
+#: ``byte_length`` and ``body_sha256`` always describe the **whole** body, so
+#: truncation never hides how much arrived or which bytes they were.
+MAX_PRESERVED_REQUEST_BYTES = contract.LIMITS.request_bytes + (64 * 1024)
 
 
 # --------------------------------------------------------------------------- #
@@ -181,7 +194,7 @@ def ingest_message(
     now: datetime | None = None,
 ) -> Acknowledgement:
     """Run the full receiver pipeline over one monitoring.v1 message."""
-    received_at = now or datetime.now(timezone.utc)
+    received_at = now or datetime.now(UTC)
 
     if not database_enabled():
         # Without durable storage the receiver cannot honour idempotency,
@@ -191,7 +204,14 @@ def ingest_message(
             "acknowledge messages it cannot durably store"
         )
 
-    session: Session = get_sessionmaker()()
+    try:
+        session: Session = get_sessionmaker()()
+    except DBAPIError as exc:
+        # The database is unreachable. Never an acknowledgement.
+        raise StorageUnavailable(
+            f"monitoring.v1 storage is unavailable: {exc.__class__.__name__}"
+        ) from exc
+
     try:
         ack = _ingest(session, raw_body, principal, received_at, declared_digest, content_encoding)
         # Committed before the caller can return the ACK.
@@ -201,8 +221,28 @@ def ingest_message(
         # Quarantine rows, preserved bytes and the audit entry are exactly what
         # makes a refusal investigable. Rolling them back would leave a rejected
         # upload with no record that it ever happened.
-        session.commit()
+        try:
+            session.commit()
+        except DBAPIError:
+            # The refusal still stands; only its forensic record is lost.
+            session.rollback()
         raise
+    except DBAPIError as exc:
+        # Any database error that prevented the write. The question the producer
+        # needs answered is only ever "was this message durably stored?", and
+        # when the database refused for *any* reason the answer is no — so it
+        # gets the contract's retryable 503 rather than an unhandled 500.
+        #
+        # Deliberately wider than a connection failure. Staging measurement
+        # found a read-only database surfacing as `InternalError` and a revoked
+        # grant as `ProgrammingError`, neither of which is an `OperationalError`;
+        # both left the producer guessing at a 500. A replica promoted to
+        # read-only, a failed-over primary, a revoked grant and a full volume are
+        # the same event as far as this decision goes.
+        session.rollback()
+        raise StorageUnavailable(
+            f"monitoring.v1 storage refused the write: {exc.__class__.__name__}"
+        ) from exc
     except BaseException:
         session.rollback()
         raise
@@ -323,6 +363,14 @@ def _ingest(
     source_id = document["source_id"]
     source_instance = document["source_instance"]
 
+    # --- serialise this publisher instance ---------------------------------
+    # Everything below reads the instance's accepted state and then writes it.
+    # Under PostgreSQL's READ COMMITTED that read-then-write is a race: two
+    # concurrent deliveries for the same instance both observe the same
+    # "last accepted" value, both decide, and both write. SQLite hides this
+    # entirely because it serialises writers.
+    _lock_instance(session, source_id, source_instance)
+
     # --- duplicate determination -------------------------------------------
     # Before the ordering rule, deliberately: the contract requires a previously
     # accepted message to be acknowledged again even after later sequences.
@@ -393,6 +441,43 @@ def _ingest(
 # --------------------------------------------------------------------------- #
 # Persistence helpers
 # --------------------------------------------------------------------------- #
+def _lock_instance(session: Session, source_id: str, source_instance: str) -> None:
+    """Hold an exclusive lock on one ``(source_id, source_instance)`` until commit.
+
+    Ordered acceptance is a read-then-write over the instance's accepted state:
+    read the last accepted sequence, decide, write the new one. Two concurrent
+    deliveries for the same instance can both read the same value before either
+    writes, and then both act on it — accepting the same sequence twice, or
+    racing to create the instance's first state row and surfacing a raw
+    ``IntegrityError`` to the producer.
+
+    A transaction-scoped advisory lock is the smallest fix that closes both.
+    It costs one statement, it is released automatically on commit or rollback
+    even if the process dies, and it constrains nothing the contract did not
+    already constrain: monitoring.v1 requires an instance's messages to be
+    accepted in order, so serialising *one instance* removes no concurrency
+    that was ever permitted. Different instances and different sources stay
+    fully parallel.
+
+    A no-op on SQLite, which has no advisory locks and does not need them — it
+    serialises writers at the database level.
+    """
+    bind = session.get_bind()
+    if bind.dialect.name != "postgresql":
+        return
+    # A stable 64-bit signed key for the pair. The lock namespace is shared
+    # process-wide, so the key must not collide with another subsystem's:
+    # hashing the two identifiers together makes an accidental collision as
+    # unlikely as a hash collision.
+    digest = hashlib.blake2b(
+        f"monitoring.v1\x00{source_id}\x00{source_instance}".encode(), digest_size=8
+    ).digest()
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(:key)"),
+        {"key": int.from_bytes(digest, "big", signed=True)},
+    )
+
+
 def _deployment_environment(settings: Any) -> str:
     """Our own deployment tier, from receiver configuration only.
 
@@ -527,7 +612,21 @@ def _preserve_request(
     content_encoding: str | None,
     fields: dict[str, Any],
 ) -> None:
-    """Keep the original bytes of a refused request, post-decompression."""
+    """Keep the original bytes of a refused request, post-decompression.
+
+    Bounded. Staging measurement showed why: a request refused for being too
+    large was still stored in full, so 27 rejected requests wrote 233 MB of
+    evidence for messages the receiver had already refused — and a gzip body
+    made that a 1000:1 amplification. A refusal path that costs more storage
+    than an acceptance is a way to fill the database with rejected traffic.
+
+    What is stored is a bounded prefix, plus the true ``byte_length`` and a
+    SHA-256 over the **whole** body. The digest is what makes the record
+    forensically useful: it identifies the exact bytes, so a submitted sample
+    can still be proven to be the one that was refused. Keeping the remaining
+    megabytes adds nothing an investigator can use that the prefix and the
+    digest do not already give them.
+    """
     if session.get(MonitoringRawRequest, principal.request_id) is not None:
         return
     session.add(
@@ -537,9 +636,11 @@ def _preserve_request(
             claimed_source_id=fields.get("claimed_source_id"),
             received_at=received_at,
             content_encoding=content_encoding,
+            # The true length, even when the stored body is truncated.
             byte_length=len(raw_body),
+            # Over the whole body, never over the truncated prefix.
             body_sha256=hashlib.sha256(raw_body).hexdigest(),
-            body=raw_body,
+            body=raw_body[:MAX_PRESERVED_REQUEST_BYTES],
         )
     )
     session.flush()
@@ -609,7 +710,7 @@ def _parse_ts(value: Any) -> datetime | None:
         parsed = datetime.fromisoformat(text)
     except ValueError:
         return None
-    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 # Re-exported so callers do not have to import the freshness module directly

@@ -7,7 +7,7 @@
 
 ## 1. What the contract is
 
-The canonical contract is [`schemas/monitoring-export/v1/`](../../schemas/monitoring-export/v1) plus [`docs/DATA_CONTRACT.md`](../DATA_CONTRACT.md). It was **not** redesigned for this work. The receiver loads those exact files at runtime — it does not vendor a copy — so the publisher and the receiver cannot drift by one side quietly editing its own version.
+The canonical contract is [`schemas/monitoring-export/v1/`](superseded/monitoring-export-v1-proposal/v1) plus [`docs/DATA_CONTRACT.md`](superseded/monitoring-export-v1-proposal/DATA_CONTRACT.md) — both since archived under `superseded/`, because this proposal was replaced by the producer's canonical `monitoring.v1`. The paths named in the prose are the ones that existed when this was written. It was **not** redesigned for this work. The receiver loads those exact files at runtime — it does not vendor a copy — so the publisher and the receiver cannot drift by one side quietly editing its own version.
 
 If the schemas cannot be loaded, the receiver returns 503 and accepts nothing. A receiver that cannot validate must not accept data.
 

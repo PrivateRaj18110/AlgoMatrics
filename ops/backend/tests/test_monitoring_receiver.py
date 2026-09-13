@@ -12,13 +12,13 @@ own tests and fail the first real one.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -131,8 +131,8 @@ def _truncate(database_url: str) -> None:
             "monitoring_audit",
             "monitoring_evidence",
         ):
-            # noqa justification: table names are the fixed literal tuple above,
-            # never caller input.
+            # S608 is suppressed because the table names are the fixed literal
+            # tuple above, never caller input.
             connection.execute(text(f"DELETE FROM {table}"))  # noqa: S608
     engine.dispose()
 
@@ -533,6 +533,41 @@ def test_invalid_messages_are_refused_and_quarantined(
     assert any(item["reason"] == expected_reason for item in items)
 
 
+def test_an_oversized_chunked_upload_is_bounded(client: TestClient) -> None:
+    """A body with no Content-Length must still be bounded.
+
+    Content-Length is the sender's claim, and a chunked upload does not send one
+    at all. Before this was bounded, such a request was materialised in full
+    before the contract's 1 MiB limit was ever consulted — the same exposure as
+    the gzip amplification, reached by simply omitting a header.
+    """
+
+    def chunks():
+        block = b"A" * (1024 * 1024)
+        for _ in range(4):
+            yield block
+
+    response = client.post(
+        ENDPOINT,
+        content=chunks(),
+        headers={"Authorization": f"Bearer {PUBLISH_TOKEN}", "Content-Type": "application/json"},
+    )
+    assert response.status_code == 413
+    assert response.json()["detail"]["reason"] == "structural_limit"
+
+
+def test_a_message_just_over_the_limit_is_still_quarantined(client: TestClient) -> None:
+    """Bounding the read must not cost the forensic record.
+
+    The cheap refusal is reserved for traffic too large to be worth preserving.
+    A message modestly over the contract limit is exactly what an operator will
+    want to look at, so it still reaches the normal path and keeps its bytes.
+    """
+    response = post(client, "oversized_string.json")
+    assert response.status_code == 413
+    assert response.json()["detail"]["quarantine_id"] is not None
+
+
 def test_quarantined_material_never_becomes_a_projection(client: TestClient) -> None:
     for fixture in ("bad_schema_version.json", "invalid_message_id.json"):
         post(client, fixture)
@@ -590,7 +625,7 @@ def test_stale_is_not_upgraded_by_a_recent_delivery(client: TestClient) -> None:
     assert item["freshness"]["source"] == "STALE"
     received = datetime.fromisoformat(item["time"]["receivedAt"].replace("Z", "+00:00"))
     # Received seconds ago, still STALE — both facts visible and distinct.
-    assert (datetime.now(timezone.utc) - received).total_seconds() < 300
+    assert (datetime.now(UTC) - received).total_seconds() < 300
 
 
 def test_untrusted_is_not_upgraded_by_successful_delivery(client: TestClient) -> None:

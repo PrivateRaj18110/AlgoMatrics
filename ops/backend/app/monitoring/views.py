@@ -19,8 +19,8 @@ Three rules the serialisers follow without exception:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
+from datetime import UTC, datetime
 from typing import Any
 
 from app.models.monitoring import (
@@ -34,11 +34,21 @@ from app.monitoring import sequence as seq
 
 
 def iso(value: datetime | None) -> str | None:
-    """UTC ISO-8601 with a Z suffix. None stays None — never epoch, never now."""
+    """UTC ISO-8601 with a Z suffix. None stays None — never epoch, never now.
+
+    The conversion to UTC is load-bearing, not decorative. SQLite returns naive
+    datetimes, which this used to stamp as UTC and render with a ``Z``;
+    PostgreSQL returns ``timestamptz`` already aware, in the *session's* time
+    zone. Without the conversion the same producer timestamp rendered as
+    ``...T09:01:34.627414Z`` on SQLite and ``...T14:31:34.627414+05:30`` on a
+    PostgreSQL deployment in IST — the same instant, but a representation that
+    depended on where the server happened to be running, which is not a fact the
+    producer asserted.
+    """
     if value is None:
         return None
-    aware = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-    return aware.isoformat().replace("+00:00", "Z")
+    aware = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    return aware.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _load(raw: str | None, fallback: Any) -> Any:

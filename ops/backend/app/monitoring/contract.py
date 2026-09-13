@@ -87,18 +87,66 @@ class StructuralViolation:
     detail: str
 
 
+#: Where the canonical schema is looked for when ``MONITORING_SCHEMA_DIR`` is
+#: unset, in order. The repository layout is only one of the places this code
+#: runs: the deployed image copies ``ops/backend`` to ``/app``, which puts this
+#: file four levels shallower than it is in the checkout.
+_SCHEMA_RELATIVE_CANDIDATES = (
+    # Repository checkout: ops/backend/app/monitoring/contract.py -> repo root.
+    (4, ("schemas", "monitoring-v1")),
+    # Deployed image: /app/app/monitoring/contract.py -> /app.
+    (2, ("schemas", "monitoring-v1")),
+)
+
+
+def resolve_schema_dir(configured: str | None) -> Path:
+    """Directory holding the canonical monitoring.v1 schema, for *configured*.
+
+    Never raises, reads no global state, and caches nothing: callers that hold a
+    settings object other than the process-wide one (the startup guard validates
+    the instance it is a method of) must be able to ask about *their* value.
+
+    An explicit directory always wins; otherwise the known layouts are tried in
+    order and the first that actually contains the schema is used.
+
+    The indexing here used to assume the repository layout unconditionally, and
+    in the deployed image ``parents[4]`` does not exist — so a container without
+    ``MONITORING_SCHEMA_DIR`` raised ``IndexError`` from inside the request path
+    rather than the ``ContractUnavailable`` that callers handle. That turned a
+    missing-file condition, which is a clean 503, into an unhandled 500.
+    """
+    explicit = (configured or "").strip()
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+
+    here = Path(__file__).resolve()
+    fallback: Path | None = None
+    for depth, parts in _SCHEMA_RELATIVE_CANDIDATES:
+        if depth >= len(here.parents):
+            continue
+        candidate = here.parents[depth].joinpath(*parts)
+        if fallback is None:
+            fallback = candidate
+        if (candidate / "monitoring.v1.schema.json").is_file():
+            return candidate.resolve()
+
+    # Nothing found. Return the most likely location so the caller's
+    # ContractUnavailable names a path an operator can act on.
+    return (fallback or here.parent).resolve()
+
+
 def schema_dir() -> Path:
-    """Directory holding the canonical monitoring.v1 schema."""
-    configured = (get_settings().monitoring_schema_dir or "").strip()
-    if configured:
-        return Path(configured).expanduser().resolve()
-    # ops/backend/app/monitoring/contract.py -> repository root
-    return (Path(__file__).resolve().parents[4] / "schemas" / "monitoring-v1").resolve()
+    """``resolve_schema_dir`` for the process-wide settings."""
+    return resolve_schema_dir(get_settings().monitoring_schema_dir)
 
 
-@lru_cache(maxsize=1)
-def _schema_document() -> dict[str, Any]:
-    directory = schema_dir()
+def load_schema(directory: Path) -> dict[str, Any]:
+    """Read and check the canonical schema in *directory*. Uncached.
+
+    Raises ``ContractUnavailable`` for every failure an operator can fix: the
+    file is missing, it is not JSON, or it publishes a version this build does
+    not implement.
+    """
     path = directory / "monitoring.v1.schema.json"
     if not path.is_file():
         raise ContractUnavailable(
@@ -117,6 +165,25 @@ def _schema_document() -> dict[str, Any]:
             f"this build implements {MONITORING_SCHEMA_VERSION!r} and cannot validate it"
         )
     return document
+
+
+def schema_problem(directory: Path) -> str | None:
+    """Why the schema in *directory* is unusable, or None when it loads.
+
+    The uncached counterpart of ``contract_available`` — the startup guard runs
+    before the cache is warm and must not be answered from a schema some earlier
+    caller loaded from a different directory.
+    """
+    try:
+        load_schema(directory)
+    except ContractUnavailable as exc:
+        return str(exc)
+    return None
+
+
+@lru_cache(maxsize=1)
+def _schema_document() -> dict[str, Any]:
+    return load_schema(schema_dir())
 
 
 @lru_cache(maxsize=1)

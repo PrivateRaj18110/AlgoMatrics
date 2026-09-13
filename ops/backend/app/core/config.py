@@ -14,8 +14,8 @@ Two production safety rules are enforced from here (see ``main.py``, which calls
 
 from __future__ import annotations
 
-from functools import lru_cache
 import os
+from functools import lru_cache
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -65,6 +65,16 @@ class Settings(BaseSettings):
     # Populate later with the Supabase Postgres connection string.
     database_url: str | None = None
     ops_database_url: str | None = None
+
+    # --- database failure bounds (PostgreSQL) ------------------------------
+    # Ceilings, not budgets. Without them an unreachable database makes every
+    # request block until the client gives up, which holds a worker for the
+    # whole time and turns a database outage into total unavailability. With
+    # them, an outage becomes a prompt, retryable refusal.
+    database_connect_timeout_seconds: int = 10
+    database_pool_timeout_seconds: int = 10
+    #: Server-side ceiling on any single statement, in milliseconds.
+    database_statement_timeout_ms: int = 30_000
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
 
@@ -163,6 +173,17 @@ class Settings(BaseSettings):
     operational_event_retention_days: int = 0
     dead_letter_retention_days: int = 0
     session_retention_days: int = 0
+    # monitoring.v1 REJECTED traffic only: quarantine rows and stored raw
+    # rejected request bodies. Owner decision 2, recorded 2026-09-13, selected
+    # 30 days — set in deployment configuration, not defaulted here, so no
+    # environment deletes anything it was not explicitly told to.
+    #
+    # This never touches accepted evidence. Owner decision 1 is INDEFINITE
+    # retention, and `monitoring_evidence` is append-only behind a database
+    # trigger; `monitoring_audit` is the record of every attempt rather than
+    # rejected traffic, so it is out of scope too. See
+    # docs/monitoring/RETENTION_POLICY.md.
+    monitoring_rejected_retention_days: int = 0
     # Heartbeat cadence/state thresholds. AWS does not poll Google; machine
     # health is derived from the age of the latest reported heartbeat. Keep
     # these configurable because VPS/network cadence differs by deployment.
@@ -318,6 +339,42 @@ class Settings(BaseSettings):
                 "OPS_JWT_PUBLIC_KEY. Refusing to serve live telemetry over an "
                 "unauthenticated websocket."
             )
+        # --- monitoring.v1 ---------------------------------------------------
+        # An unconfigured receiver is a coherent state: no publisher credential
+        # means every upload is refused with 401, which is safe, and a
+        # deployment that does not yet receive monitoring.v1 should not be
+        # forced to configure it.
+        #
+        # A *half*-configured receiver is the dangerous one, and it fails
+        # silently: the pod passes its /api/health probe while the monitoring
+        # ingress refuses everything. Both checks below were added after a
+        # production manifest review found exactly that shape — credentials
+        # absent, schema absent from the image, deployment tier unset, and
+        # nothing anywhere that would say so.
+        if self.monitoring_auth_configured:
+            # Imported here rather than at module scope: app.monitoring.contract
+            # reads settings, so a top-level import would be circular.
+            from app.monitoring import contract
+
+            # Resolved from THIS settings object, not the process-wide one: the
+            # guard must judge the configuration it is being asked about, and it
+            # runs before the contract cache is warm.
+            schema_directory = contract.resolve_schema_dir(self.monitoring_schema_dir)
+            if contract.schema_problem(schema_directory) is not None:
+                problems.append(
+                    "Monitoring publisher credentials are configured but the canonical "
+                    f"monitoring.v1 schema could not be loaded from {schema_directory}. "
+                    "The receiver would accept a connection and then refuse every message. "
+                    "Ship schemas/monitoring-v1 in the image or set MONITORING_SCHEMA_DIR."
+                )
+            if not (self.monitoring_deployment_environment or "").strip():
+                problems.append(
+                    "Monitoring publisher credentials are configured but "
+                    "MONITORING_DEPLOYMENT_ENVIRONMENT is unset, so evidence would be "
+                    "stored under the deployment tier 'UNKNOWN'. Evidence is append-only, "
+                    "so that cannot be corrected afterwards."
+                )
+
         storage_backend = self.eod_storage_backend.strip().lower()
         if (
             storage_backend in {"s3", "object", "object-storage", "s3-compatible"}
