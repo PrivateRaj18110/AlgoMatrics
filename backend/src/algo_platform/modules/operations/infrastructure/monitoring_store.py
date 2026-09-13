@@ -21,9 +21,9 @@ Everything the producer sent passes through verbatim. In particular:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
-import json
 from typing import Any
 
 from sqlalchemy import create_engine, text

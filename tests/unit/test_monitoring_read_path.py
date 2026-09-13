@@ -9,10 +9,10 @@ computed from arrival time.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from contextlib import suppress
 from datetime import UTC, datetime
-import json
 from pathlib import Path
 
 import pytest
@@ -110,7 +110,11 @@ TRUST = {"independent_broker": "UNKNOWN", "scope": "fixture", "status": "UNTRUST
 COVERAGE = {"capture_status": "salvaged", "reason": "partial", "status": "INCOMPLETE"}
 SOURCE_AS_OF = {
     "acquired_at_ns": "1789117280359665700",
-    "source_time": {"reason": "no_common_qualified_source_clock", "status": "UNKNOWN", "value": None},
+    "source_time": {
+        "reason": "no_common_qualified_source_clock",
+        "status": "UNKNOWN",
+        "value": None,
+    },
     "valid_at": "per_object_source_cut",
 }
 RUNTIME = ["historical-final/2503001"]
