@@ -28,11 +28,18 @@ import { QualifiedValue } from "@/components/monitoring/QualifiedValue";
 import { Card, EmptyState, PageHeader, SkeletonRows, Table, Td } from "@/components/ui";
 import { useMonitoringSources, useMonitoringState } from "@/lib/hooks";
 import { formatInstant, isQualified, type MonitoringStateItem } from "@/lib/monitoring";
+import { dateTimeLabel } from "@/lib/wallboard";
 
 export function MonitoringPage() {
   const [messageType, setMessageType] = useState<string | null>(null);
   const state = useMonitoringState(messageType ? { message_type: messageType } : {});
   const sources = useMonitoringSources();
+
+  const isUnavailable = Boolean(state.isError || (!state.data && sources.isError));
+  const lastUpdate =
+    state.dataUpdatedAt && state.dataUpdatedAt > 0
+      ? dateTimeLabel(new Date(state.dataUpdatedAt).toISOString())
+      : "UNKNOWN";
 
   const types = useMemo(
     () => [...new Set((state.data?.items ?? []).map((item) => item.message_type))].sort(),
@@ -46,11 +53,33 @@ export function MonitoringPage() {
         description="Observations published by the LLS Monitoring Backend over monitoring.v1. Read-only."
       />
 
-      {state.isLoading ? <SkeletonRows /> : null}
+      {state.isLoading && !state.data && !isUnavailable ? <SkeletonRows /> : null}
+
+      {isUnavailable ? (
+        <Card className="mb-4 border-rose-300 bg-rose-50/50 p-4">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2 text-rose-800">
+              <span className="inline-block h-2 w-2 rounded-full bg-rose-600" />
+              <h3 className="text-sm font-semibold">Monitoring service is not currently available</h3>
+            </div>
+            <p className="text-xs text-slate-600">
+              The monitoring API could not be reached or returned an error. Observations cannot be loaded at this time.
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-6 gap-y-1 font-mono text-xs text-slate-600">
+              <span>
+                API: <span className="font-semibold text-rose-700">unavailable</span>
+              </span>
+              <span>
+                Last successful update: <span className="font-semibold text-slate-700">{lastUpdate}</span>
+              </span>
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       {/* "No data" and "no monitoring database" are different facts, and a
           reader acting on them would do different things. */}
-      {!state.isLoading && state.data && !state.data.configured ? (
+      {!isUnavailable && !state.isLoading && state.data && !state.data.configured ? (
         <Card className="mb-4 border-amber-300 bg-amber-50">
           <p className="text-sm font-semibold text-amber-900">
             Monitoring storage is not configured on this deployment
@@ -90,18 +119,21 @@ export function MonitoringPage() {
         </div>
       ) : null}
 
-      {!state.isLoading && state.data?.configured && state.data.count === 0 ? (
+      {!isUnavailable && !state.isLoading && state.data?.configured && state.data.count === 0 ? (
         <EmptyState
           title="No monitoring messages received"
           body="The receiver is configured and reachable, but the LLS Monitoring Backend has not published anything for this deployment yet."
         />
       ) : null}
 
-      <SourcesCard sources={sources.data} />
-
-      {(state.data?.items ?? []).map((item) => (
-        <MessageCard key={item.message_id} item={item} />
-      ))}
+      {!isUnavailable || state.data ? (
+        <>
+          <SourcesCard sources={sources.data} />
+          {(state.data?.items ?? []).map((item) => (
+            <MessageCard key={item.message_id} item={item} />
+          ))}
+        </>
+      ) : null}
     </div>
   );
 }

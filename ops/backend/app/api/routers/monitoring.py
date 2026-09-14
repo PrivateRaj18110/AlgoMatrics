@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, R
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 
-from app.api.dependencies.dashboard_auth import require_dashboard_viewer
+from app.api.dependencies.dashboard_auth import Viewer, require_dashboard_viewer
 from app.api.dependencies.monitoring_auth import (
     MonitoringAdmin,
     MonitoringPrincipal,
@@ -186,7 +186,7 @@ def _session():
 
 @router.get("/state", summary="Current monitoring state")
 def current_state(
-    _viewer=Depends(require_dashboard_viewer),
+    viewer: Viewer = Depends(require_dashboard_viewer),
     session=Depends(_session),
     message_type: str | None = Query(default=None),
     source_id: str | None = Query(default=None),
@@ -194,13 +194,18 @@ def current_state(
 ) -> dict:
     """Current projections, each carrying the producer's own qualifiers.
 
-    Scoped to this receiver's configured deployment tier. That scoping is a
-    storage boundary applied in the query, not a display filter: a staging
-    observation is never loaded into a production response.
+    Scoped to this receiver's configured deployment tier and viewer's organisation.
     """
     deployment = _deployment()
+    if viewer.organisation_id is None:
+        return {
+            "receiverDeploymentEnvironment": deployment,
+            "count": 0,
+            "items": [],
+        }
     query = select(MonitoringProjection).where(
-        MonitoringProjection.receiver_deployment_environment == deployment
+        MonitoringProjection.receiver_deployment_environment == deployment,
+        MonitoringProjection.organisation_id == viewer.organisation_id,
     )
     if message_type:
         query = query.where(MonitoringProjection.message_type == message_type)
@@ -221,32 +226,30 @@ def current_state(
 @router.get("/evidence/{message_id:path}", summary="One received message, as stored")
 def evidence(
     message_id: str,
-    _viewer=Depends(require_dashboard_viewer),
+    viewer: Viewer = Depends(require_dashboard_viewer),
     session=Depends(_session),
 ) -> dict:
     row = session.get(MonitoringEvidence, message_id)
-    if row is None:
+    if row is None or viewer.organisation_id is None or row.organisation_id != viewer.organisation_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no such message")
     return views.evidence_view(row)
 
 
 @router.get("/history", summary="Evidence history, oldest first")
 def history(
-    _viewer=Depends(require_dashboard_viewer),
+    viewer: Viewer = Depends(require_dashboard_viewer),
     session=Depends(_session),
     message_type: str | None = Query(default=None),
     source_instance: str | None = Query(default=None),
     capture_ref: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> dict:
-    """Every accepted message, oldest first.
-
-    Superseded observations are still here: a projection moving forward never
-    removes the evidence it moved on from, so an outage between two readings
-    stays visible rather than being smoothed over.
-    """
+    """Every accepted message for the viewer's organisation, oldest first."""
+    if viewer.organisation_id is None:
+        return {"count": 0, "items": []}
     query = select(MonitoringEvidence).where(
-        MonitoringEvidence.receiver_deployment_environment == _deployment()
+        MonitoringEvidence.receiver_deployment_environment == _deployment(),
+        MonitoringEvidence.organisation_id == viewer.organisation_id,
     )
     if message_type:
         query = query.where(MonitoringEvidence.message_type == message_type)
@@ -263,11 +266,17 @@ def history(
 
 @router.get("/sources", summary="Ordered-acceptance state per publisher instance")
 def sources(
-    _viewer=Depends(require_dashboard_viewer),
+    viewer: Viewer = Depends(require_dashboard_viewer),
     session=Depends(_session),
 ) -> dict:
-    query = select(MonitoringSequenceState).order_by(
-        MonitoringSequenceState.source_id, MonitoringSequenceState.source_instance
+    if viewer.organisation_id is None:
+        return {"count": 0, "items": []}
+    query = (
+        select(MonitoringSequenceState)
+        .where(MonitoringSequenceState.organisation_id == viewer.organisation_id)
+        .order_by(
+            MonitoringSequenceState.source_id, MonitoringSequenceState.source_instance
+        )
     )
     rows = [views.sequence_view(row) for row in session.execute(query).scalars()]
     return {"count": len(rows), "items": rows}

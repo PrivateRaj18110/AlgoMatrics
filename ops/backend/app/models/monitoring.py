@@ -25,6 +25,7 @@ Postgres and on SQLite in tests.
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
 from sqlalchemy import (
@@ -63,6 +64,9 @@ class MonitoringEvidence(Base):
     #: so a duplicate delivery cannot create a second row even if the application
     #: logic were wrong.
     message_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+
+    #: Tenant partition identity.
+    organisation_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
 
     source_id: Mapped[str] = mapped_column(String(80), nullable=False)
     source_instance: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -114,6 +118,8 @@ class MonitoringEvidence(Base):
     message_json: Mapped[str] = mapped_column(Text, nullable=False)
 
     __table_args__ = (
+        Index("ix_mon_evidence_org_seq", "organisation_id", "source_id", "source_instance", "sequence_ordinal"),
+        Index("ix_mon_evidence_org_type", "organisation_id", "message_type", "generated_at"),
         Index("ix_mon_evidence_instance_seq", "source_id", "source_instance", "sequence_ordinal"),
         Index("ix_mon_evidence_type", "message_type", "generated_at"),
         Index("ix_mon_evidence_received_at", "received_at"),
@@ -138,6 +144,7 @@ class MonitoringSequenceState(Base):
     __tablename__ = "monitoring_sequence_state"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    organisation_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
     source_id: Mapped[str] = mapped_column(String(80), nullable=False)
     source_instance: Mapped[str] = mapped_column(String(80), nullable=False)
 
@@ -162,7 +169,7 @@ class MonitoringSequenceState(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("source_id", "source_instance", name="uq_mon_sequence_instance"),
+        UniqueConstraint("organisation_id", "source_id", "source_instance", name="uq_mon_sequence_instance"),
         Index("ix_mon_sequence_last_seen", "last_seen_at"),
     )
 
@@ -179,6 +186,7 @@ class MonitoringRawRequest(Base):
     __tablename__ = "monitoring_raw_requests"
 
     request_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    organisation_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
     #: The authenticated source, not the one claimed in the body. When a request
     #: is quarantined because its body is untrustworthy, the credential is the
     #: only identity worth recording.
@@ -211,6 +219,7 @@ class MonitoringQuarantine(Base):
 
     quarantine_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     request_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    organisation_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
 
     #: Only where extractable — a message may be quarantined precisely because
     #: its identity or version could not be read.
@@ -254,6 +263,7 @@ class MonitoringProjection(Base):
     __tablename__ = "monitoring_projections"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    organisation_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
 
     receiver_deployment_environment: Mapped[str] = mapped_column(
         String(32), nullable=False, default=UNKNOWN_DEPLOYMENT
@@ -287,12 +297,13 @@ class MonitoringProjection(Base):
     __table_args__ = (
         UniqueConstraint(
             "receiver_deployment_environment",
+            "organisation_id",
             "source_id",
             "message_type",
             "capture_ref",
             name="uq_mon_projection_key",
         ),
-        Index("ix_mon_projection_type", "receiver_deployment_environment", "message_type"),
+        Index("ix_mon_projection_type", "receiver_deployment_environment", "organisation_id", "message_type"),
     )
 
 
@@ -307,6 +318,7 @@ class MonitoringAudit(Base):
     __tablename__ = "monitoring_audit"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    organisation_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     outcome: Mapped[str] = mapped_column(String(32), nullable=False)

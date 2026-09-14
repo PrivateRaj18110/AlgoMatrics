@@ -249,7 +249,10 @@ def monitoring_state(
     """
     deployment = _receiver_deployment(settings)
     items = store.current_state(
-        deployment=deployment, message_type=message_type, limit=limit
+        organisation_id=_tenant.organization_id,
+        deployment=deployment,
+        message_type=message_type,
+        limit=limit,
     )
     return MonitoringStateResponse.model_validate(
         {
@@ -264,7 +267,10 @@ def monitoring_state(
 @router.get("/operations/monitoring/sources", response_model=list[MonitoringSourceRow])
 def monitoring_sources(_tenant: OpsTenant, store: MonitoringDep) -> list[MonitoringSourceRow]:
     """Ordered-acceptance state per publisher instance, refusals included."""
-    return [MonitoringSourceRow.model_validate(row) for row in store.sources()]
+    return [
+        MonitoringSourceRow.model_validate(row)
+        for row in store.sources(organisation_id=_tenant.organization_id)
+    ]
 
 
 @router.get("/operations/monitoring/history", response_model=list[MonitoringEvidenceRow])
@@ -280,6 +286,7 @@ def monitoring_history(
     return [
         MonitoringEvidenceRow.model_validate(row)
         for row in store.history(
+            organisation_id=_tenant.organization_id,
             deployment=_receiver_deployment(settings),
             message_type=message_type,
             source_instance=source_instance,

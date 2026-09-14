@@ -196,4 +196,45 @@ describe("MonitoringPage, against real staging payloads", () => {
     expect(container.querySelectorAll("form").length).toBe(0);
     expect(container.querySelectorAll("input").length).toBe(0);
   });
+
+  it("handles API failure cleanly without infinite skeletons or false health", () => {
+    // When the monitoring API is unavailable (404/500/network error)
+    mockState.mockReturnValue(query(undefined, { isError: true, error: new Error("404 Not Found") }));
+    mockSources.mockReturnValue(query(undefined, { isError: true }));
+    const { container } = renderPage();
+
+    // Must show clear read-only unavailable message
+    expect(screen.getByText("Monitoring service is not currently available")).toBeInTheDocument();
+    expect(screen.getByText("unavailable")).toBeInTheDocument();
+    expect(container.textContent).toContain("Last successful update: UNKNOWN");
+
+    // Must NOT display skeleton loading rows
+    expect(container.querySelector(".animate-pulse")).toBeNull();
+
+    // Must NOT display HEALTHY, LIVE, or 0 observations
+    expect(container.textContent).not.toMatch(/\bHEALTHY\b/);
+    expect(container.textContent).not.toMatch(/\bLIVE\b/);
+    expect(container.textContent).not.toMatch(/0 observations/i);
+    expect(container.textContent).not.toMatch(/No monitoring messages received/i);
+  });
+
+  it("shows stale observations with unavailable warning when a background poll fails", () => {
+    // When previous observations were loaded, but subsequent poll fails
+    mockState.mockReturnValue(
+      query(stagingState, { isError: true, dataUpdatedAt: 1789316089000 }),
+    );
+    mockSources.mockReturnValue(query(stagingSources, { isError: true }));
+    const { container } = renderPage();
+
+    // Must show unavailable banner
+    expect(screen.getByText("Monitoring service is not currently available")).toBeInTheDocument();
+    expect(screen.getByText("unavailable")).toBeInTheDocument();
+    // Must NOT show UNKNOWN for last update since previous timestamp exists
+    expect(container.textContent).not.toContain("Last successful update: UNKNOWN");
+
+    // Previous observations still render
+    for (const item of stagingState.items) {
+      expect(container.textContent).toContain(item.message_type);
+    }
+  });
 });

@@ -25,6 +25,7 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -97,21 +98,29 @@ class MonitoringStore:
     def current_state(
         self,
         *,
+        organisation_id: UUID | str | None = None,
         deployment: str = UNKNOWN_DEPLOYMENT,
         message_type: str | None = None,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
-        """Current projections for one receiver deployment tier.
+        """Current projections for one receiver deployment tier and tenant organisation.
 
         ``deployment`` is **this receiver's** tier, not the producer's
         ``environment`` field — different axes, never derived from one another.
         It is applied in the WHERE clause rather than by the caller, so a staging
         observation cannot leak into a production response through a UI bug.
         """
-        if not self.configured:
+        if not self.configured or not organisation_id:
             return []
-        clauses = ["receiver_deployment_environment = :deployment"]
-        params: dict[str, Any] = {"deployment": deployment, "limit": limit}
+        clauses = [
+            "receiver_deployment_environment = :deployment",
+            "organisation_id = :organisation_id",
+        ]
+        params: dict[str, Any] = {
+            "deployment": deployment,
+            "organisation_id": str(organisation_id),
+            "limit": limit,
+        }
         if message_type:
             clauses.append("message_type = :message_type")
             params["message_type"] = message_type
@@ -133,14 +142,18 @@ class MonitoringStore:
             rows = conn.execute(sql, params).mappings().all()
         return [self._projection(row) for row in rows]
 
-    def sources(self) -> list[dict[str, Any]]:
-        """Ordered-acceptance state per publisher instance.
+    def sources(
+        self,
+        *,
+        organisation_id: UUID | str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Ordered-acceptance state per publisher instance for one tenant organisation.
 
         ``refused_*`` counters are observability. A refused message was never
         accepted and appears nowhere as data — these exist so an operator can see
         a publisher delivering out of order.
         """
-        if not self.configured:
+        if not self.configured or not organisation_id:
             return []
         sql = text(
             """
@@ -149,11 +162,12 @@ class MonitoringStore:
                    refused_gap_count, refused_old_count, observed_gaps,
                    first_seen_at, last_seen_at
             FROM monitoring_sequence_state
+            WHERE organisation_id = :organisation_id
             ORDER BY source_id, source_instance
             """
         )
         with self._connect() as conn:
-            rows = conn.execute(sql).mappings().all()
+            rows = conn.execute(sql, {"organisation_id": str(organisation_id)}).mappings().all()
         return [
             {
                 "source_id": row["source_id"],
@@ -175,16 +189,24 @@ class MonitoringStore:
     def history(
         self,
         *,
+        organisation_id: UUID | str | None = None,
         deployment: str = UNKNOWN_DEPLOYMENT,
         message_type: str | None = None,
         source_instance: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Evidence history, oldest first. Superseded observations are still here."""
-        if not self.configured:
+        if not self.configured or not organisation_id:
             return []
-        clauses = ["receiver_deployment_environment = :deployment"]
-        params: dict[str, Any] = {"deployment": deployment, "limit": limit}
+        clauses = [
+            "receiver_deployment_environment = :deployment",
+            "organisation_id = :organisation_id",
+        ]
+        params: dict[str, Any] = {
+            "deployment": deployment,
+            "organisation_id": str(organisation_id),
+            "limit": limit,
+        }
         for column, value in (
             ("message_type", message_type),
             ("source_instance", source_instance),

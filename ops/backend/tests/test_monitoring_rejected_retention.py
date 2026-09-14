@@ -71,6 +71,7 @@ def _migrate(database_url: str) -> None:
 #: exist purely so their survival can be asserted.
 _SEED = """
     import json
+    import uuid
     from datetime import timedelta
 
     from app.database.session import get_sessionmaker
@@ -97,7 +98,8 @@ _SEED = """
             byte_length=10, body_sha256=str(index).zfill(64), body=b"rejected",
         ))
     s.add(MonitoringEvidence(
-        message_id="mon1/keep", source_id="lls", source_instance="i-1",
+        message_id="mon1/keep", organisation_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+        source_id="lls", source_instance="i-1",
         source_sequence="1", sequence_ordinal=1,
         message_type="monitoring.snapshot", schema_version="monitoring.v1",
         source_environment="offline_fixture",

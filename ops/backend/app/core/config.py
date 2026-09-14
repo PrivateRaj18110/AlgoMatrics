@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
+from uuid import UUID
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -125,6 +126,9 @@ class Settings(BaseSettings):
     # Neither is ever written back out — see `monitoring_token_index`.
     monitoring_source_tokens: str | None = None
     monitoring_source_environments: str | None = None
+    # Source -> Organisation mapping for tenant partitioning.
+    # Format: "source_id:uuid,source_id:uuid"
+    monitoring_source_organisations: str | None = None
     # Where the published JSON Schemas live. Empty = the repository default
     # (<repo>/schemas/monitoring-export/v1). The receiver refuses to accept data
     # it cannot validate, so a wrong path fails loudly rather than silently.
@@ -295,6 +299,36 @@ class Settings(BaseSettings):
         return frozenset(allowed)
 
     @property
+    def monitoring_source_organisation_index(self) -> dict[str, UUID]:
+        """Map source_id -> organisation UUID for the monitoring.v1 ingress.
+
+        Format: MONITORING_SOURCE_ORGANISATIONS="<source_id>:<uuid>[,<source_id>:<uuid>]"
+        Enforces injective mapping (each source_id mapped to exactly one UUID).
+        Invalid UUID strings or duplicate source definitions raise ValueError.
+        """
+        index: dict[str, UUID] = {}
+        for entry in (self.monitoring_source_organisations or "").split(","):
+            entry = entry.strip()
+            if not entry or ":" not in entry:
+                continue
+            source_id, _, org_str = entry.partition(":")
+            source_id, org_str = source_id.strip(), org_str.strip()
+            if not source_id or not org_str:
+                continue
+            if source_id in index:
+                raise ValueError(
+                    f"Duplicate source_id in monitoring_source_organisations: {source_id!r}"
+                )
+            try:
+                org_uuid = UUID(org_str)
+            except (ValueError, AttributeError) as exc:
+                raise ValueError(
+                    f"Invalid UUID for source_id {source_id!r} in monitoring_source_organisations: {org_str!r}"
+                ) from exc
+            index[source_id] = org_uuid
+        return index
+
+    @property
     def monitoring_auth_configured(self) -> bool:
         return bool(self.monitoring_token_index)
 
@@ -374,6 +408,18 @@ class Settings(BaseSettings):
                     "stored under the deployment tier 'UNKNOWN'. Evidence is append-only, "
                     "so that cannot be corrected afterwards."
                 )
+            try:
+                org_index = self.monitoring_source_organisation_index
+                configured_sources = set(self.monitoring_token_index.values())
+                unmapped = configured_sources - set(org_index.keys())
+                if unmapped:
+                    problems.append(
+                        "Monitoring publisher credentials are configured but missing organisation "
+                        f"mapping in MONITORING_SOURCE_ORGANISATIONS for source_id(s): {sorted(unmapped)}. "
+                        "All monitoring data must be partitioned by organisation."
+                    )
+            except ValueError as exc:
+                problems.append(f"Invalid MONITORING_SOURCE_ORGANISATIONS: {exc}")
 
         storage_backend = self.eod_storage_backend.strip().lower()
         if (

@@ -267,6 +267,7 @@ def _ingest(
         quarantine_id = _quarantine(
             session,
             request_id=principal.request_id,
+            organisation_id=principal.organisation_id,
             source_id=principal.source_id,
             reason=exc.reason,
             detail=exc.detail[:2000],
@@ -369,14 +370,14 @@ def _ingest(
     # concurrent deliveries for the same instance both observe the same
     # "last accepted" value, both decide, and both write. SQLite hides this
     # entirely because it serialises writers.
-    _lock_instance(session, source_id, source_instance)
+    _lock_instance(session, principal.organisation_id, source_id, source_instance)
 
     # --- duplicate determination -------------------------------------------
     # Before the ordering rule, deliberately: the contract requires a previously
     # accepted message to be acknowledged again even after later sequences.
     existing = session.get(MonitoringEvidence, message_id)
     if existing is not None:
-        _bump_duplicate(session, source_id, source_instance, received_at)
+        _bump_duplicate(session, principal.organisation_id, source_id, source_instance, received_at)
         _audit(session, "monitoring.ingest", DUPLICATE, principal, message_id)
         return Acknowledgement(
             message_id=message_id,
@@ -388,6 +389,7 @@ def _ingest(
     # --- ordered acceptance -------------------------------------------------
     state = session.execute(
         select(MonitoringSequenceState).where(
+            MonitoringSequenceState.organisation_id == principal.organisation_id,
             MonitoringSequenceState.source_id == source_id,
             MonitoringSequenceState.source_instance == source_instance,
         )
@@ -405,7 +407,7 @@ def _ingest(
         raise SequenceRefused(decision.detail)
 
     # --- immutable evidence -------------------------------------------------
-    evidence = _build_evidence(document, digest, received_at, deployment, ordinal)
+    evidence = _build_evidence(document, digest, received_at, deployment, ordinal, principal.organisation_id)
     session.add(evidence)
     try:
         session.flush()
@@ -423,7 +425,7 @@ def _ingest(
             status=DUPLICATE,
         )
 
-    _advance_sequence(session, state, source_id, source_instance, ordinal, message_id, received_at)
+    _advance_sequence(session, state, principal.organisation_id, source_id, source_instance, ordinal, message_id, received_at)
 
     # --- projection ---------------------------------------------------------
     projections.apply(session, evidence, document)
@@ -441,8 +443,8 @@ def _ingest(
 # --------------------------------------------------------------------------- #
 # Persistence helpers
 # --------------------------------------------------------------------------- #
-def _lock_instance(session: Session, source_id: str, source_instance: str) -> None:
-    """Hold an exclusive lock on one ``(source_id, source_instance)`` until commit.
+def _lock_instance(session: Session, organisation_id: uuid.UUID, source_id: str, source_instance: str) -> None:
+    """Hold an exclusive lock on one ``(organisation_id, source_id, source_instance)`` until commit.
 
     Ordered acceptance is a read-then-write over the instance's accepted state:
     read the last accepted sequence, decide, write the new one. Two concurrent
@@ -467,10 +469,10 @@ def _lock_instance(session: Session, source_id: str, source_instance: str) -> No
         return
     # A stable 64-bit signed key for the pair. The lock namespace is shared
     # process-wide, so the key must not collide with another subsystem's:
-    # hashing the two identifiers together makes an accidental collision as
+    # hashing the identifiers together makes an accidental collision as
     # unlikely as a hash collision.
     digest = hashlib.blake2b(
-        f"monitoring.v1\x00{source_id}\x00{source_instance}".encode(), digest_size=8
+        f"monitoring.v1\x00{organisation_id}\x00{source_id}\x00{source_instance}".encode(), digest_size=8
     ).digest()
     session.execute(
         text("SELECT pg_advisory_xact_lock(:key)"),
@@ -495,6 +497,7 @@ def _build_evidence(
     received_at: datetime,
     deployment: str,
     ordinal: int,
+    organisation_id: uuid.UUID,
 ) -> MonitoringEvidence:
     """Store the message verbatim, plus a cache of fields used for lookup.
 
@@ -508,6 +511,7 @@ def _build_evidence(
 
     return MonitoringEvidence(
         message_id=document["message_id"],
+        organisation_id=organisation_id,
         source_id=document["source_id"],
         source_instance=document["source_instance"],
         # Verbatim. The ACK echoes this string, never a re-rendered form.
@@ -540,6 +544,7 @@ def _build_evidence(
 def _advance_sequence(
     session: Session,
     state: MonitoringSequenceState | None,
+    organisation_id: uuid.UUID,
     source_id: str,
     source_instance: str,
     ordinal: int,
@@ -549,6 +554,7 @@ def _advance_sequence(
     if state is None:
         session.add(
             MonitoringSequenceState(
+                organisation_id=organisation_id,
                 source_id=source_id,
                 source_instance=source_instance,
                 last_accepted_sequence=ordinal,
@@ -590,10 +596,15 @@ def _record_refusal(
 
 
 def _bump_duplicate(
-    session: Session, source_id: str, source_instance: str, received_at: datetime
+    session: Session,
+    organisation_id: uuid.UUID,
+    source_id: str,
+    source_instance: str,
+    received_at: datetime,
 ) -> None:
     state = session.execute(
         select(MonitoringSequenceState).where(
+            MonitoringSequenceState.organisation_id == organisation_id,
             MonitoringSequenceState.source_id == source_id,
             MonitoringSequenceState.source_instance == source_instance,
         )
@@ -632,6 +643,7 @@ def _preserve_request(
     session.add(
         MonitoringRawRequest(
             request_id=principal.request_id,
+            organisation_id=principal.organisation_id,
             source_id=principal.source_id,
             claimed_source_id=fields.get("claimed_source_id"),
             received_at=received_at,
@@ -650,6 +662,7 @@ def _quarantine(
     session: Session,
     *,
     request_id: str,
+    organisation_id: uuid.UUID | None = None,
     source_id: str,
     reason: str,
     detail: str | None,
@@ -662,6 +675,7 @@ def _quarantine(
         MonitoringQuarantine(
             quarantine_id=quarantine_id,
             request_id=request_id,
+            organisation_id=organisation_id,
             source_id=source_id,
             reason=reason,
             detail=detail,
@@ -687,6 +701,7 @@ def _audit(
         MonitoringAudit(
             action=action,
             outcome=outcome,
+            organisation_id=principal.organisation_id,
             source_id=principal.source_id,
             request_id=principal.request_id,
             remote_addr=principal.remote_addr,

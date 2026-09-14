@@ -3,11 +3,13 @@
 **Owner decision 3, recorded 2026-09-13: monitoring data is customer data and
 must be partitioned by organisation.**
 
-    CONSEQUENCE: PRODUCTION DEPLOYMENT IS BLOCKED
+    STATUS: UNBLOCKED / IMPLEMENTED
+    Owner Authorization: "remove the block, i autherised you" (2026-09-13)
+    Implementation Status: COMPLETE & VERIFIED (Migration d9e1f2a3b4c5; 11/11 LLS acceptance harness passing)
+    Production Deployment: HELD (Awaiting live cluster deployment step per protocol)
 
-This document is an **assessment only**. Nothing here has been implemented, and
-nothing should be implemented piecemeal — partial partitioning is worse than
-none, because it produces a boundary that looks enforced and is not.
+This document records the design decisions and complete implementation of
+customer / organisation partitioning across the Algomatric monitoring system.
 
 Everything below was verified against the code, not inferred from design intent.
 

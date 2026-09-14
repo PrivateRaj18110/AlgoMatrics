@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -59,6 +60,7 @@ def apply(
         select(MonitoringProjection).where(
             MonitoringProjection.receiver_deployment_environment
             == evidence.receiver_deployment_environment,
+            MonitoringProjection.organisation_id == evidence.organisation_id,
             MonitoringProjection.source_id == evidence.source_id,
             MonitoringProjection.message_type == evidence.message_type,
             MonitoringProjection.capture_ref == capture_ref,
@@ -71,6 +73,7 @@ def apply(
         session.add(
             MonitoringProjection(
                 receiver_deployment_environment=evidence.receiver_deployment_environment,
+                organisation_id=evidence.organisation_id,
                 source_id=evidence.source_id,
                 message_type=evidence.message_type,
                 capture_ref=capture_ref,
@@ -130,7 +133,12 @@ def _compare(existing: MonitoringProjection, incoming: MonitoringEvidence) -> st
     return "newer" if incoming_at > existing_at else "older_or_same"
 
 
-def rebuild(session: Session, *, deployment_environment: str | None = None) -> int:
+def rebuild(
+    session: Session,
+    *,
+    deployment_environment: str | None = None,
+    organisation_id: UUID | None = None,
+) -> int:
     """Drop and replay every projection from stored evidence.
 
     Deterministic and idempotent: replay order is the producer's order
@@ -144,6 +152,8 @@ def rebuild(session: Session, *, deployment_environment: str | None = None) -> i
         query = query.where(
             MonitoringProjection.receiver_deployment_environment == deployment_environment
         )
+    if organisation_id is not None:
+        query = query.where(MonitoringProjection.organisation_id == organisation_id)
     for row in session.execute(query).scalars():
         session.delete(row)
     session.flush()
@@ -153,6 +163,8 @@ def rebuild(session: Session, *, deployment_environment: str | None = None) -> i
         evidence_query = evidence_query.where(
             MonitoringEvidence.receiver_deployment_environment == deployment_environment
         )
+    if organisation_id is not None:
+        evidence_query = evidence_query.where(MonitoringEvidence.organisation_id == organisation_id)
     evidence_query = evidence_query.order_by(
         MonitoringEvidence.generated_at,
         MonitoringEvidence.source_instance,

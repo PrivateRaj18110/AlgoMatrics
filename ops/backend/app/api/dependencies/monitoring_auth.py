@@ -16,6 +16,7 @@ Nothing here logs, echoes or returns a credential.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from uuid import UUID
 
 from fastapi import Header, HTTPException, Request, status
 
@@ -32,6 +33,7 @@ class MonitoringPrincipal:
     """An authenticated monitoring publisher."""
 
     source_id: str
+    organisation_id: UUID
     #: Environments this credential may publish into. Empty means unrestricted,
     #: in which case the declared environment is still stored and queried
     #: separately — it is simply not additionally constrained by the credential.
@@ -84,10 +86,19 @@ async def require_monitoring_publisher(
     if source_id is None:
         raise _unauthorized()
 
+    try:
+        organisation_id = settings.monitoring_source_organisation_index.get(source_id)
+    except ValueError:
+        raise _unauthorized()
+    if organisation_id is None:
+        # Fail-closed: unmapped publisher source is rejected.
+        raise _unauthorized()
+
     request_id = (x_request_id or "").strip()[:64] or uuid.uuid4().hex
     client = request.client
     return MonitoringPrincipal(
         source_id=source_id,
+        organisation_id=organisation_id,
         environments=settings.monitoring_environment_scope(source_id),
         request_id=request_id,
         remote_addr=client.host if client else None,

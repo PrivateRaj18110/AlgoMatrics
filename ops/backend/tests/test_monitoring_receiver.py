@@ -39,6 +39,8 @@ ADMIN_TOKEN = "receiver-suite-admin-token"  # noqa: S105 - test credential
 OTHER_SOURCE_ID = "lls-other-source"
 OTHER_TOKEN = "receiver-suite-other-token"  # noqa: S105 - test credential
 DEPLOYMENT = "staging"
+TEST_ORG_ID = "00000000-0000-0000-0000-000000000001"
+TEST_ORG_ID_B = "00000000-0000-0000-0000-000000000002"
 
 ENDPOINT = "/api/monitoring/v1/messages"
 
@@ -79,6 +81,8 @@ def database_url() -> str:
 
 @pytest.fixture
 def client(database_url: str, monkeypatch: pytest.MonkeyPatch):
+    from uuid import UUID
+    from app.api.dependencies.dashboard_auth import Viewer, require_dashboard_viewer
     from app.core.config import get_settings
     from app.database import session as session_module
     from app.monitoring import contract
@@ -88,6 +92,10 @@ def client(database_url: str, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("ENVIRONMENT", raising=False)
     monkeypatch.setenv(
         "MONITORING_SOURCE_TOKENS", f"{SOURCE_ID}:{PUBLISH_TOKEN},{OTHER_SOURCE_ID}:{OTHER_TOKEN}"
+    )
+    monkeypatch.setenv(
+        "MONITORING_SOURCE_ORGANISATIONS",
+        f"{SOURCE_ID}:{TEST_ORG_ID},{OTHER_SOURCE_ID}:{TEST_ORG_ID}",
     )
     monkeypatch.setenv("MONITORING_ADMIN_TOKEN", ADMIN_TOKEN)
     monkeypatch.setenv("MONITORING_DEPLOYMENT_ENVIRONMENT", DEPLOYMENT)
@@ -105,7 +113,15 @@ def client(database_url: str, monkeypatch: pytest.MonkeyPatch):
 
     from main import create_app
 
-    with TestClient(create_app()) as test_client:
+    app = create_app()
+    app.dependency_overrides[require_dashboard_viewer] = lambda: Viewer(
+        subject="test-viewer",
+        kind="jwt",
+        permissions=frozenset({"ops:read"}),
+        organisation_id=UUID(TEST_ORG_ID),
+    )
+
+    with TestClient(app) as test_client:
         yield test_client
 
     get_settings.cache_clear()
@@ -881,6 +897,7 @@ def test_receiver_refuses_rather_than_accepting_into_nothing(monkeypatch) -> Non
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("OPS_DATABASE_URL", raising=False)
     monkeypatch.setenv("MONITORING_SOURCE_TOKENS", f"{SOURCE_ID}:{PUBLISH_TOKEN}")
+    monkeypatch.setenv("MONITORING_SOURCE_ORGANISATIONS", f"{SOURCE_ID}:{TEST_ORG_ID}")
     monkeypatch.setenv("RAJ_AGENT_TOKEN", "agent-token")
     monkeypatch.setenv("RAJ_DASHBOARD_TOKEN", "dashboard-token")
     get_settings.cache_clear()
@@ -1005,6 +1022,99 @@ def test_receiver_health_does_not_claim_to_know_lls_health(client: TestClient) -
     assert body["contractAvailable"] is True
     assert body["supportedSchemaVersion"] == "monitoring.v1"
     assert body["ackSchemaVersion"] == "monitoring.ack.v1"
+
+
+def test_unmapped_source_fails_closed_with_401(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A publisher token for a source without an organisation mapping is rejected."""
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("MONITORING_SOURCE_ORGANISATIONS", f"{OTHER_SOURCE_ID}:{TEST_ORG_ID}")
+    get_settings.cache_clear()
+    try:
+        response = post(client, "valid_snapshot.json", token=PUBLISH_TOKEN)
+        assert response.status_code == 401
+    finally:
+        monkeypatch.setenv(
+            "MONITORING_SOURCE_ORGANISATIONS",
+            f"{SOURCE_ID}:{TEST_ORG_ID},{OTHER_SOURCE_ID}:{TEST_ORG_ID}",
+        )
+        get_settings.cache_clear()
+
+
+def test_cross_tenant_state_and_evidence_isolation(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Org A and Org B receive only their own projections and cannot see each other's data."""
+    from uuid import UUID
+    from app.api.dependencies.dashboard_auth import Viewer, require_dashboard_viewer
+    from app.core.config import get_settings
+    from app.monitoring import contract
+    from main import create_app
+
+    # Accept message for Org A
+    accept(client, "valid_snapshot.json")
+
+    # Configure OTHER_SOURCE_ID mapped to Org B
+    monkeypatch.setenv(
+        "MONITORING_SOURCE_TOKENS",
+        f"{SOURCE_ID}:{PUBLISH_TOKEN},{OTHER_SOURCE_ID}:{OTHER_TOKEN}",
+    )
+    monkeypatch.setenv(
+        "MONITORING_SOURCE_ORGANISATIONS",
+        f"{SOURCE_ID}:{TEST_ORG_ID},{OTHER_SOURCE_ID}:{TEST_ORG_ID_B}",
+    )
+    get_settings.cache_clear()
+
+    # Post message for OTHER_SOURCE_ID (Org B)
+    doc_b = fixture_doc("valid_snapshot.json")
+    doc_b["source_id"] = OTHER_SOURCE_ID
+    doc_b["source_instance"] = "inst-b"
+    doc_b["message_id"] = contract.message_identity(doc_b)
+    resp_b = post(client, "", body=contract.canonical_json(doc_b), token=OTHER_TOKEN)
+    assert resp_b.status_code == 200
+
+    # Org A viewer:
+    app_a = create_app()
+    app_a.dependency_overrides[require_dashboard_viewer] = lambda: Viewer(
+        subject="viewer-a",
+        kind="jwt",
+        permissions=frozenset({"ops:read"}),
+        organisation_id=UUID(TEST_ORG_ID),
+    )
+    with TestClient(app_a) as client_a:
+        state_a = client_a.get("/api/monitoring/v1/state").json()
+        assert state_a["count"] == 1
+        assert state_a["items"][0]["source"]["sourceId"] == SOURCE_ID
+        sources_a = client_a.get("/api/monitoring/v1/sources").json()
+        assert sources_a["count"] == 1
+        assert sources_a["items"][0]["sourceId"] == SOURCE_ID
+
+    # Org B viewer:
+    app_b = create_app()
+    app_b.dependency_overrides[require_dashboard_viewer] = lambda: Viewer(
+        subject="viewer-b",
+        kind="jwt",
+        permissions=frozenset({"ops:read"}),
+        organisation_id=UUID(TEST_ORG_ID_B),
+    )
+    with TestClient(app_b) as client_b:
+        state_b = client_b.get("/api/monitoring/v1/state").json()
+        assert state_b["count"] == 1
+        assert state_b["items"][0]["source"]["sourceId"] == OTHER_SOURCE_ID
+        sources_b = client_b.get("/api/monitoring/v1/sources").json()
+        assert sources_b["count"] == 1
+        assert sources_b["items"][0]["sourceId"] == OTHER_SOURCE_ID
+
+        # Cross-tenant evidence check: Org B requesting Org A's message_id returns 404 (not 403)
+        doc_a_id = fixture_doc("valid_snapshot.json")["message_id"]
+        res_cross = client_b.get(f"/api/monitoring/v1/evidence/{doc_a_id}")
+        assert res_cross.status_code == 404
+        assert res_cross.json()["detail"] == "no such message"
+
+    # Unauthenticated / unmapped viewer:
+    app_anon = create_app()
+    with TestClient(app_anon) as client_anon:
+        state_anon = client_anon.get("/api/monitoring/v1/state").json()
+        assert state_anon["count"] == 0
+        assert state_anon["items"] == []
 
 
 # --------------------------------------------------------------------------- #
