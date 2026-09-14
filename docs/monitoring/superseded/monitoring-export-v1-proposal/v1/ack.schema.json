@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://algomatric.in/schemas/monitoring-export/v1/ack.schema.json",
+  "title": "LLS Monitoring Export v1 — acknowledgement",
+  "description": "Response body for POST /api/v1/monitoring/export.\n\nThe acknowledgement is per message, never per batch. Its purpose is to tell the publisher exactly which envelopes it may delete from its durable outbound queue and which it must send again — the single decision that determines whether monitoring data can be silently lost between the two systems.",
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "received_at", "counts", "outcomes"],
+
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^1\\.\\d+$" },
+
+    "batch_id": { "type": "string", "format": "uuid" },
+
+    "received_at": {
+      "$ref": "qualifiers.schema.json#/$defs/Timestamp",
+      "description": "When algomatric.in received the batch. This is the receipt time the dashboard shows alongside generation and source time; it is stamped here, never supplied by the publisher."
+    },
+
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "accepted", "duplicate", "quarantined", "rejected", "failed", "conflict"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "accepted": { "type": "integer", "minimum": 0 },
+        "duplicate": { "type": "integer", "minimum": 0 },
+        "quarantined": { "type": "integer", "minimum": 0 },
+        "rejected": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "conflict": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "outcomes": {
+      "type": "array",
+      "maxItems": 1000,
+      "description": "One entry per message in the batch, including accepted ones. Complete by design: a publisher must be able to reconcile its queue against this list without inference.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["message_id", "status"],
+        "properties": {
+          "message_id": { "type": "string", "format": "uuid" },
+          "status": { "$ref": "#/$defs/OutcomeStatus" },
+          "reason": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Stable machine-readable code, e.g. 'schema_major_unsupported', 'integrity_mismatch', 'revision_conflict'."
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "Human-readable explanation. Never echoes credentials or raw payload content."
+          },
+          "quarantine_id": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Present when status is QUARANTINED or CONFLICT. Retrieves the preserved original through the admin API."
+          }
+        }
+      }
+    },
+
+    "sequence": {
+      "type": "object",
+      "description": "Loss detection feedback for this (source_id, source_instance). Advisory: a gap is never a reason to reject anything, only a fact to record and display.",
+      "additionalProperties": false,
+      "properties": {
+        "last_sequence": { "type": "integer", "minimum": 0 },
+        "gap_detected": { "type": "boolean" },
+        "missing_ranges": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to"],
+            "properties": {
+              "from": { "type": "integer", "minimum": 0 },
+              "to": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+
+    "compatibility": {
+      "type": "object",
+      "description": "Set when the receiver applied version-compatibility handling, so the publisher can see it is running ahead of or behind the dashboard without reading dashboard logs.",
+      "additionalProperties": false,
+      "properties": {
+        "highest_supported_version": { "type": "string", "pattern": "^\\d+\\.\\d+$" },
+        "unknown_fields_ignored": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 512 }
+      }
+    }
+  },
+
+  "$defs": {
+    "OutcomeStatus": {
+      "type": "string",
+      "description": "What happened to one envelope, and what the publisher must do about it.\n\nACCEPTED    — validated and stored. Delete from the outbound queue.\nDUPLICATE   — this message_id was already stored. Delete from the queue; nothing was written twice.\nQUARANTINED — preserved verbatim but not projected to any view, because the receiver could not safely interpret it (unsupported major version, integrity mismatch). Delete from the queue: it is durable here and retrievable by an administrator. Resending will not change the outcome.\nCONFLICT    — stored, and it contradicts an existing record at the same entity revision. Both versions are retained and the conflict is exposed. Delete from the queue.\nREJECTED    — structurally invalid and not storable as a monitoring record. Delete from the queue and raise an alert on the LLS side; retrying will fail identically.\nFAILED      — a transient receiver-side failure. The message was NOT stored. Keep it in the queue and resend it with the same message_id.",
+      "enum": ["ACCEPTED", "DUPLICATE", "QUARANTINED", "CONFLICT", "REJECTED", "FAILED"]
+    }
+  }
+}

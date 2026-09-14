@@ -32,6 +32,7 @@ also accepted for non-browser clients (tests, CLI probes).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from uuid import UUID
 
 from fastapi import Header, HTTPException, status
 
@@ -54,6 +55,7 @@ class Viewer:
     subject: str
     kind: str  # "anonymous" | "token" | "jwt"
     permissions: frozenset[str] = field(default_factory=frozenset)
+    organisation_id: UUID | None = None
 
 
 def extract_credential(
@@ -125,7 +127,19 @@ def _verify_jwt(credential: str) -> Viewer | None:
         parsed_permissions = frozenset(str(part) for part in permissions)
     else:
         parsed_permissions = frozenset()
-    return Viewer(subject=str(claims.get("sub", "")), kind="jwt", permissions=parsed_permissions)
+    org_raw = claims.get("org")
+    org_id: UUID | None = None
+    if org_raw:
+        try:
+            org_id = UUID(str(org_raw))
+        except (ValueError, AttributeError):
+            org_id = None
+    return Viewer(
+        subject=str(claims.get("sub", "")),
+        kind="jwt",
+        permissions=parsed_permissions,
+        organisation_id=org_id,
+    )
 
 
 def authenticate_viewer(credential: str | None) -> Viewer | None:

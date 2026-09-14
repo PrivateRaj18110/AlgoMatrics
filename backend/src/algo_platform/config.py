@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     # Unset in production → 503 fail-closed.
     ops_database_url: str | None = None
 
+    # This deployment's own tier, for reading monitoring.v1 projections:
+    # production / staging / development / test. Deliberately separate from the
+    # LLS `environment` field, which describes market reality (live_trading,
+    # offline_fixture, ...) and says nothing about where this runs. Never
+    # inferred from a message; UNKNOWN when unset.
+    monitoring_deployment_environment: str | None = None
+
     database_url: str
     database_pool_size: int = Field(default=10, ge=1, le=100)
     redis_url: str

@@ -616,7 +616,7 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
   const { data: healthData, isLoading: healthLoading, isError } = useOpsSystemHealth({
     machine_id: activeMid || undefined,
     start: startTime,
-    limit: 500,
+    limit: 2000,
   });
 
   const healthPoints = healthData?.points;
@@ -1036,48 +1036,58 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
             </Card>
           ) : (
             <div className="grid gap-6 lg:grid-cols-2">
-              {/* Chart A: Tick / Feed Health */}
+              {/* 1. Tick Rate */}
               <Card>
                 <div className="mb-2 flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-medium text-slate-900 dark:text-white">
-                      Tick / Feed Health
+                      1. Tick Rate
                     </h3>
-                    <p className="text-xs text-slate-400">Market quote feed tick rate and arrival delay</p>
+                    <p className="text-xs text-slate-400">Market quote feed tick arrival rate</p>
                   </div>
-                  <span className="text-xs font-mono text-slate-400">Ticks/sec · ms</span>
+                  <span className="text-xs font-mono text-slate-400">Ticks/sec (/s)</span>
                 </div>
-                <ResponsiveContainer width="100%" height={240}>
+                <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
                     <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
-                    <YAxis yAxisId="rate" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={45} unit="/s" />
-                    <YAxis
-                      yAxisId="delay"
-                      orientation="right"
-                      stroke="#64748b"
-                      fontSize={11}
-                      tickLine={false}
-                      axisLine={false}
-                      width={45}
-                      unit="ms"
-                    />
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={45} unit="/s" />
                     <Tooltip content={<ChartTooltip />} />
                     <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
                     <Line
-                      yAxisId="rate"
                       type="monotone"
                       dataKey="tick_rate"
-                      name="Tick Rate"
+                      name="Tick Rate (/s)"
                       stroke="#10b981"
                       strokeWidth={1.5}
                       dot={false}
                     />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Card>
+
+              {/* 2. Tick Delay */}
+              <Card>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">
+                      2. Tick Delay
+                    </h3>
+                    <p className="text-xs text-slate-400">Arrival latency between consecutive price updates</p>
+                  </div>
+                  <span className="text-xs font-mono text-slate-400">Milliseconds (ms)</span>
+                </div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={45} unit="ms" />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
                     <Line
-                      yAxisId="delay"
                       type="monotone"
                       dataKey="tick_delay"
-                      name="Tick Delay"
+                      name="Tick Delay (ms)"
                       stroke="#f59e0b"
                       strokeWidth={1.5}
                       dot={false}
@@ -1086,7 +1096,127 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
                 </ResponsiveContainer>
               </Card>
 
-              {/* Chart B: Execution Latency */}
+              {/* 3. Queue Size */}
+              <Card>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">
+                      3. Queue Size
+                    </h3>
+                    <p className="text-xs text-slate-400">Pending telemetry queue depth waiting in buffer</p>
+                  </div>
+                  <span className="text-xs font-mono text-slate-400">Items (count)</span>
+                </div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={40} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                    <Line
+                      type="monotone"
+                      dataKey="queue_size"
+                      name="Queue Size"
+                      stroke="#6366f1"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Card>
+
+              {/* 4. Queue Wait */}
+              <Card>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">
+                      4. Queue Wait
+                    </h3>
+                    <p className="text-xs text-slate-400">Time events spend waiting in queue before dispatch</p>
+                  </div>
+                  <span className="text-xs font-mono text-slate-400">Milliseconds (ms)</span>
+                </div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={45} unit="ms" />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                    <Line
+                      type="monotone"
+                      dataKey="queue_wait"
+                      name="Queue Wait (ms)"
+                      stroke="#ec4899"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Card>
+
+              {/* 5. CPU % */}
+              <Card>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">
+                      5. CPU Utilization
+                    </h3>
+                    <p className="text-xs text-slate-400">Host CPU percentage used by quant runtime</p>
+                  </div>
+                  <span className="text-xs font-mono text-slate-400">Percentage %</span>
+                </div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={40} unit="%" domain={[0, 100]} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                    <Line
+                      type="monotone"
+                      dataKey="cpu"
+                      name="CPU %"
+                      stroke="#0ea5e9"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Card>
+
+              {/* 6. Memory MB */}
+              <Card>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">
+                      6. Memory Allocation
+                    </h3>
+                    <p className="text-xs text-slate-400">RAM heap memory allocated to process</p>
+                  </div>
+                  <span className="text-xs font-mono text-slate-400">Megabytes (MB)</span>
+                </div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={50} unit="MB" />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                    <Line
+                      type="monotone"
+                      dataKey="memory"
+                      name="Memory (MB)"
+                      stroke="#8b5cf6"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Card>
+
+              {/* 7. Execution Latency */}
               <Card>
                 <div className="mb-2 flex items-center justify-between">
                   <div>
@@ -1097,7 +1227,7 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
                   </div>
                   <span className="text-xs font-mono text-slate-400">Avg · P95 · P99 (ms)</span>
                 </div>
-                <ResponsiveContainer width="100%" height={240}>
+                <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
                     <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
@@ -1132,55 +1262,7 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
                 </ResponsiveContainer>
               </Card>
 
-              {/* Chart C: Queue Health */}
-              <Card>
-                <div className="mb-2 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">Queue Health</h3>
-                    <p className="text-xs text-slate-400">Pending telemetry queue depth and dispatch wait time</p>
-                  </div>
-                  <span className="text-xs font-mono text-slate-400">Count · ms</span>
-                </div>
-                <ResponsiveContainer width="100%" height={240}>
-                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
-                    <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
-                    <YAxis yAxisId="size" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={40} />
-                    <YAxis
-                      yAxisId="wait"
-                      orientation="right"
-                      stroke="#64748b"
-                      fontSize={11}
-                      tickLine={false}
-                      axisLine={false}
-                      width={45}
-                      unit="ms"
-                    />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
-                    <Line
-                      yAxisId="size"
-                      type="monotone"
-                      dataKey="queue_size"
-                      name="Queue Size"
-                      stroke="#6366f1"
-                      strokeWidth={1.5}
-                      dot={false}
-                    />
-                    <Line
-                      yAxisId="wait"
-                      type="monotone"
-                      dataKey="queue_wait"
-                      name="Queue Wait"
-                      stroke="#ec4899"
-                      strokeWidth={1.5}
-                      dot={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Card>
-
-              {/* Chart D: API / Execution Quality */}
+              {/* 8. API / Execution Quality */}
               <Card>
                 <div className="mb-2 flex items-center justify-between">
                   <div>
@@ -1191,7 +1273,7 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
                   </div>
                   <span className="text-xs font-mono text-slate-400">Percentage %</span>
                 </div>
-                <ResponsiveContainer width="100%" height={240}>
+                <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
                     <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
@@ -1211,65 +1293,6 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
                       dataKey="signal_fill"
                       name="Signal Fill Rate %"
                       stroke="#3b82f6"
-                      strokeWidth={1.5}
-                      dot={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Card>
-
-              {/* Chart E: Resource Usage */}
-              <Card className="lg:col-span-2">
-                <div className="mb-2 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">
-                      Resource Usage
-                    </h3>
-                    <p className="text-xs text-slate-400">CPU utilization and allocated heap memory</p>
-                  </div>
-                  <span className="text-xs font-mono text-slate-400">CPU % · Memory MB</span>
-                </div>
-                <ResponsiveContainer width="100%" height={240}>
-                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid stroke="rgba(100,116,139,0.15)" vertical={false} />
-                    <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
-                    <YAxis
-                      yAxisId="cpu"
-                      stroke="#64748b"
-                      fontSize={11}
-                      tickLine={false}
-                      axisLine={false}
-                      width={40}
-                      unit="%"
-                      domain={[0, 100]}
-                    />
-                    <YAxis
-                      yAxisId="mem"
-                      orientation="right"
-                      stroke="#64748b"
-                      fontSize={11}
-                      tickLine={false}
-                      axisLine={false}
-                      width={50}
-                      unit="MB"
-                    />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
-                    <Line
-                      yAxisId="cpu"
-                      type="monotone"
-                      dataKey="cpu"
-                      name="CPU %"
-                      stroke="#3b82f6"
-                      strokeWidth={1.5}
-                      dot={false}
-                    />
-                    <Line
-                      yAxisId="mem"
-                      type="monotone"
-                      dataKey="memory"
-                      name="Memory MB"
-                      stroke="#8b5cf6"
                       strokeWidth={1.5}
                       dot={false}
                     />

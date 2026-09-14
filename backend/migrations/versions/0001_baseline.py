@@ -61,6 +61,10 @@ def upgrade() -> None:
         "strategy_deployments",
         "notification_preferences",
         "mobile_devices",
+        # 0015. Without this entry a fresh install fails exactly as the comment
+        # above warns: the baseline creates the table from live model metadata,
+        # and 0015 then raises DuplicateTableError on its own CREATE TABLE.
+        "workspace_tasks",
     }
     baseline_tables = [
         table for table in Base.metadata.sorted_tables if table.name not in later_revision_tables

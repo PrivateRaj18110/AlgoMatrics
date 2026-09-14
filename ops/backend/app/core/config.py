@@ -14,8 +14,9 @@ Two production safety rules are enforced from here (see ``main.py``, which calls
 
 from __future__ import annotations
 
-from functools import lru_cache
 import os
+from functools import lru_cache
+from uuid import UUID
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -65,6 +66,16 @@ class Settings(BaseSettings):
     # Populate later with the Supabase Postgres connection string.
     database_url: str | None = None
     ops_database_url: str | None = None
+
+    # --- database failure bounds (PostgreSQL) ------------------------------
+    # Ceilings, not budgets. Without them an unreachable database makes every
+    # request block until the client gives up, which holds a worker for the
+    # whole time and turns a database outage into total unavailability. With
+    # them, an outage becomes a prompt, retryable refusal.
+    database_connect_timeout_seconds: int = 10
+    database_pool_timeout_seconds: int = 10
+    #: Server-side ceiling on any single statement, in milliseconds.
+    database_statement_timeout_ms: int = 30_000
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
 
@@ -102,6 +113,40 @@ class Settings(BaseSettings):
     raj_agent_token: str | None = None
     raj_agent_tokens: str | None = None
 
+    # --- monitoring.v1 ingress (LLS Monitoring Export) ---------------------
+    # A completely separate protocol from the Raj agent path above. Credentials
+    # are upload-only and scoped to one source_id:
+    #
+    #   MONITORING_SOURCE_TOKENS="lls-monitoring-prod:<token>,lls-mon-stg:<token>"
+    #
+    # Optionally restrict which environments a source may publish into:
+    #
+    #   MONITORING_SOURCE_ENVIRONMENTS="lls-monitoring-prod:production"
+    #
+    # Neither is ever written back out — see `monitoring_token_index`.
+    monitoring_source_tokens: str | None = None
+    monitoring_source_environments: str | None = None
+    # Source -> Organisation mapping for tenant partitioning.
+    # Format: "source_id:uuid,source_id:uuid"
+    monitoring_source_organisations: str | None = None
+    # Where the published JSON Schemas live. Empty = the repository default
+    # (<repo>/schemas/monitoring-export/v1). The receiver refuses to accept data
+    # it cannot validate, so a wrong path fails loudly rather than silently.
+    monitoring_schema_dir: str | None = None
+    # Contract transport limits (docs/DATA_CONTRACT.md §2).
+    monitoring_max_batch_items: int = 1000
+    monitoring_max_body_bytes: int = 8 * 1024 * 1024
+    monitoring_max_envelope_bytes: int = 256 * 1024
+    # Administrative credential for inspecting quarantined material. Kept
+    # separate from every upload credential: the identity that writes
+    # monitoring data must not be able to read what was rejected.
+    monitoring_admin_token: str | None = None
+    # THIS receiver's deployment tier: production / staging / development / test.
+    # Deliberately separate from the LLS `environment` field, which describes
+    # market reality (live_trading, offline_fixture, ...) and says nothing about
+    # where this receiver runs. Never inferred from a message; UNKNOWN when unset.
+    monitoring_deployment_environment: str | None = None
+
     # --- Dashboard (websocket) credential ---------------------------------
     # Viewer credential for `/api/ws`. See app/api/dependencies/dashboard_auth.py
     # for the accepted forms and the documented limitation of a shared token.
@@ -132,6 +177,17 @@ class Settings(BaseSettings):
     operational_event_retention_days: int = 0
     dead_letter_retention_days: int = 0
     session_retention_days: int = 0
+    # monitoring.v1 REJECTED traffic only: quarantine rows and stored raw
+    # rejected request bodies. Owner decision 2, recorded 2026-09-13, selected
+    # 30 days — set in deployment configuration, not defaulted here, so no
+    # environment deletes anything it was not explicitly told to.
+    #
+    # This never touches accepted evidence. Owner decision 1 is INDEFINITE
+    # retention, and `monitoring_evidence` is append-only behind a database
+    # trigger; `monitoring_audit` is the record of every attempt rather than
+    # rejected traffic, so it is out of scope too. See
+    # docs/monitoring/RETENTION_POLICY.md.
+    monitoring_rejected_retention_days: int = 0
     # Heartbeat cadence/state thresholds. AWS does not poll Google; machine
     # health is derived from the age of the latest reported heartbeat. Keep
     # these configurable because VPS/network cadence differs by deployment.
@@ -211,6 +267,78 @@ class Settings(BaseSettings):
         return bool(self.agent_token_index)
 
     @property
+    def monitoring_token_index(self) -> dict[str, str]:
+        """Map ``sha256(token) -> source_id`` for the monitoring.v1 ingress.
+
+        Only digests are kept, so a memory dump or an accidental ``repr`` of the
+        index cannot yield a usable credential. Deliberately separate from
+        ``agent_token_index``: an agent credential must never authorise a
+        monitoring upload, or the two protocols' security boundaries merge.
+        """
+        index: dict[str, str] = {}
+        for entry in (self.monitoring_source_tokens or "").split(","):
+            entry = entry.strip()
+            if not entry or ":" not in entry:
+                continue
+            source_id, _, token = entry.partition(":")
+            source_id, token = source_id.strip(), token.strip()
+            if source_id and token:
+                index[hash_token(token)] = source_id
+        return index
+
+    def monitoring_environment_scope(self, source_id: str) -> frozenset[str]:
+        """Environments ``source_id`` may publish into; empty = unrestricted."""
+        allowed: set[str] = set()
+        for entry in (self.monitoring_source_environments or "").split(","):
+            entry = entry.strip()
+            if not entry or ":" not in entry:
+                continue
+            configured_source, _, environment = entry.partition(":")
+            if configured_source.strip() == source_id and environment.strip():
+                allowed.add(environment.strip().lower())
+        return frozenset(allowed)
+
+    @property
+    def monitoring_source_organisation_index(self) -> dict[str, UUID]:
+        """Map source_id -> organisation UUID for the monitoring.v1 ingress.
+
+        Format: MONITORING_SOURCE_ORGANISATIONS="<source_id>:<uuid>[,<source_id>:<uuid>]"
+        Enforces injective mapping (each source_id mapped to exactly one UUID).
+        Invalid UUID strings or duplicate source definitions raise ValueError.
+        """
+        index: dict[str, UUID] = {}
+        for entry in (self.monitoring_source_organisations or "").split(","):
+            entry = entry.strip()
+            if not entry or ":" not in entry:
+                continue
+            source_id, _, org_str = entry.partition(":")
+            source_id, org_str = source_id.strip(), org_str.strip()
+            if not source_id or not org_str:
+                continue
+            if source_id in index:
+                raise ValueError(
+                    f"Duplicate source_id in monitoring_source_organisations: {source_id!r}"
+                )
+            try:
+                org_uuid = UUID(org_str)
+            except (ValueError, AttributeError) as exc:
+                raise ValueError(
+                    f"Invalid UUID for source_id {source_id!r} in monitoring_source_organisations: {org_str!r}"
+                ) from exc
+            index[source_id] = org_uuid
+        return index
+
+    @property
+    def monitoring_auth_configured(self) -> bool:
+        return bool(self.monitoring_token_index)
+
+    @property
+    def monitoring_admin_digest(self) -> str | None:
+        """sha256 of the administrative credential, or None when unset."""
+        token = (self.monitoring_admin_token or "").strip()
+        return hash_token(token) if token else None
+
+    @property
     def dashboard_auth_configured(self) -> bool:
         return bool(
             (self.raj_dashboard_token or "").strip()
@@ -245,6 +373,54 @@ class Settings(BaseSettings):
                 "OPS_JWT_PUBLIC_KEY. Refusing to serve live telemetry over an "
                 "unauthenticated websocket."
             )
+        # --- monitoring.v1 ---------------------------------------------------
+        # An unconfigured receiver is a coherent state: no publisher credential
+        # means every upload is refused with 401, which is safe, and a
+        # deployment that does not yet receive monitoring.v1 should not be
+        # forced to configure it.
+        #
+        # A *half*-configured receiver is the dangerous one, and it fails
+        # silently: the pod passes its /api/health probe while the monitoring
+        # ingress refuses everything. Both checks below were added after a
+        # production manifest review found exactly that shape — credentials
+        # absent, schema absent from the image, deployment tier unset, and
+        # nothing anywhere that would say so.
+        if self.monitoring_auth_configured:
+            # Imported here rather than at module scope: app.monitoring.contract
+            # reads settings, so a top-level import would be circular.
+            from app.monitoring import contract
+
+            # Resolved from THIS settings object, not the process-wide one: the
+            # guard must judge the configuration it is being asked about, and it
+            # runs before the contract cache is warm.
+            schema_directory = contract.resolve_schema_dir(self.monitoring_schema_dir)
+            if contract.schema_problem(schema_directory) is not None:
+                problems.append(
+                    "Monitoring publisher credentials are configured but the canonical "
+                    f"monitoring.v1 schema could not be loaded from {schema_directory}. "
+                    "The receiver would accept a connection and then refuse every message. "
+                    "Ship schemas/monitoring-v1 in the image or set MONITORING_SCHEMA_DIR."
+                )
+            if not (self.monitoring_deployment_environment or "").strip():
+                problems.append(
+                    "Monitoring publisher credentials are configured but "
+                    "MONITORING_DEPLOYMENT_ENVIRONMENT is unset, so evidence would be "
+                    "stored under the deployment tier 'UNKNOWN'. Evidence is append-only, "
+                    "so that cannot be corrected afterwards."
+                )
+            try:
+                org_index = self.monitoring_source_organisation_index
+                configured_sources = set(self.monitoring_token_index.values())
+                unmapped = configured_sources - set(org_index.keys())
+                if unmapped:
+                    problems.append(
+                        "Monitoring publisher credentials are configured but missing organisation "
+                        f"mapping in MONITORING_SOURCE_ORGANISATIONS for source_id(s): {sorted(unmapped)}. "
+                        "All monitoring data must be partitioned by organisation."
+                    )
+            except ValueError as exc:
+                problems.append(f"Invalid MONITORING_SOURCE_ORGANISATIONS: {exc}")
+
         storage_backend = self.eod_storage_backend.strip().lower()
         if (
             storage_backend in {"s3", "object", "object-storage", "s3-compatible"}

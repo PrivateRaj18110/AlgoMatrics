@@ -150,8 +150,8 @@ def test_metrics_and_trades_are_persisted_not_dropped(database: str) -> None:
         """
         from app.repositories import metrics_repo, trades_repo
         print(json.dumps({
-            "metrics_repo": type(metrics_repo).__name__,
-            "trades_repo": type(trades_repo).__name__,
+            "metrics_repo": metrics_repo.__class__.__name__,
+            "trades_repo": trades_repo.__class__.__name__,
         }))
         """,
         database,

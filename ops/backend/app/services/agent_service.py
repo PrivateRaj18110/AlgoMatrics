@@ -235,7 +235,19 @@ def _payload_summary(data: dict[str, Any], *, limit: int = 240) -> str | None:
 
 
 def _symbol(data: dict[str, Any]) -> str | None:
-    value = data.get("symbol") or data.get("instrument") or data.get("ticker")
+    inner = data.get("payload") if isinstance(data.get("payload"), dict) else {}
+    value = (
+        data.get("symbol")
+        or data.get("underlying_symbol")
+        or data.get("option_symbol")
+        or data.get("instrument")
+        or data.get("ticker")
+        or inner.get("symbol")
+        or inner.get("underlying_symbol")
+        or inner.get("option_symbol")
+        or inner.get("instrument")
+        or inner.get("ticker")
+    )
     return str(value) if value else None
 
 
@@ -399,21 +411,26 @@ async def _handle_trade(machine: str, strategy: str, data: dict[str, Any],
                         env_id: str | None = None, mid: str | None = None,
                         account: str | None = None, session_id: str | None = None,
                         sequence_id: int | None = None, event_time: str | None = None) -> None:
-    action = data.get("action", "close")
-    pnl = float(data.get("pnl", 0.0))
-    direction = str(data.get("direction", "")).upper()
+    inner = data.get("payload") if isinstance(data.get("payload"), dict) else {}
+    strat = strategy if strategy and strategy != "unknown" else (
+        data.get("strategy") or data.get("strategy_name") or inner.get("strategy") or inner.get("strategy_name") or "unknown"
+    )
+    action = str(data.get("action") or inner.get("action") or "close")
+    pnl_val = data.get("pnl") if data.get("pnl") is not None else inner.get("pnl", 0.0)
+    pnl = float(pnl_val or 0.0)
+    direction = str(data.get("direction") or inner.get("direction") or "").upper()
     severity = "warning" if action in ("rejected", "cancelled") else "info"
     now = event_time or _now_iso()
     _touch_machine(mid, {"lastEvent": now, "lastTrade": now})
-    await _emit_event("trade", severity, f"{machine} · {strategy}",
-                      f"Trade {action} {direction} {data.get('symbol', '')} · PnL {pnl:+.0f}",
+    await _emit_event("trade", severity, f"{machine} · {strat}",
+                      f"Trade {action} {direction} {_symbol(data) or ''} · PnL {pnl:+.0f}",
                       envelope_id=env_id, machine_id=mid, event_type="trade",
-                      strategy=strategy, symbol=_symbol(data), session_id=session_id,
+                      strategy=strat, symbol=_symbol(data), session_id=session_id,
                       sequence_id=sequence_id, payload_summary=_payload_summary(data),
                       event_time=event_time)
-    _log("strategy", "info", strategy,
-         f"trade() {data.get('symbol', '')} {action} pnl={pnl}", envelope_id=env_id, machine_id=mid)
-    trade = _persist_trade(machine, strategy, data, env_id, mid, account, event_time=event_time)
+    _log("strategy", "info", strat,
+         f"trade() {_symbol(data) or ''} {action} pnl={pnl}", envelope_id=env_id, machine_id=mid)
+    trade = _persist_trade(machine, strat, data, env_id, mid, account, event_time=event_time)
     if trade is not None:
         await _broadcast_trade(trade)
 
@@ -422,7 +439,11 @@ def _persist_trade(machine: str, strategy: str, data: dict[str, Any],
                    env_id: str | None, mid: str | None, account: str | None,
                    event_time: str | None = None) -> dict | None:
     """Append a trade to the blotter (open/close/cancelled/rejected only)."""
-    action = str(data.get("action", "close"))
+    inner = data.get("payload") if isinstance(data.get("payload"), dict) else {}
+    strat = strategy if strategy and strategy != "unknown" else (
+        data.get("strategy") or data.get("strategy_name") or inner.get("strategy") or inner.get("strategy_name") or "unknown"
+    )
+    action = str(data.get("action") or inner.get("action") or "close")
     status = _TRADE_STATUS.get(action)
     if status is None:  # modify / pending are not blotter rows
         return None
@@ -430,17 +451,35 @@ def _persist_trade(machine: str, strategy: str, data: dict[str, Any],
         for name in (key, *alts):
             if name in data and data[name] is not None:
                 return data[name]
+            if name in inner and inner[name] is not None:
+                return inner[name]
         return None
+
+    raw_dir = str(
+        data.get("direction")
+        or data.get("strategy_direction")
+        or data.get("side")
+        or inner.get("direction")
+        or inner.get("strategy_direction")
+        or inner.get("side")
+        or "long"
+    ).upper()
+    direction = "long" if raw_dir in ("BUY", "LONG") else ("short" if raw_dir in ("SELL", "SHORT") else raw_dir.lower())
 
     trade = {
         "id": _next_id("trd"), "envelope_id": env_id, "time": event_time or _now_iso(),
-        "strategy": strategy, "machine": machine, "machine_id": mid,
-        "broker": data.get("broker") or "", "account": account or "",
-        "symbol": data.get("symbol", ""), "direction": str(data.get("direction", "long")).lower(),
-        "action": action, "entry": _present("entry"), "exit": _present("exit"),
-        "quantity": _present("quantity"), "pnl": _present("pnl"),
-        "latencyMs": _present("latencyMs", "latency_ms"),
-        "durationSec": _present("durationSec", "duration_sec"),
+        "strategy": strat, "machine": machine, "machine_id": mid,
+        "broker": str(data.get("broker") or inner.get("broker") or ""),
+        "account": str(account or data.get("account") or inner.get("account") or ""),
+        "symbol": str(_symbol(data) or ""),
+        "direction": direction,
+        "action": action,
+        "entry": _present("entry", "entry_price", "option_entry_price", "price") or 0.0,
+        "exit": _present("exit", "exit_price", "option_exit_price"),
+        "quantity": _present("quantity", "qty", "size") or 0.0,
+        "pnl": _present("pnl", "net_pnl", "realized_pnl", "profit") or 0.0,
+        "latencyMs": _present("latencyMs", "latency_ms", "latency") or 0.0,
+        "durationSec": _present("durationSec", "duration_sec", "duration", "holding_seconds") or 0,
         "status": status,
     }
     trades_repo.insert(trade)
@@ -556,6 +595,10 @@ async def _handle_phase3_operational(
     event_time: str | None = None,
 ) -> None:
     """Persist/broadcast a Phase 3 observational telemetry event."""
+    inner = data.get("payload") if isinstance(data.get("payload"), dict) else {}
+    strat = strategy if strategy and strategy != "unknown" else (
+        data.get("strategy") or data.get("strategy_name") or inner.get("strategy") or inner.get("strategy_name") or "unknown"
+    )
     now = event_time or _now_iso()
     machine_changes: dict[str, Any] = {"lastEvent": now}
     if kind == "system_status":
@@ -593,12 +636,12 @@ async def _handle_phase3_operational(
     await _emit_event(
         _event_category(kind, data),
         _coerce_severity(data.get("severity"), "warning" if kind == "risk" else "info"),
-        f"{machine} · {strategy}",
+        f"{machine} · {strat}",
         _event_message(kind, data),
         envelope_id=env_id,
         machine_id=mid,
         event_type=str(kind),
-        strategy=strategy,
+        strategy=strat,
         symbol=_symbol(data),
         session_id=session_id,
         sequence_id=sequence_id,

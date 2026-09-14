@@ -52,6 +52,7 @@ const GLOBAL_NAV: NavItem[] = [
     icon: "M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z",
   },
   { to: "/app/market-update", label: "Market Update", icon: "M4 20V10M10 20V4M16 20v-8M22 20H2M2 4l5 3 5-5 5 4 5-2" },
+  { to: "/app/heatmap", label: "Heatmap", icon: "M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z" },
   {
     to: "/app/market-intelligence",
     label: "Market Intelligence",
@@ -59,6 +60,18 @@ const GLOBAL_NAV: NavItem[] = [
   },
   { to: "/app/audit-log", label: "Audit Log", icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
   { to: "/app/system-health", label: "System Health", icon: "M22 12h-4l-3 9L9 3l-3 9H2" },
+  // Full-screen operations wallboard. Routed outside AppLayout on purpose, so
+  // following this entry leaves the sidebar behind; the page carries its own
+  // EXIT control back to the dashboard.
+  { to: "/app/wallboard", label: "Wallboard", icon: "M2 4h20v12H2zM8 20h8M12 16v4" },
+  // monitoring.v1 from the LLS Monitoring Backend. Separate entry from
+  // System Health, which shows the Raj agent telemetry — two independent
+  // sources, and merging them in the sidebar would imply they agree.
+  {
+    to: "/app/lls-monitoring",
+    label: "LLS Monitoring",
+    icon: "M3 12h4l3 8 4-16 3 8h4",
+  },
   { to: "/app/settings", label: "Settings", icon: "M12 15a3 3 0 100-6 3 3 0 000 6z" },
 ];
 

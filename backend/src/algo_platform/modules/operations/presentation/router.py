@@ -8,8 +8,12 @@ from fastapi import APIRouter, Depends, Query
 from algo_platform.api.dependencies.core import SettingsDep
 from algo_platform.api.dependencies.tenant import TenantContext, require_permission
 from algo_platform.modules.operations.application.service import OperationsService
+from algo_platform.modules.operations.infrastructure.monitoring_store import MonitoringStore
 from algo_platform.modules.operations.infrastructure.telemetry_store import TelemetryStore
 from algo_platform.modules.operations.presentation.schemas import (
+    MonitoringEvidenceRow,
+    MonitoringSourceRow,
+    MonitoringStateResponse,
     OpsAnalytics,
     OpsEvent,
     OpsMachine,
@@ -35,6 +39,18 @@ def get_operations_service(settings: SettingsDep) -> OperationsService:
 
 
 OpsDep = Annotated[OperationsService, Depends(get_operations_service)]
+
+
+def get_monitoring_store(settings: SettingsDep) -> MonitoringStore:
+    """Read-only access to the monitoring.v1 projections written by ops-api.
+
+    A separate store from the agent telemetry one: the two ingest protocols
+    are independent and must not be queried as if they were one dataset.
+    """
+    return MonitoringStore(settings.ops_database_url)
+
+
+MonitoringDep = Annotated[MonitoringStore, Depends(get_monitoring_store)]
 
 
 @router.get("/operations/overview", response_model=OpsOverview)
@@ -177,7 +193,7 @@ def operations_system_health(
     machine_id: str | None = Query(default=None),
     start: str | None = Query(default=None),
     end: str | None = Query(default=None),
-    limit: int = Query(500, ge=1, le=1000),
+    limit: int = Query(1000, ge=1, le=5000),
 ) -> SystemHealthResponse:
     start_dt = None
     end_dt = None
@@ -198,3 +214,82 @@ def operations_system_health(
         limit=limit,
     )
     return SystemHealthResponse.model_validate(result)
+
+
+# --------------------------------------------------------------------------- #
+# monitoring.v1 — read-only views over what LLS published
+#
+# Observational only. No endpoint below writes, acknowledges or resolves
+# anything: the platform reads projections the ops-api receiver built, and the
+# receiver itself has no path back into LLS.
+# --------------------------------------------------------------------------- #
+def _receiver_deployment(settings: SettingsDep) -> str:
+    """This deployment's own tier.
+
+    Never derived from the producer's `environment` field, which describes
+    market reality and says nothing about where the receiver runs.
+    """
+    configured = (getattr(settings, "monitoring_deployment_environment", "") or "").strip()
+    return configured or "UNKNOWN"
+
+
+@router.get("/operations/monitoring/state", response_model=MonitoringStateResponse)
+def monitoring_state(
+    _tenant: OpsTenant,
+    store: MonitoringDep,
+    settings: SettingsDep,
+    message_type: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+) -> MonitoringStateResponse:
+    """Current monitoring state, with every producer object intact.
+
+    `configured` is reported explicitly so the UI can distinguish "no monitoring
+    data has arrived" from "this deployment has no monitoring database" — two
+    very different things that an empty list alone conflates.
+    """
+    deployment = _receiver_deployment(settings)
+    items = store.current_state(
+        organisation_id=_tenant.organization_id,
+        deployment=deployment,
+        message_type=message_type,
+        limit=limit,
+    )
+    return MonitoringStateResponse.model_validate(
+        {
+            "receiver_deployment_environment": deployment,
+            "configured": store.configured,
+            "count": len(items),
+            "items": items,
+        }
+    )
+
+
+@router.get("/operations/monitoring/sources", response_model=list[MonitoringSourceRow])
+def monitoring_sources(_tenant: OpsTenant, store: MonitoringDep) -> list[MonitoringSourceRow]:
+    """Ordered-acceptance state per publisher instance, refusals included."""
+    return [
+        MonitoringSourceRow.model_validate(row)
+        for row in store.sources(organisation_id=_tenant.organization_id)
+    ]
+
+
+@router.get("/operations/monitoring/history", response_model=list[MonitoringEvidenceRow])
+def monitoring_history(
+    _tenant: OpsTenant,
+    store: MonitoringDep,
+    settings: SettingsDep,
+    message_type: str | None = Query(default=None),
+    source_instance: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[MonitoringEvidenceRow]:
+    """Immutable evidence, oldest first. Superseded observations are still listed."""
+    return [
+        MonitoringEvidenceRow.model_validate(row)
+        for row in store.history(
+            organisation_id=_tenant.organization_id,
+            deployment=_receiver_deployment(settings),
+            message_type=message_type,
+            source_instance=source_instance,
+            limit=limit,
+        )
+    ]

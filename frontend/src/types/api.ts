@@ -785,6 +785,9 @@ export interface OpsMachine {
   last_successful_upload: string | null;
   queue_depth: number | null;
   oldest_pending_age_sec: number | null;
+  transport_state?: string | null;
+  internet_ms?: number | null;
+  broker_ping_ms?: number | null;
 }
 
 export interface OpsEvent {
@@ -973,6 +976,14 @@ export interface SystemHealthPoint {
   cpu_usage_pct: number;
   memory_mb: number;
   status: string;
+  // The three fields below are NOT duplicates of the three above. Those are
+  // declared on the server with non-optional defaults (`api_success_pct = 100.0`,
+  // `cpu_usage_pct = 0.0`, `signal_fill_rate_pct = 0.0`), so an agent that never
+  // reported a metric arrives here as a confident 100%. These twins carry the
+  // underlying NULL through instead, and are the only version safe to display.
+  api_success_rate?: number | null;
+  signal_fill_rate?: number | null;
+  cpu_usage?: number | null;
 }
 
 export interface SystemHealthResponse {
@@ -982,6 +993,7 @@ export interface SystemHealthResponse {
   current_execution_status: string;
   current_health_status: string | null;
   last_health_timestamp: string | null;
+  latest?: SystemHealthPoint | null;
   points: SystemHealthPoint[];
 }
 

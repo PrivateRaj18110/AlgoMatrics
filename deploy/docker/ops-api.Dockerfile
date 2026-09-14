@@ -14,6 +14,22 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 # Copy application source.
 COPY ops/backend .
 
+# The canonical monitoring.v1 schema, which the receiver refuses to accept any
+# message without.
+#
+# It lives at the repository root, outside ops/backend, so the COPY above does
+# not bring it. Without it the container has no contract to validate against and
+# every monitoring message is refused — while /api/health, which the liveness
+# and readiness probes use, keeps reporting the pod healthy. The failure is
+# therefore silent, which is why the schema ships explicitly rather than being
+# left to a path fallback.
+#
+# Byte-for-byte: message_id is a content address over canonical JSON and the
+# request digest is a SHA-256 of exact bytes, so any rewriting here would break
+# both. `.gitattributes` marks this tree -text for the same reason, and COPY
+# preserves the bytes.
+COPY schemas/monitoring-v1 ./schemas/monitoring-v1
+
 # Run as a non-root user.
 RUN useradd --create-home appuser
 USER appuser

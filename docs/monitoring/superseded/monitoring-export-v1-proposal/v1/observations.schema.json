@@ -1,0 +1,613 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://algomatric.in/schemas/monitoring-export/v1/observations.schema.json",
+  "title": "LLS Monitoring Export v1 — observation kinds",
+  "description": "The monitored facts carried inside an envelope, discriminated by `kind`.\n\nTwo conventions run through every kind:\n\n1. Values the dashboard must reason about structurally (severity, reconciliation state, latency interval names) are closed enums. Values that belong to LLS's own vocabulary (order state, strategy state, feed state) are QualifiedString with the source token preserved — the dashboard renders what LLS said rather than mapping it into a vocabulary of its own.\n\n2. Nothing here is computed by the receiver. Percentages, latencies, counts and root causes are exported already-computed or exported as UNKNOWN.",
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "qualifiers", "payload"],
+
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "core_status",
+        "feed_status",
+        "processing_status",
+        "strategy_evaluation",
+        "risk_evaluation",
+        "order_lifecycle",
+        "fill",
+        "position",
+        "trade_timeline",
+        "latency_summary",
+        "error",
+        "incident",
+        "reconciliation",
+        "coverage_report"
+      ]
+    },
+    "qualifiers": { "$ref": "qualifiers.schema.json#/$defs/Qualifiers" },
+    "payload": { "type": "object" }
+  },
+
+  "allOf": [
+    { "if": { "properties": { "kind": { "const": "core_status" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/CoreStatus" } } } },
+    { "if": { "properties": { "kind": { "const": "feed_status" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/FeedStatus" } } } },
+    { "if": { "properties": { "kind": { "const": "processing_status" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ProcessingStatus" } } } },
+    { "if": { "properties": { "kind": { "const": "strategy_evaluation" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/StrategyEvaluation" } } } },
+    { "if": { "properties": { "kind": { "const": "risk_evaluation" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/RiskEvaluation" } } } },
+    { "if": { "properties": { "kind": { "const": "order_lifecycle" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/OrderLifecycle" } } } },
+    { "if": { "properties": { "kind": { "const": "fill" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/Fill" } } } },
+    { "if": { "properties": { "kind": { "const": "position" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/Position" } } } },
+    { "if": { "properties": { "kind": { "const": "trade_timeline" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/TradeTimeline" } } } },
+    { "if": { "properties": { "kind": { "const": "latency_summary" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/LatencySummary" } } } },
+    { "if": { "properties": { "kind": { "const": "error" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ErrorObservation" } } } },
+    { "if": { "properties": { "kind": { "const": "incident" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/Incident" } } } },
+    { "if": { "properties": { "kind": { "const": "reconciliation" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/Reconciliation" } } } },
+    { "if": { "properties": { "kind": { "const": "coverage_report" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/CoverageReport" } } } }
+  ],
+
+  "$defs": {
+
+    "Severity": {
+      "type": "string",
+      "enum": ["INFO", "WARNING", "ERROR", "CRITICAL", "UNKNOWN"]
+    },
+
+    "ComponentState": {
+      "type": "object",
+      "description": "Qualified health of one named component, as determined by the Monitoring Backend. algomatric.in displays this verdict; it never forms one of its own from the raw telemetry.",
+      "additionalProperties": false,
+      "required": ["name", "state"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 128 },
+        "state": {
+          "$ref": "qualifiers.schema.json#/$defs/QualifiedString",
+          "description": "The health token LLS uses. Kept unmapped so 'DEGRADED_FEED_ONLY' does not become 'degraded'."
+        },
+        "detail": { "type": "string", "maxLength": 512 },
+        "since": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" }
+      }
+    },
+
+    "CoreStatus": {
+      "type": "object",
+      "description": "The executive monitoring view. Answers 'what does the Monitoring Backend say about the system right now', including when it says it does not know.",
+      "additionalProperties": false,
+      "required": ["core", "observer", "monitoring"],
+      "properties": {
+        "core": { "$ref": "#/$defs/ComponentState" },
+        "observer": { "$ref": "#/$defs/ComponentState" },
+        "monitoring": { "$ref": "#/$defs/ComponentState" },
+        "components": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ComponentState" },
+          "maxItems": 128,
+          "description": "Additional named components beyond the three headline ones."
+        },
+        "active_incidents": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "latest_source_update": {
+          "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp",
+          "description": "Most recent moment LLS observed anything at all. A dashboard showing a recent receipt time but an old value here is looking at a stalled source."
+        }
+      }
+    },
+
+    "FeedStatus": {
+      "type": "object",
+      "description": "Market data feed health as observed by LLS.",
+      "additionalProperties": false,
+      "required": ["feed_id", "connection_state"],
+      "properties": {
+        "feed_id": { "type": "string", "maxLength": 128 },
+        "connection_state": { "$ref": "qualifiers.schema.json#/$defs/QualifiedString" },
+        "feed_state": { "$ref": "qualifiers.schema.json#/$defs/QualifiedString" },
+        "instruments": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 64 },
+          "maxItems": 512,
+          "description": "Instruments this status covers. An instrument absent here is not implicitly healthy."
+        },
+        "sequence_gaps": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "reconnects": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "messages_per_second": { "$ref": "qualifiers.schema.json#/$defs/QualifiedNumber" },
+        "feed_latency_ms": { "$ref": "qualifiers.schema.json#/$defs/QualifiedDurationMs" },
+        "last_message_at": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" },
+        "authority": { "$ref": "qualifiers.schema.json#/$defs/SourceAuthority" }
+      }
+    },
+
+    "ProcessingStatus": {
+      "type": "object",
+      "description": "Ingest-to-state pipeline counters inside LLS. Counters are cumulative within `window`, never rates the dashboard has to derive.",
+      "additionalProperties": false,
+      "required": ["component"],
+      "properties": {
+        "component": { "type": "string", "maxLength": 128 },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end"],
+          "properties": {
+            "start": { "$ref": "qualifiers.schema.json#/$defs/Timestamp" },
+            "end": { "$ref": "qualifiers.schema.json#/$defs/Timestamp" }
+          }
+        },
+        "received": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "parsed": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "normalized": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "accepted": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "processing_errors": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "telemetry_gaps": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "processing_latency_ms": { "$ref": "qualifiers.schema.json#/$defs/QualifiedDurationMs" }
+      }
+    },
+
+    "StrategyEvaluation": {
+      "type": "object",
+      "description": "Observational strategy information only. The contract deliberately carries no parameters, thresholds or controls — there is nothing here that a UI could turn into a knob.",
+      "additionalProperties": false,
+      "required": ["strategy"],
+      "properties": {
+        "strategy": { "type": "string", "maxLength": 128 },
+        "instrument": { "type": "string", "maxLength": 64 },
+        "state": { "$ref": "qualifiers.schema.json#/$defs/QualifiedString" },
+        "evaluations": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "signals_emitted": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "signal_id": { "type": "string", "maxLength": 128 },
+        "signal_time": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" },
+        "signal_lineage": {
+          "type": "array",
+          "maxItems": 64,
+          "description": "The inputs this signal was derived from, as already established by LLS.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "ref"],
+            "properties": {
+              "kind": { "type": "string", "maxLength": 64 },
+              "ref": { "type": "string", "maxLength": 256 },
+              "observed_at": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" }
+            }
+          }
+        },
+        "input_coverage": { "$ref": "qualifiers.schema.json#/$defs/Coverage" },
+        "evaluation_latency_ms": { "$ref": "qualifiers.schema.json#/$defs/QualifiedDurationMs" },
+        "errors": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" }
+      }
+    },
+
+    "RiskEvaluation": {
+      "type": "object",
+      "description": "A risk decision as recorded by LLS. Read-only: no field here can be written back, and the dashboard exposes no control that changes risk.",
+      "additionalProperties": false,
+      "required": ["decision"],
+      "properties": {
+        "signal_id": { "type": "string", "maxLength": 128 },
+        "order_id": { "type": "string", "maxLength": 128 },
+        "strategy": { "type": "string", "maxLength": 128 },
+        "instrument": { "type": "string", "maxLength": 64 },
+        "decision": {
+          "$ref": "qualifiers.schema.json#/$defs/QualifiedString",
+          "description": "LLS's own decision token (e.g. 'APPROVED', 'REJECTED_MAX_EXPOSURE'). UNKNOWN when risk did not reach a verdict — never defaulted to approved or rejected."
+        },
+        "rules_evaluated": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "rule_detail": { "type": "string", "maxLength": 512 },
+        "risk_latency_ms": { "$ref": "qualifiers.schema.json#/$defs/QualifiedDurationMs" },
+        "errors": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" }
+      }
+    },
+
+    "OrderLifecycle": {
+      "type": "object",
+      "description": "The state of one order across its identities. All three identity layers are carried separately: collapsing them loses the ability to show an order that LLS believes exists but the broker never acknowledged.",
+      "additionalProperties": false,
+      "required": ["logical_order_id", "state"],
+      "properties": {
+        "logical_order_id": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "LLS's intent-level identity. Always present."
+        },
+        "physical_order_id": {
+          "$ref": "qualifiers.schema.json#/$defs/QualifiedString",
+          "description": "Identity of the concrete submission. UNKNOWN before submission, not empty string."
+        },
+        "broker_order_id": {
+          "$ref": "qualifiers.schema.json#/$defs/QualifiedString",
+          "description": "Broker's identity, when the broker supplied one. UNKNOWN is a meaningful and common answer."
+        },
+        "parent_order_id": { "type": "string", "maxLength": 128 },
+        "child_order_ids": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 128 },
+          "maxItems": 256
+        },
+        "strategy": { "type": "string", "maxLength": 128 },
+        "instrument": { "type": "string", "maxLength": 64 },
+        "side": { "$ref": "qualifiers.schema.json#/$defs/QualifiedString" },
+        "quantity": { "$ref": "qualifiers.schema.json#/$defs/QualifiedNumber" },
+        "filled_quantity": { "$ref": "qualifiers.schema.json#/$defs/QualifiedNumber" },
+        "price": { "$ref": "qualifiers.schema.json#/$defs/QualifiedNumber" },
+        "state": {
+          "$ref": "qualifiers.schema.json#/$defs/QualifiedString",
+          "description": "LLS's order state token, unmapped."
+        },
+        "timestamps": {
+          "type": "object",
+          "description": "Lifecycle instants. Each is qualified: an order whose submit time is unknown shows a missing step, not a zero.",
+          "additionalProperties": false,
+          "properties": {
+            "intent_at": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" },
+            "submitted_at": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" },
+            "acknowledged_at": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" },
+            "first_fill_at": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" },
+            "terminal_at": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" }
+          }
+        },
+        "broker_responses": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["at", "code"],
+            "properties": {
+              "at": { "$ref": "qualifiers.schema.json#/$defs/Timestamp" },
+              "code": { "type": "string", "maxLength": 64 },
+              "message": { "type": "string", "maxLength": 512 },
+              "authority": { "$ref": "qualifiers.schema.json#/$defs/SourceAuthority" }
+            }
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 512 },
+          "maxItems": 32
+        }
+      }
+    },
+
+    "Fill": {
+      "type": "object",
+      "description": "One execution. `authority` is mandatory because a Core-asserted fill and a broker-reported fill are different claims that must never be shown as one.",
+      "additionalProperties": false,
+      "required": ["fill_id", "authority"],
+      "properties": {
+        "fill_id": { "type": "string", "maxLength": 128 },
+        "logical_order_id": { "type": "string", "maxLength": 128 },
+        "broker_order_id": { "$ref": "qualifiers.schema.json#/$defs/QualifiedString" },
+        "instrument": { "type": "string", "maxLength": 64 },
+        "side": { "$ref": "qualifiers.schema.json#/$defs/QualifiedString" },
+        "quantity": { "$ref": "qualifiers.schema.json#/$defs/QualifiedNumber" },
+        "price": { "$ref": "qualifiers.schema.json#/$defs/QualifiedNumber" },
+        "fee": { "$ref": "qualifiers.schema.json#/$defs/QualifiedNumber" },
+        "executed_at": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" },
+        "authority": { "$ref": "qualifiers.schema.json#/$defs/SourceAuthority" },
+        "venue": { "$ref": "qualifiers.schema.json#/$defs/QualifiedString" }
+      }
+    },
+
+    "Position": {
+      "type": "object",
+      "description": "A position claim from ONE authority. LLS publishes one of these per authority that has an opinion; the dashboard shows them side by side and never reconciles them itself — that is what the reconciliation kind is for.",
+      "additionalProperties": false,
+      "required": ["instrument", "authority", "quantity"],
+      "properties": {
+        "instrument": { "type": "string", "maxLength": 64 },
+        "account": { "type": "string", "maxLength": 128 },
+        "authority": { "$ref": "qualifiers.schema.json#/$defs/SourceAuthority" },
+        "quantity": { "$ref": "qualifiers.schema.json#/$defs/QualifiedNumber" },
+        "average_price": { "$ref": "qualifiers.schema.json#/$defs/QualifiedNumber" },
+        "realized_pnl": { "$ref": "qualifiers.schema.json#/$defs/QualifiedNumber" },
+        "unrealized_pnl": { "$ref": "qualifiers.schema.json#/$defs/QualifiedNumber" },
+        "ledger_ref": { "type": "string", "maxLength": 256 },
+        "observed_at": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" }
+      }
+    },
+
+    "TimelineNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "stage"],
+      "properties": {
+        "node_id": { "type": "string", "maxLength": 128 },
+        "stage": {
+          "type": "string",
+          "enum": [
+            "MARKET_EVENT", "INPUT", "SIGNAL", "RISK", "SIZING",
+            "INTENT", "ORDER", "BROKER_RESPONSE", "FILL", "POSITION"
+          ]
+        },
+        "label": { "type": "string", "maxLength": 256 },
+        "occurred_at": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" },
+        "authority": { "$ref": "qualifiers.schema.json#/$defs/SourceAuthority" },
+        "trust": { "$ref": "qualifiers.schema.json#/$defs/Trust" },
+        "coverage": { "$ref": "qualifiers.schema.json#/$defs/Coverage" },
+        "inbound_latency_ms": {
+          "$ref": "qualifiers.schema.json#/$defs/QualifiedDurationMs",
+          "description": "Latency from the preceding node, computed by LLS only where the clock domains permit it."
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "qualifiers.schema.json#/$defs/EvidenceRef" },
+          "maxItems": 32
+        }
+      }
+    },
+
+    "TradeTimeline": {
+      "type": "object",
+      "description": "The end-to-end story of one trade, as reconstructed by LLS.\n\nEdges are only those LLS actually established. A stage with no node is a hole in the picture and is rendered as a hole — the dashboard never bridges two known nodes with an assumed edge because the stages happen to be adjacent in the canonical order.",
+      "additionalProperties": false,
+      "required": ["trade_id", "nodes"],
+      "properties": {
+        "trade_id": { "type": "string", "maxLength": 128 },
+        "instrument": { "type": "string", "maxLength": 64 },
+        "strategy": { "type": "string", "maxLength": 128 },
+        "nodes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/TimelineNode" },
+          "maxItems": 512
+        },
+        "edges": {
+          "type": "array",
+          "maxItems": 512,
+          "description": "Established causal links only. An absent edge means 'LLS did not establish this link', never 'these are unrelated'.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to"],
+            "properties": {
+              "from": { "type": "string", "maxLength": 128 },
+              "to": { "type": "string", "maxLength": 128 },
+              "trust": { "$ref": "qualifiers.schema.json#/$defs/Trust" },
+              "latency_ms": { "$ref": "qualifiers.schema.json#/$defs/QualifiedDurationMs" }
+            }
+          }
+        },
+        "missing_stages": {
+          "type": "array",
+          "maxItems": 16,
+          "description": "Stages LLS expected but could not observe. Explicitly listed so the UI can show a named gap rather than a silently shorter chain.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "MARKET_EVENT", "INPUT", "SIGNAL", "RISK", "SIZING",
+              "INTENT", "ORDER", "BROKER_RESPONSE", "FILL", "POSITION"
+            ]
+          }
+        }
+      }
+    },
+
+    "LatencyInterval": {
+      "type": "string",
+      "description": "The named pipeline intervals. Fixed vocabulary so the dashboard can lay out a consistent latency table without inventing stage names.",
+      "enum": [
+        "FEED_TO_RECEIVE",
+        "RECEIVE_TO_NORMALIZE",
+        "NORMALIZE_TO_STATE",
+        "STATE_TO_STRATEGY_INPUT",
+        "INPUT_TO_SIGNAL",
+        "SIGNAL_TO_RISK",
+        "RISK_TO_ORDER",
+        "ORDER_TO_SUBMIT",
+        "SUBMIT_TO_RESPONSE",
+        "RESPONSE_TO_FILL",
+        "FILL_TO_POSITION"
+      ]
+    },
+
+    "LatencySummary": {
+      "type": "object",
+      "description": "Pre-computed latency distribution for one interval over one window.\n\nThe percentiles arrive computed. algomatric.in does not subtract timestamps to produce latency, because only LLS knows which timestamp pairs share a clock domain — and `clock_quality` is carried so a distribution built on a degraded clock can be labelled as such rather than read as fact.",
+      "additionalProperties": false,
+      "required": ["interval", "window", "sample_count"],
+      "properties": {
+        "interval": { "$ref": "#/$defs/LatencyInterval" },
+        "scope": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "What the distribution is over, e.g. an instrument or strategy. Absent means source-wide."
+        },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end"],
+          "properties": {
+            "start": { "$ref": "qualifiers.schema.json#/$defs/Timestamp" },
+            "end": { "$ref": "qualifiers.schema.json#/$defs/Timestamp" }
+          }
+        },
+        "p50_ms": { "$ref": "qualifiers.schema.json#/$defs/QualifiedDurationMs" },
+        "p95_ms": { "$ref": "qualifiers.schema.json#/$defs/QualifiedDurationMs" },
+        "p99_ms": { "$ref": "qualifiers.schema.json#/$defs/QualifiedDurationMs" },
+        "max_ms": { "$ref": "qualifiers.schema.json#/$defs/QualifiedDurationMs" },
+        "sample_count": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "missing_count": {
+          "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger",
+          "description": "Occurrences where the interval could not be measured. Shown next to the percentiles so a p99 built on three samples out of four thousand is not read as representative."
+        },
+        "excluded_count": {
+          "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger",
+          "description": "Occurrences deliberately excluded by LLS, e.g. incompatible clock domains."
+        },
+        "clock_quality": { "$ref": "qualifiers.schema.json#/$defs/ClockQuality" }
+      }
+    },
+
+    "ErrorObservation": {
+      "type": "object",
+      "description": "An error class observed by LLS. Deliberately distinct from an incident: an error is a thing that happened, an incident is a judgement about impact. The contract never lets one become the other by accident.",
+      "additionalProperties": false,
+      "required": ["error_id", "severity", "component"],
+      "properties": {
+        "error_id": { "type": "string", "maxLength": 128 },
+        "severity": { "$ref": "#/$defs/Severity" },
+        "category": { "type": "string", "maxLength": 128 },
+        "component": { "type": "string", "maxLength": 128 },
+        "message": { "type": "string", "maxLength": 1024 },
+        "count": { "$ref": "qualifiers.schema.json#/$defs/QualifiedInteger" },
+        "first_occurrence": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" },
+        "last_occurrence": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" },
+        "related": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "order_id": { "type": "string", "maxLength": 128 },
+            "trade_id": { "type": "string", "maxLength": 128 },
+            "incident_id": { "type": "string", "maxLength": 128 },
+            "instrument": { "type": "string", "maxLength": 64 }
+          }
+        },
+        "recovery_state": { "$ref": "qualifiers.schema.json#/$defs/QualifiedString" },
+        "impact": { "$ref": "qualifiers.schema.json#/$defs/QualifiedString" }
+      }
+    },
+
+    "Incident": {
+      "type": "object",
+      "description": "An incident as judged by the Monitoring Backend.\n\n`root_event` is optional and carries its own trust. When LLS has not determined a root cause the field is absent or UNKNOWN, and the dashboard displays it that way — a plausible-looking first error is not promoted to a cause.\n\nRevisions travel as envelope.revision on the same entity; every revision is retained.",
+      "additionalProperties": false,
+      "required": ["incident_id", "severity", "state", "started_at"],
+      "properties": {
+        "incident_id": { "type": "string", "maxLength": 128 },
+        "severity": { "$ref": "#/$defs/Severity" },
+        "state": { "$ref": "qualifiers.schema.json#/$defs/QualifiedString" },
+        "title": { "type": "string", "maxLength": 256 },
+        "summary": { "type": "string", "maxLength": 4096 },
+        "started_at": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" },
+        "ended_at": {
+          "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp",
+          "description": "NOT_APPLICABLE while ongoing; UNKNOWN when the end could not be determined. These are different facts and both are displayable."
+        },
+        "affected_components": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 128 },
+          "maxItems": 64
+        },
+        "affected_instruments": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 64 },
+          "maxItems": 256
+        },
+        "affected_orders": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 128 },
+          "maxItems": 512
+        },
+        "root_event": {
+          "type": "object",
+          "description": "Present only when LLS has determined one.",
+          "additionalProperties": false,
+          "required": ["ref", "trust"],
+          "properties": {
+            "ref": { "type": "string", "maxLength": 256 },
+            "kind": { "type": "string", "maxLength": 64 },
+            "trust": { "$ref": "qualifiers.schema.json#/$defs/Trust" },
+            "occurred_at": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" }
+          }
+        },
+        "related_events": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 256 },
+          "maxItems": 512
+        },
+        "recovery": { "$ref": "qualifiers.schema.json#/$defs/QualifiedString" }
+      }
+    },
+
+    "ReconciliationState": {
+      "type": "string",
+      "description": "CONSISTENT   — the compared sides agree.\nPENDING_LAG  — they disagree, and LLS expects that to resolve.\nMISMATCH     — they disagree materially.\nCONFLICTING  — two authorities each assert something, irreconcilably.\nUNKNOWN      — at least one side could not be established, so no comparison was possible.\n\nUNKNOWN is never CONSISTENT. Not being able to check is not a pass.",
+      "enum": ["CONSISTENT", "PENDING_LAG", "MISMATCH", "CONFLICTING", "UNKNOWN"]
+    },
+
+    "Reconciliation": {
+      "type": "object",
+      "description": "The result of LLS comparing two authorities. The dashboard displays the verdict and can never act on it — there is no corrective action anywhere in this contract.",
+      "additionalProperties": false,
+      "required": ["scope", "state"],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "What was compared, e.g. 'position', 'fills'."
+        },
+        "subject": { "type": "string", "maxLength": 256 },
+        "state": { "$ref": "#/$defs/ReconciliationState" },
+        "sides": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "description": "Each authority's claim, preserved separately. Never merged into a single number.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["authority", "value"],
+            "properties": {
+              "authority": { "$ref": "qualifiers.schema.json#/$defs/SourceAuthority" },
+              "value": { "$ref": "qualifiers.schema.json#/$defs/QualifiedNumber" },
+              "observed_at": { "$ref": "qualifiers.schema.json#/$defs/QualifiedTimestamp" }
+            }
+          }
+        },
+        "difference": { "$ref": "qualifiers.schema.json#/$defs/QualifiedNumber" },
+        "detail": { "type": "string", "maxLength": 1024 }
+      }
+    },
+
+    "CoverageReport": {
+      "type": "object",
+      "description": "What the system actually knows, per domain.\n\nEvery figure is supplied. A domain LLS did not report on is absent, and the dashboard shows it as UNKNOWN rather than assuming full coverage.",
+      "additionalProperties": false,
+      "required": ["domains"],
+      "properties": {
+        "domains": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["domain", "coverage"],
+            "properties": {
+              "domain": {
+                "type": "string",
+                "maxLength": 128,
+                "description": "e.g. 'feed', 'strategy', 'order', 'fill', 'position', 'broker_confirmation'."
+              },
+              "coverage": { "$ref": "qualifiers.schema.json#/$defs/Coverage" }
+            }
+          }
+        },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end"],
+          "properties": {
+            "start": { "$ref": "qualifiers.schema.json#/$defs/Timestamp" },
+            "end": { "$ref": "qualifiers.schema.json#/$defs/Timestamp" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -188,6 +188,18 @@ services:
       ALGOMATRICS_API_URL: http://api:8000/api/v1
       DATABASE_URL: ${OPS_DATABASE_URL:-postgresql+psycopg://algo:algo@postgres:5432/ops_telemetry}
       OPS_DATABASE_URL: ${OPS_DATABASE_URL:-postgresql+psycopg://algo:algo@postgres:5432/ops_telemetry}
+      # monitoring.v1 receiver. The schema is copied into the image by
+      # ops-api.Dockerfile; point at it explicitly so a local run behaves like
+      # the deployed one. Credentials stay empty by default, which leaves the
+      # monitoring ingress disabled (every upload refused 401) rather than
+      # half-configured.
+      MONITORING_SCHEMA_DIR: /app/schemas/monitoring-v1
+      MONITORING_DEPLOYMENT_ENVIRONMENT: ${MONITORING_DEPLOYMENT_ENVIRONMENT:-local}
+      MONITORING_SOURCE_TOKENS: ${MONITORING_SOURCE_TOKENS:-}
+      MONITORING_SOURCE_ORGANISATIONS: ${MONITORING_SOURCE_ORGANISATIONS:-}
+      MONITORING_ADMIN_TOKEN: ${MONITORING_ADMIN_TOKEN:-}
+      # Rejected traffic only; 0 disables. Never touches accepted evidence.
+      MONITORING_REJECTED_RETENTION_DAYS: ${MONITORING_REJECTED_RETENTION_DAYS:-0}
     depends_on:
       api: {condition: service_started}
     volumes:

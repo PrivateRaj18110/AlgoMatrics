@@ -164,3 +164,81 @@ class SystemHealthResponse(OpsModel):
     latest: SystemHealthPoint | None = None
     points: list[SystemHealthPoint] = Field(default_factory=list)
     snapshots: list[SystemHealthPoint] = Field(default_factory=list)
+
+
+# --------------------------------------------------------------------------- #
+# monitoring.v1 — read models for the canonical LLS wire contract
+#
+# The producer's objects (`coverage`, `freshness`, `trust`, `runtime`,
+# `source_as_of`, `payload`) are free-form mappings on purpose: their shape is
+# owned by `schemas/monitoring-v1/`, and re-declaring them here as typed fields
+# would create a second, drifting definition of the same thing.
+#
+# Two environments are carried separately and never derived from one another:
+# `source_environment` is the producer's market reality, and
+# `receiver_deployment_environment` is this deployment's own tier.
+# --------------------------------------------------------------------------- #
+class MonitoringStateItem(OpsModel):
+    message_type: str
+    capture_ref: str | None = None
+    source_id: str
+    source_instance: str
+    # The wire value, as a string. Never re-rendered as an integer.
+    source_sequence: str
+    message_id: str
+    source_environment: str
+    receiver_deployment_environment: str
+    # An array of capture identifiers, never collapsed into an enum.
+    runtime: list[Any] = Field(default_factory=list)
+    # The producer's own as-of object; not substituted with arrival time.
+    source_as_of: dict[str, Any] = Field(default_factory=dict)
+    generated_at: str | None = None
+    received_at: str | None = None
+    # Asserted by the source. There is no validity horizon in monitoring.v1 and
+    # nothing in this path computes one.
+    freshness: dict[str, Any] = Field(default_factory=dict)
+    trust: dict[str, Any] = Field(default_factory=dict)
+    coverage: dict[str, Any] = Field(default_factory=dict)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class MonitoringStateResponse(OpsModel):
+    receiver_deployment_environment: str
+    configured: bool = False
+    count: int = 0
+    items: list[MonitoringStateItem] = Field(default_factory=list)
+
+
+class MonitoringSourceRow(OpsModel):
+    source_id: str
+    source_instance: str
+    last_accepted_sequence: str
+    last_accepted_message_id: str
+    accepted_count: int = 0
+    duplicate_count: int = 0
+    # Observability only. A refused message was never accepted.
+    refused_gap_count: int = 0
+    refused_old_count: int = 0
+    observed_refusals: list[dict[str, Any]] = Field(default_factory=list)
+    first_seen_at: str | None = None
+    last_seen_at: str | None = None
+
+
+class MonitoringEvidenceRow(OpsModel):
+    message_id: str
+    message_type: str
+    schema_version: str
+    source_id: str
+    source_instance: str
+    source_sequence: str
+    capture_ref: str | None = None
+    source_environment: str
+    receiver_deployment_environment: str
+    runtime: list[Any] = Field(default_factory=list)
+    source_as_of: dict[str, Any] = Field(default_factory=dict)
+    generated_at: str | None = None
+    received_at: str | None = None
+    freshness: dict[str, Any] = Field(default_factory=dict)
+    trust: dict[str, Any] = Field(default_factory=dict)
+    coverage: dict[str, Any] = Field(default_factory=dict)
+    request_sha256: str | None = None

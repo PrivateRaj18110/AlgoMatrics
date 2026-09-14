@@ -10,6 +10,7 @@ import {
 
 import { api } from "@/lib/api";
 import { useAuth } from "@/stores/auth";
+import type { MonitoringSourceRow, MonitoringStateResponse } from "@/lib/monitoring";
 import type {
   AdminCoupon,
   AdminOrganization,
@@ -993,3 +994,31 @@ export function useArchiveTask() {
   });
 }
 
+// --------------------------------------------------------------------------- //
+// monitoring.v1 — what the LLS Monitoring Backend published.
+//
+// A separate feed from the ops agent telemetry above. Refetch is frequent
+// because the point of the page is noticing when a source stops talking; the
+// staleness verdict itself is recomputed client-side every second, so the
+// polling interval only governs how quickly *new* data appears, never how
+// quickly stale data is revealed.
+// --------------------------------------------------------------------------- //
+export function useMonitoringState(params: { message_type?: string; limit?: number } = {}) {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["monitoring-state", orgKey(), params],
+    queryFn: () => api<MonitoringStateResponse>("/operations/monitoring/state", { query: params }),
+    enabled: ready,
+    refetchInterval: 10000,
+  });
+}
+
+export function useMonitoringSources() {
+  const ready = useTenantReady();
+  return useQuery({
+    queryKey: ["monitoring-sources", orgKey()],
+    queryFn: () => api<MonitoringSourceRow[]>("/operations/monitoring/sources"),
+    enabled: ready,
+    refetchInterval: 15000,
+  });
+}

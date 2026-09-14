@@ -175,8 +175,18 @@ class TelemetryStore:
             clauses.append("event_type = :event_type")
             params["event_type"] = event_type
         if machine_id:
-            clauses.append("machine_id = :machine_id")
+            slug_mid = (
+                f"mch-agent-{machine_id}"
+                if not machine_id.startswith("mch-")
+                else machine_id
+            )
+            raw_mid = machine_id.replace("mch-agent-", "")
+            clauses.append(
+                "(machine_id = :machine_id OR machine_id = :slug_mid OR machine_id = :raw_mid)"
+            )
             params["machine_id"] = machine_id
+            params["slug_mid"] = slug_mid
+            params["raw_mid"] = raw_mid
         if strategy:
             clauses.append("strategy = :strategy")
             params["strategy"] = strategy
@@ -278,8 +288,18 @@ class TelemetryStore:
             clauses.append("symbol = :symbol")
             params["symbol"] = symbol
         if machine_id:
-            clauses.append("machine_id = :machine_id")
+            slug_mid = (
+                f"mch-agent-{machine_id}"
+                if not machine_id.startswith("mch-")
+                else machine_id
+            )
+            raw_mid = machine_id.replace("mch-agent-", "")
+            clauses.append(
+                "(machine_id = :machine_id OR machine_id = :slug_mid OR machine_id = :raw_mid)"
+            )
             params["machine_id"] = machine_id
+            params["slug_mid"] = slug_mid
+            params["raw_mid"] = raw_mid
         if direction:
             clauses.append("direction = :direction")
             params["direction"] = direction
@@ -432,9 +452,15 @@ class TelemetryStore:
         ]
         params: dict[str, Any] = {"limit": limit}
         if machine_id:
-            slug_mid = f"mch-agent-{machine_id}" if not machine_id.startswith("mch-") else machine_id
+            slug_mid = (
+                f"mch-agent-{machine_id}"
+                if not machine_id.startswith("mch-")
+                else machine_id
+            )
             raw_mid = machine_id.replace("mch-agent-", "")
-            clauses.append("(machine_id = :machine_id OR machine_id = :slug_mid OR machine_id = :raw_mid)")
+            clauses.append(
+                "(machine_id = :machine_id OR machine_id = :slug_mid OR machine_id = :raw_mid)"
+            )
             params["machine_id"] = machine_id
             params["slug_mid"] = slug_mid
             params["raw_mid"] = raw_mid

@@ -15,6 +15,15 @@ from app.models.event import Event
 from app.models.log import Log
 from app.models.machine import Machine
 from app.models.metric import Metric
+from app.models.monitoring import (
+    EvidenceIsImmutable,
+    MonitoringAudit,
+    MonitoringEvidence,
+    MonitoringProjection,
+    MonitoringQuarantine,
+    MonitoringRawRequest,
+    MonitoringSequenceState,
+)
 from app.models.quant import QuantReport
 from app.models.session import TradingSession
 from app.models.sync_state import SyncState
@@ -37,4 +46,11 @@ __all__ = [
     "TradingSession",
     "DeadLetter",
     "SystemHealthSnapshot",
+    "MonitoringEvidence",
+    "MonitoringRawRequest",
+    "MonitoringQuarantine",
+    "MonitoringSequenceState",
+    "MonitoringProjection",
+    "MonitoringAudit",
+    "EvidenceIsImmutable",
 ]

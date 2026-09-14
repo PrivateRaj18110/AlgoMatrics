@@ -44,6 +44,38 @@ data:
   QUANT_SYNTHETIC_MAX_STEPS: "10000"
   QUANT_REPORT_RETENTION_DAYS: "0"
   OPS_REST_AUTH_REQUIRED: "true"
+
+  # --- monitoring.v1 receiver (LLS Monitoring Backend -> Algomatric) --------
+  # The canonical schema, shipped into the image by ops-api.Dockerfile. The
+  # receiver refuses to accept any message it cannot validate, so this path
+  # must resolve or the ingress is inert. Set explicitly rather than relying on
+  # a path fallback: /api/health (which the probes use) does not consult the
+  # contract, so a missing schema would otherwise be invisible.
+  MONITORING_SCHEMA_DIR: "/app/schemas/monitoring-v1"
+
+  # This receiver's own deployment tier. It is NOT the producer's environment:
+  # LLS reports market reality (live_trading, offline_fixture, ...) in each
+  # message, and the two are stored separately and never derived from one
+  # another. Evidence is append-only, so a wrong value here cannot be corrected
+  # afterwards — the startup guard refuses to boot if it is unset while
+  # monitoring credentials are present.
+  MONITORING_DEPLOYMENT_ENVIRONMENT: "production"
+
+  # Owner decision 2, recorded 2026-09-13: REJECTED traffic only — quarantine
+  # rows and stored raw rejected request bodies — is kept for 30 days. This is
+  # the one growth path a holder of a valid publisher credential could drive
+  # deliberately, since malformed or oversized uploads cost storage on the
+  # refusal path.
+  #
+  # It does NOT touch accepted evidence. Owner decision 1 is INDEFINITE
+  # retention for `monitoring_evidence`, which is append-only behind a database
+  # trigger, and `monitoring_audit` is the record of every attempt rather than
+  # rejected traffic. See docs/monitoring/RETENTION_POLICY.md.
+  #
+  # The application default is 0 (disabled) on purpose: the policy is asserted
+  # here, in production configuration, so no other environment deletes anything
+  # it was not explicitly told to.
+  MONITORING_REJECTED_RETENTION_DAYS: "30"
 ---
 # Template ONLY — populate via your secret manager (External Secrets / sealed-
 # secrets) at deploy time. NOTHING here may be committed with a real value.
@@ -66,7 +98,23 @@ type: Opaque
 stringData:
   # Dedicated ops telemetry database. Deliberately separate from the platform
   # DB so ingest load and retention never touch trading data.
-  #   postgresql+psycopg://ops:<password>@ops-postgres:5432/ops_telemetry
+  #
+  # This must be the NON-OWNING receiver role, not the database superuser and
+  # not the table owner. `monitoring_evidence` is append-only, enforced by a
+  # row-level trigger — but a trigger does not fire for TRUNCATE, and neither a
+  # superuser nor a table owner can be denied it. Staging measured exactly that:
+  # with an owning role the application's own credential could empty the
+  # forensic record in one statement.
+  #
+  # Migrations run as the owner instead, via ops-migration-secrets below.
+  #   postgresql+psycopg://ops_receiver:<password>@ops-postgres:5432/ops_telemetry
+  #
+  # Required grants for this role — see docs/monitoring/DEPLOYMENT_VALIDATION.md:
+  #   GRANT USAGE ON SCHEMA public
+  #   GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public
+  #   REVOKE ALL ON monitoring_evidence
+  #   GRANT SELECT, INSERT ON monitoring_evidence
+  #   GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public
   DATABASE_URL: ""
 
   # Agent credentials, machine-scoped: "machine:token,machine2:token2".
@@ -91,6 +139,41 @@ stringData:
   # Prefer IRSA/External Secrets over static keys, and do not commit real values.
   # AWS_ACCESS_KEY_ID: ""
   # AWS_SECRET_ACCESS_KEY: ""
+
+  # --- monitoring.v1 credentials -------------------------------------------
+  # Upload-only publisher credentials, one per LLS source:
+  #   "lls-monitoring-prod:<token>,lls-monitoring-2:<token>"
+  # The source_id must match the `source_id` in the producer's messages exactly;
+  # a credential authorises exactly one source and nothing else. Leave blank to
+  # run with the monitoring ingress disabled (every upload is then refused 401).
+  # Generate: python -c "import secrets; print(secrets.token_urlsafe(32))"
+  MONITORING_SOURCE_TOKENS: ""
+
+  # Administrator credential for reading quarantined material. Deliberately not
+  # derivable from a publisher credential: a publisher must never be able to
+  # read back what the receiver rejected from other publishers.
+  MONITORING_ADMIN_TOKEN: ""
+---
+# Migration credentials, used ONLY by the ops-migrate initContainer.
+#
+# Separate from ops-secrets so the running application never holds the role that
+# owns the monitoring tables. DATABASE_URL here overrides the one in ops-secrets
+# for that container, because envFrom entries later in the list win.
+#
+# Template ONLY — populate via your secret manager at deploy time.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ops-migration-secrets
+  namespace: algo
+  labels: { app: ops-api }
+type: Opaque
+stringData:
+  # The owning role. Runs Alembic, owns the tables, and is the only identity
+  # that could ever drop the append-only trigger — which is what makes evidence
+  # deletion a deliberate, reviewed act rather than an available option.
+  #   postgresql+psycopg://ops_owner:<password>@ops-postgres:5432/ops_telemetry
+  DATABASE_URL: ""
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -138,6 +221,9 @@ spec:
           envFrom:
             - configMapRef: { name: ops-config }
             - secretRef: { name: ops-secrets }
+            # Last wins: this supplies the OWNING role's DATABASE_URL, so
+            # migrations run as the owner while the application below does not.
+            - secretRef: { name: ops-migration-secrets }
           resources:
             requests: { cpu: "50m", memory: "128Mi" }
             limits: { cpu: "500m", memory: "256Mi" }
@@ -161,8 +247,39 @@ spec:
             - name: ops-eod-data
               mountPath: /var/lib/algomatrics/eod
           resources:
-            requests: { cpu: "100m", memory: "128Mi" }
-            limits: { cpu: "500m", memory: "256Mi" }
+            # Memory, from the SINGLE-WORKER measurement — which is the
+            # configuration this container runs: the image CMD is
+            # `uvicorn main:app` with no --workers, so one worker.
+            #
+            # An earlier version of this comment justified the limit with a
+            # 220-233 MiB figure. That was measured on a TWO-worker receiver and
+            # did not describe this pod. Corrected here rather than left
+            # standing, because a resource limit argued from the wrong process
+            # count is not a measurement.
+            #
+            #   MEASURED   cold start                    102.8 - 106.1 MiB
+            #   MEASURED   steady-state plateau          117 - 124 MiB
+            #   MEASURED   peak over 4.17h / 746,400 msg 127.5 MiB
+            #   CONFIGURED request                       256Mi
+            #   CONFIGURED limit                         512Mi
+            #   DERIVED    headroom over measured peak   ~4.0x
+            #
+            # Resident memory reaches that plateau within roughly the first
+            # 35,000 messages and then stops rising: flat across the following
+            # 330,000, and a NEGATIVE slope over the final 2,000 s of each load
+            # phase. The ~0.45 KB/message rise reported previously was the
+            # initial climb measured in a 15-minute window that contained
+            # nothing else. See docs/monitoring/PERFORMANCE_BASELINE.md §7.
+            #
+            # The margin is deliberately not trimmed to fit the measurement:
+            # that measurement is Windows working-set on a developer machine,
+            # one message type at a time. Linux memory accounting under a
+            # container limit is NOT TESTED, and 1 MiB request bodies with
+            # bounded decompression give this process a transient ceiling the
+            # steady state does not show. 512Mi is therefore headroom against
+            # what was NOT measured, not padding against what was.
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
       volumes:
         - name: ops-eod-data
           persistentVolumeClaim: { claimName: ops-eod-data }

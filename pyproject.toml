@@ -64,7 +64,21 @@ src = ["backend/src", "packages", "agents"]
 # (follow-up: bring them up to the platform gates). ai_cio_phase1/ is the
 # vendored AI-CIO research pipeline: it has its own requirements and style and
 # is consumed only as a data producer, so it stays outside the platform gates.
-extend-exclude = ["ops", "packages/raj_monitor", "ai_cio_phase1"]
+#
+# tests/fixtures/lls-monitoring-v1-handoff/ is the LLS producer's own handoff
+# package, vendored verbatim and owned by another team. It is excluded for a
+# stronger reason than style: its bytes are load-bearing. `message_id` is a
+# content address over canonical JSON and the request digest is a SHA-256 of
+# exact request bytes, and two tests assert our copies are byte-identical to the
+# producer's. A `ruff --fix` inside that tree would silently break all of it —
+# which is also why .gitattributes marks it `-text`. Do not lint or format it;
+# if it is wrong, that is a conversation with the producer's owner.
+extend-exclude = [
+  "ops",
+  "packages/raj_monitor",
+  "ai_cio_phase1",
+  "tests/fixtures/lls-monitoring-v1-handoff",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "S", "RUF"]

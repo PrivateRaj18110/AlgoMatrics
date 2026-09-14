@@ -9,7 +9,6 @@ import {
   RequireAdmin,
   RequireAnonymous,
   RequireAuth,
-  RootRedirect,
 } from "@/app/guards";
 import { AdminPage } from "@/pages/AdminPage";
 import { AnalyticsPage } from "@/pages/AnalyticsPage";
@@ -47,6 +46,9 @@ import {
   SystemHealthPage,
   TelemetryAlertsPage,
 } from "@/pages/operations/OperationsPages";
+import { MonitoringPage } from "@/pages/operations/MonitoringPage";
+import { WallboardPage } from "@/pages/operations/WallboardPage";
+import { HeatmapPage } from "@/pages/markets/HeatmapPage";
 
 export function InternationalRootRedirect() {
   return (
@@ -69,7 +71,14 @@ export function InternationalRouteHandler() {
 }
 
 export const router: RouteObject[] = [
-  { path: "/", element: <RootRedirect /> },
+  {
+    path: "/",
+    element: (
+      <RequireAnonymous>
+        <LoginPage />
+      </RequireAnonymous>
+    ),
+  },
   {
     path: "/login",
     element: (
@@ -89,6 +98,18 @@ export const router: RouteObject[] = [
     element: (
       <RequireAuth>
         <AcceptInvitationPage />
+      </RequireAuth>
+    ),
+  },
+  // Operations wallboard. Intentionally NOT a child of AppLayout: it is a
+  // full-screen kiosk view meant to be left running on a TV or iPad, and the
+  // sidebar would eat the screen it needs. RequireAuth still wraps it, so the
+  // authenticated organisation scope that every query depends on is unchanged.
+  {
+    path: "/app/wallboard",
+    element: (
+      <RequireAuth>
+        <WallboardPage />
       </RequireAuth>
     ),
   },
@@ -114,6 +135,10 @@ export const router: RouteObject[] = [
       { path: "/app/engine-strategies/:strategyName", element: <EngineStrategySymbolsRoute /> },
       { path: "/app/machines", element: <MachinesPage /> },
       { path: "/app/system-health", element: <SystemHealthPage /> },
+      // monitoring.v1 — observations published by the LLS Monitoring Backend.
+      // Distinct from /app/system-health, which shows the Raj agent telemetry:
+      // two independent protocols, presented separately on purpose.
+      { path: "/app/lls-monitoring", element: <MonitoringPage /> },
       { path: "/app/events", element: <EventsPage /> },
       { path: "/app/closed-trades", element: <ClosedTradesPage /> },
       { path: "/app/execution", element: <EngineOrdersPage /> },
@@ -127,6 +152,7 @@ export const router: RouteObject[] = [
       { path: "/app/trading/:tab", element: <TradingPage /> },
       { path: "/app/market", element: <Navigate to="/app/market-update" replace /> },
       { path: "/app/market-update", element: <MarketPage /> },
+      { path: "/app/heatmap", element: <HeatmapPage /> },
       { path: "/app/market-intel", element: <Navigate to="/app/market-intelligence" replace /> },
       { path: "/app/market-intelligence", element: <MarketIntelPage /> },
       { path: "/app/orders", element: <Navigate to="/app/trading/orders" replace /> },

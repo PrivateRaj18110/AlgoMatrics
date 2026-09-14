@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://algomatric.in/schemas/monitoring-export/v1/batch.schema.json",
+  "title": "LLS Monitoring Export v1 — batch request body",
+  "description": "Request body for POST /api/v1/monitoring/export.\n\nA batch is a transport convenience, nothing more. It has no transactional meaning: each envelope is accepted, quarantined, rejected or failed on its own, and the acknowledgement reports every one individually. A publisher must never infer the fate of one message from the fate of its neighbours, and must never delete a batch from its outbound queue on the strength of an HTTP 200 alone.",
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_id", "source_instance", "sent_at", "messages"],
+
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.\\d+$",
+      "description": "Version of the batch wrapper. Each envelope carries its own schema_version; a batch may legitimately mix minor versions."
+    },
+
+    "batch_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Optional transport-level identity, useful for tracing a retry through logs. NOT an idempotency key — idempotency is per message_id, and the same message may legitimately arrive in two differently-identified batches."
+    },
+
+    "source_id": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$",
+      "description": "Must match the scope of the presented credential, and must match every envelope's source_id in this batch."
+    },
+
+    "source_instance": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$"
+    },
+
+    "sent_at": {
+      "$ref": "qualifiers.schema.json#/$defs/Timestamp",
+      "description": "When the publisher put this batch on the wire. Compared against receipt time to expose transport delay separately from generation delay."
+    },
+
+    "queue_depth": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Publisher's own outbound backlog at send time. Surfaced on the dashboard's transport-health view so a growing backlog on the LLS side is visible here before data goes missing."
+    },
+
+    "messages": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": { "$ref": "envelope.schema.json" },
+      "description": "Envelopes, in any order. The receiver does not assume arrival order matches source order and orders by (source_instance, sequence) and the qualified timestamps instead."
+    }
+  }
+}

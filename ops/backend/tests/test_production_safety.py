@@ -91,6 +91,86 @@ def test_production_failure_message_contains_no_secrets() -> None:
     assert "prod-dashboard-token" not in str(excinfo.value)
 
 
+# --------------------------------------------------------------------------- #
+# monitoring.v1 half-configuration
+#
+# A production manifest review found the monitoring receiver shipped with no
+# credentials, no deployment tier and no schema in the image. Nothing refused to
+# start: the pod passed its /api/health probe — which does not consult the
+# contract — while the monitoring ingress rejected every message. These tests
+# exist so that shape cannot return silently.
+# --------------------------------------------------------------------------- #
+_SCHEMA_DIR = str(Path(__file__).resolve().parents[3] / "schemas" / "monitoring-v1")
+
+
+def test_production_without_any_monitoring_configuration_still_starts() -> None:
+    """No publisher credential is a coherent "monitoring disabled" state.
+
+    It fails closed — every upload is refused 401 — so a deployment that does
+    not yet receive monitoring.v1 must not be forced to configure it.
+    """
+    _settings().assert_production_ready()  # must not raise
+
+
+def test_production_with_monitoring_credentials_but_no_tier_refuses() -> None:
+    """Evidence is append-only, so the wrong tier cannot be corrected later."""
+    with pytest.raises(RuntimeError) as excinfo:
+        _settings(
+            MONITORING_SOURCE_TOKENS="lls:token",
+            MONITORING_SCHEMA_DIR=_SCHEMA_DIR,
+        ).assert_production_ready()
+    message = str(excinfo.value)
+    assert "MONITORING_DEPLOYMENT_ENVIRONMENT" in message
+    assert "append-only" in message
+
+
+def test_production_with_monitoring_credentials_but_no_schema_refuses(
+    tmp_path: Path,
+) -> None:
+    """The exact shape the image shipped: credentials present, contract absent.
+
+    The directory is empty rather than absent, which is the harder case: the
+    deployed image really did have /app and really did not have the schema in
+    it.
+    """
+    with pytest.raises(RuntimeError) as excinfo:
+        _settings(
+            MONITORING_SOURCE_TOKENS="lls:token",
+            MONITORING_DEPLOYMENT_ENVIRONMENT="production",
+            MONITORING_SCHEMA_DIR=str(tmp_path),
+        ).assert_production_ready()
+    assert "monitoring.v1 schema" in str(excinfo.value)
+
+
+def test_production_with_complete_monitoring_configuration_is_accepted() -> None:
+    from app.monitoring import contract
+
+    contract.reset_cache()
+    try:
+        _settings(
+            MONITORING_SOURCE_TOKENS="lls:token",
+            MONITORING_DEPLOYMENT_ENVIRONMENT="production",
+            MONITORING_SCHEMA_DIR=_SCHEMA_DIR,
+        ).assert_production_ready()  # must not raise
+    finally:
+        contract.reset_cache()
+
+
+def test_monitoring_guard_message_contains_no_credential() -> None:
+    from app.monitoring import contract
+
+    contract.reset_cache()
+    try:
+        with pytest.raises(RuntimeError) as excinfo:
+            _settings(
+                MONITORING_SOURCE_TOKENS="lls:super-secret-token",
+                MONITORING_SCHEMA_DIR=_SCHEMA_DIR,
+            ).assert_production_ready()
+    finally:
+        contract.reset_cache()
+    assert "super-secret-token" not in str(excinfo.value)
+
+
 def test_non_production_still_allows_mock_mode() -> None:
     """Local development keeps working without any of this configuration."""
     Settings(environment="development").assert_production_ready()  # must not raise

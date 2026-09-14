@@ -1,0 +1,28 @@
+[
+  {
+    "source_id": "lls-contract-fixture",
+    "source_instance": "main-01",
+    "last_accepted_sequence": "4",
+    "last_accepted_message_id": "mon1/c1ce03bebb5d83a4e5de4fd6f590a33f4126730c20d4666d9c2b5217c0e8836f",
+    "accepted_count": 4,
+    "duplicate_count": 0,
+    "refused_gap_count": 0,
+    "refused_old_count": 0,
+    "observed_refusals": [],
+    "first_seen_at": "2026-09-11T21:42:49.816424Z",
+    "last_seen_at": "2026-09-11T21:42:56.042479Z"
+  },
+  {
+    "source_id": "lls-contract-fixture",
+    "source_instance": "semantics-01",
+    "last_accepted_sequence": "1",
+    "last_accepted_message_id": "mon1/3f6cec4cc93851f4c7753db0d1dd1847fb4887c4d45fb91df5231d4fdd905fc3",
+    "accepted_count": 1,
+    "duplicate_count": 0,
+    "refused_gap_count": 0,
+    "refused_old_count": 0,
+    "observed_refusals": [],
+    "first_seen_at": "2026-09-11T21:42:58.103787Z",
+    "last_seen_at": "2026-09-11T21:42:58.103787Z"
+  }
+]
