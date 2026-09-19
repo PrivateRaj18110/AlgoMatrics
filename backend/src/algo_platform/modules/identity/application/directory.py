@@ -48,6 +48,15 @@ class UserDirectory:
         )
         return list(result.scalars().all())
 
+    async def platform_admin_ids(self) -> list[UUID]:
+        """Active platform owners, for in-app operational alerts."""
+        result = await self._session.execute(
+            select(UserModel.id).where(
+                UserModel.is_platform_admin.is_(True), UserModel.status == "active"
+            )
+        )
+        return list(result.scalars().all())
+
     async def get_by_email(self, email: str) -> UserSummaryDTO | None:
         result = await self._session.execute(
             select(UserModel).where(UserModel.email == email.strip().lower())

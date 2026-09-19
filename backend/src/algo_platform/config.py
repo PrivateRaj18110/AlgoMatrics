@@ -131,6 +131,13 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     ai_model: str = "claude-opus-4-8"
     ai_max_tokens: int = Field(default=2048, ge=64, le=64_000)
+    # Model used when AI-CIO asks Claude to read material exchange filings (only when
+    # ai_provider is "anthropic"). Filing triage is short, so a fast model is plenty.
+    market_ai_model: str = "claude-sonnet-5"
+    # AI-CIO morning briefing e-mail (~09:10 IST each trading day) to the platform
+    # owner(s); extra comma-separated addresses may be added here.
+    daily_briefing_enabled: bool = True
+    daily_briefing_recipients: str = ""
 
     # Mobile push delivery. "null" (default) logs instead of calling out and
     # keeps the platform hermetic; "fcm" uses Firebase Cloud Messaging.

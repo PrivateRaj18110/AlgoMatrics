@@ -1,5 +1,76 @@
 # Market intelligence (AI-CIO)
 
+> **Since 2026-09 the console's AI-CIO is the movers radar** described in the next
+> section: a live, graded forecast of which F&O stocks are likely to make a major
+> move today. The DuckDB research pipeline documented further down still exists
+> (and feeds the log-only shadow gate), but the console shows it only when it is
+> connected (`AICIO_DUCKDB_PATH`), under a "Research pipeline" tab.
+
+## AI-CIO movers radar
+
+Code: `modules/market_insights` — `domain/catalysts.py` (filing/headline
+classification), `domain/move_model.py` (features, logistic model, grading),
+`application/movers.py` (collection, forecasts, grading, learning, backtest).
+Console: **Market Intelligence** → Today's movers · Catalysts · Headlines · Track
+record · Market read.
+
+**What it predicts.** For every NSE F&O stock, the chance of a *major move* today:
+a close at least `max(3%, 2 × the stock's typical daily move)` from the previous
+close (typical = median absolute daily move over 20 sessions). Plus a likely
+direction and the reasons.
+
+**Inputs (all public):** NSE corporate filings (rule-classified into ~30
+categories with an impact weight and direction), the NSE event calendar
+(results due today), ex-dates, the F&O ban list, bulk/block deals, open-interest
+spurts, the 09:08 pre-open auction (gap and order-book imbalance), daily price
+history (Yahoo), and headlines from Economic Times, Mint, Business Standard and
+Google News (titles and links only).
+
+**Schedule (scheduler process, IST, weekdays):** filings every ~9 min 06:30–16:00
+then every 15 min to 22:30 (high-impact filings on F&O stocks raise an in-app
+alert to the platform owner, max 15/day); headlines every 15 min; exchange events
+every 30 min 07:30–09:05; the *overnight* forecast from 08:00, the *opening*
+forecast right after the pre-open snapshot; grading at 16:15, then the weights
+are refitted on every graded session (backtest + live, last 160).
+
+**Backtest.** On first start with no backtest stored, the scheduler replays the
+last 60 sessions in the background (~8 minutes: ~90 NSE filing-archive requests,
+210 Yahoo price histories), fits on the first 70 % and grades the last 30 %
+unseen. First run (2026-09-19): opening forecast top-10 hit rate **27.8 %** vs a
+**8.2 %** base rate (3.4× lift), direction right on 91 % of real movers;
+overnight forecast 15 % (1.8×). Re-run from the Track record tab (admin) or
+`POST /api/v1/admin/markets/movers?job=backtest`.
+
+**Honest limits.** Uses today's F&O list for past sessions (survivorship); the
+open price stands in for the auction price in the backtest; news, OI, ban list
+and deals have no history, so their weights stay at the prior until live grades
+teach them; on broad market-wide days (e.g. 18 Sep 2026: 21 % of stocks moved)
+stock-specific signals add little. It never places orders.
+
+**Optional Claude reading.** With `AI_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`
+set, Claude (`MARKET_AI_MODEL`, default `claude-sonnet-5`) also reads each new
+material filing's subject and summary and its impact/direction is blended with
+the rule-based one. Without a key nothing calls out.
+
+**Morning briefing e-mail.** About 09:10 IST each trading day (after the pre-open
+auction; by 09:30 with the overnight forecast if the auction data never came), the
+scheduler writes a briefing — last session's grade, today's top 10 with direction
+and reasons, overnight filings that matter, exchange events, market cues and a
+routine log including every background process's heartbeat — and queues it in the
+e-mail outbox to the platform owner(s) plus `DAILY_BRIEFING_RECIPIENTS`. It is also
+stored (kind `mv_briefing`) and shown under Market Intelligence → Daily briefing
+(owner only), so the daily log exists even while `EMAIL_BACKEND=console`. Delivery
+needs `EMAIL_BACKEND=smtp` and `SMTP_*`. Turn off with `DAILY_BRIEFING_ENABLED=false`.
+`GET/POST /api/v1/admin/markets/briefing[?send=true]` previews or sends it now.
+
+**Admin jobs:** `POST /api/v1/admin/markets/movers?job=filings|events|news|forecast|grade|backtest`.
+
+**Read API:** `GET /api/v1/markets/movers[?date=]`, `/markets/movers/track-record`,
+`/markets/catalysts[?date=&min_impact=]`, `/markets/news[?date=&tagged=true]`.
+All state is stored in `market_snapshots` (kinds `mv_*`); no migration needed.
+
+## The research pipeline (DuckDB)
+
 A read-only, **advisory** market-intelligence layer over the AI-CIO research
 pipeline. It tells the rest of the platform what the market regime is, which
 tickers rank well today and why, and what the news / options / institutional-flow

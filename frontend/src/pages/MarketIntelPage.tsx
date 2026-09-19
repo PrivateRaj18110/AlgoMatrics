@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 
 import {
   Badge,
@@ -10,6 +11,7 @@ import {
   SkeletonRows,
   StatCard,
   Table,
+  Tabs,
   Td,
 } from "@/components/ui";
 import {
@@ -33,13 +35,22 @@ import { surface } from "@/components/ui";
 import { dateOnly } from "@/lib/format";
 import { marketRead, type Stance } from "@/lib/marketRead";
 import { useMarketPulse } from "@/lib/markets";
+import { BriefingTab } from "@/pages/intel/BriefingTab";
+import { CatalystsTab, NewsTab } from "@/pages/intel/CatalystsTab";
+import { MoversTab } from "@/pages/intel/MoversTab";
+import { TrackRecordTab } from "@/pages/intel/TrackRecordTab";
+import { useAuth } from "@/stores/auth";
 import type { RankingRow } from "@/types/api";
 
 /**
- * Market Intelligence (AI-CIO): a read-only, advisory overlay. It shows the
- * current market regime, the day's ranked opportunities with their dimension
- * breakdown, notable options / institutional-flow reads, and recent news. It
- * never places a trade — it only informs.
+ * Market Intelligence (AI-CIO): a read-only, advisory overlay.
+ *
+ * It leads with the AI-CIO movers radar — which F&O stocks are most likely to
+ * make a major move today and why, from NSE filings, results dates, the pre-open
+ * auction, open interest and headlines — graded against the close every day.
+ * The live market read, catalysts, headlines and the model's track record sit in
+ * tabs; the older research pipeline appears only when it is connected. It never
+ * places a trade — it only informs.
  */
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -443,47 +454,62 @@ function LiveIntelligence() {
   );
 }
 
+const TABS = [
+  { key: "movers", label: "Today's movers" },
+  { key: "catalysts", label: "Catalysts" },
+  { key: "news", label: "Headlines" },
+  { key: "record", label: "Track record" },
+  { key: "market", label: "Market read" },
+] as const;
+type TabKey = (typeof TABS)[number]["key"] | "briefing" | "research";
+
 export function MarketIntelPage() {
   const { data: status } = useMarketIntelStatus();
+  const isAdmin = useAuth((state) => state.user?.is_platform_admin ?? false);
+  const [params, setParams] = useSearchParams();
+  const research = Boolean(status?.configured);
+  const tabs: { key: TabKey; label: string }[] = [
+    ...TABS,
+    ...(isAdmin ? [{ key: "briefing" as const, label: "Daily briefing" }] : []),
+    ...(research ? [{ key: "research" as const, label: "Research pipeline" }] : []),
+  ];
+  const requested = params.get("tab") as TabKey | null;
+  const active: TabKey = tabs.some((tab) => tab.key === requested) ? (requested as TabKey) : "movers";
 
   return (
     <div className="am-fade-in">
       <PageHeader
-        eyebrow="Markets · Intelligence"
+        eyebrow="Markets · AI-CIO"
         title="Market Intelligence"
-        description="What the market is doing and why: trend, volatility, breadth, sector rotation and institutional flows from live data, plus the experimental AI-CIO model."
+        description="Which F&O stocks are most likely to make a major move today, and why — from NSE filings, results dates, the pre-open auction, open interest and headlines. Every forecast is graded against the close."
         actions={<Badge color="violet">Advisory · read-only</Badge>}
       />
 
-      <LiveIntelligence />
-
-      <div className="mb-3 flex items-center gap-3">
-        <h2 className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">
-          AI-CIO model
-        </h2>
-        <Badge color="amber">Experimental</Badge>
-        <span className="h-px flex-1 bg-slate-200 dark:bg-white/[0.08]" />
+      <div className="mb-6 overflow-x-auto">
+        <Tabs
+          tabs={tabs}
+          active={active}
+          onChange={(key) => setParams(key === "movers" ? {} : { tab: key }, { replace: true })}
+        />
       </div>
-      <p className="mb-4 max-w-3xl text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-        Output of the separate AI-CIO pipeline. In its default deployment that pipeline runs on
-        synthetic data, so treat these rankings and news as a demonstration until it is connected
-        to live feeds. The live read above does not depend on it.
-      </p>
 
-      {status && !status.configured ? (
-        <Card>
-          <EmptyState
-            title="AI-CIO is not configured"
-            body="Set AICIO_DUCKDB_PATH to the AI-CIO DuckDB file to enable regime, rankings, and news."
-          />
-        </Card>
-      ) : (
+      {active === "movers" ? <MoversTab isAdmin={isAdmin} /> : null}
+      {active === "catalysts" ? <CatalystsTab /> : null}
+      {active === "news" ? <NewsTab /> : null}
+      {active === "record" ? <TrackRecordTab isAdmin={isAdmin} /> : null}
+      {active === "market" ? <LiveIntelligence /> : null}
+      {active === "briefing" ? <BriefingTab /> : null}
+      {active === "research" ? (
         <>
+          <p className="mb-4 max-w-3xl text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            Output of the separate AI-CIO research pipeline (regime ensemble and factor rankings).
+            It runs on its own schedule and data source; the movers radar does not depend on it.
+          </p>
           <RegimePanel />
           <RankingsPanel />
           <NewsPanel />
         </>
-      )}
+      ) : null}
     </div>
   );
 }

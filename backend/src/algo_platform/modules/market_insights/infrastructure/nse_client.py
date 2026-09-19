@@ -1,9 +1,11 @@
 """NSE public data, fetched gently.
 
 NSE serves the JSON behind its own web pages only to browser-like clients that
-first load a page (it sets session cookies). This client does exactly that, a
-handful of times a day, with pauses between calls. It is used for two daily
-snapshots only - the pre-open auction and institutional flows - never polled.
+first load a page (it sets session cookies). This client does exactly that, with
+pauses between calls: the pre-open auction and institutional flows once a day,
+and the corporate-filings feeds (announcements, event calendar, corporate
+actions, large deals, open-interest spurts, the F&O ban list) every few minutes
+at most during market hours - never tighter.
 
 NSE may block or reshape these feeds at any time; every failure surfaces as
 ``NseUnavailable`` and callers keep serving the last stored snapshot.
@@ -12,6 +14,7 @@ NSE may block or reshape these feeds at any time; every failure surfaces as
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 from typing import Any
 
 import httpx
@@ -31,6 +34,19 @@ _HEADERS = {
     "Referer": _WARMUP_PAGE,
 }
 _PAUSE_SECONDS = 1.5
+_FILINGS_PAGE = f"{_BASE}/companies-listing/corporate-filings-announcements"
+_SECBAN_URL = "https://nsearchives.nseindia.com/content/fo/fo_secban.csv"
+
+ANNOUNCEMENTS_PATH = "/api/corporate-announcements?index=equities&from_date={start}&to_date={end}"
+EVENT_CALENDAR_PATH = "/api/event-calendar"
+CORPORATE_ACTIONS_PATH = "/api/corporates-corporateActions?index=equities"
+LARGE_DEALS_PATH = "/api/snapshot-capital-market-largedeal"
+OI_SPURTS_PATH = "/api/live-analysis-oi-spurts-underlyings"
+
+
+def nse_day(value: date) -> str:
+    """NSE query dates are dd-mm-yyyy."""
+    return value.strftime("%d-%m-%Y")
 
 
 class NseUnavailable(RuntimeError):
@@ -63,6 +79,46 @@ class NseClient:
             except httpx.HTTPError as error:
                 raise NseUnavailable(f"network error: {error}") from error
         return results
+
+    async def fetch_optional(self, paths: list[str]) -> dict[str, Any]:
+        """Several feeds in one session; a feed that fails maps to None instead of raising.
+
+        Raises ``NseUnavailable`` only when NSE cannot be reached at all.
+        """
+        results: dict[str, Any] = {}
+        async with httpx.AsyncClient(
+            headers={**_HEADERS, "Referer": _FILINGS_PAGE},
+            timeout=httpx.Timeout(30.0),
+            follow_redirects=True,
+            transport=self._transport,
+        ) as client:
+            try:
+                await client.get(_FILINGS_PAGE)
+            except httpx.HTTPError as error:
+                raise NseUnavailable(f"network error: {error}") from error
+            for path in paths:
+                await asyncio.sleep(_PAUSE_SECONDS)
+                try:
+                    response = await client.get(f"{_BASE}{path}")
+                    results[path] = response.json() if response.status_code == 200 else None
+                except (httpx.HTTPError, ValueError):
+                    results[path] = None
+                if results[path] is None:
+                    logger.warning("nse.feed_unavailable", path=path.split("?")[0])
+        return results
+
+    async def fo_ban_list(self) -> str | None:
+        """Plain-text F&O ban list for the next session (NSE archives host)."""
+        try:
+            async with httpx.AsyncClient(
+                headers={"User-Agent": _HEADERS["User-Agent"]},
+                timeout=httpx.Timeout(15.0),
+                transport=self._transport,
+            ) as client:
+                response = await client.get(_SECBAN_URL)
+        except httpx.HTTPError:
+            return None
+        return response.text if response.status_code == 200 else None
 
     async def preopen_fo(self) -> dict[str, Any]:
         """Pre-open auction for every F&O stock (also defines the F&O universe)."""

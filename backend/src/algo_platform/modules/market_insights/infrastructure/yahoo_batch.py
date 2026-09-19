@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 import structlog
@@ -24,6 +27,7 @@ _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; AlgoMatrics/1.0)"}
 _BATCH = 20
 _QUOTE_TTL = 60.0
 _HISTORY_TTL = 1800.0
+_IST = ZoneInfo("Asia/Kolkata")
 
 
 def _float(value: Any) -> float | None:
@@ -117,6 +121,78 @@ class YahooBatchQuotes:
             return hit[1] if hit else []
         self._history[symbol] = (time.monotonic(), closes)
         return closes
+
+    async def closes_batch(
+        self, symbols: list[str], *, range_: str = "3mo"
+    ) -> dict[str, list[tuple[date, float]]]:
+        """Daily closes for many symbols, 20 per request (spark). Not cached."""
+        out: dict[str, list[tuple[date, float]]] = {}
+        chunks = [symbols[i : i + _BATCH] for i in range(0, len(symbols), _BATCH)]
+        async with self._client() as client:
+            for chunk in chunks:
+                try:
+                    response = await client.get(
+                        "/v7/finance/spark",
+                        params={"symbols": ",".join(chunk), "range": range_, "interval": "1d"},
+                    )
+                    response.raise_for_status()
+                    results = (response.json().get("spark") or {}).get("result") or []
+                except (httpx.HTTPError, ValueError):
+                    logger.warning("yahoo.spark_history_failed", symbols=len(chunk))
+                    continue
+                for item in results:
+                    responses = item.get("response") or []
+                    body = responses[0] if responses else None
+                    if not body:
+                        continue
+                    stamps = body.get("timestamp") or []
+                    closes = ((body.get("indicators") or {}).get("quote") or [{}])[0].get(
+                        "close"
+                    ) or []
+                    out[item.get("symbol")] = [
+                        (_ist_date(ts), float(close))
+                        for ts, close in zip(stamps, closes, strict=False)
+                        if ts is not None and close is not None
+                    ]
+                await asyncio.sleep(0.3)
+        return out
+
+    async def daily_bars(self, symbol: str, *, range_: str = "6mo") -> list[DailyBar]:
+        """Daily open/high/low/close for one symbol (chart API). Not cached."""
+        try:
+            async with self._client() as client:
+                response = await client.get(
+                    f"/v8/finance/chart/{symbol}", params={"range": range_, "interval": "1d"}
+                )
+                response.raise_for_status()
+                result = response.json()["chart"]["result"][0]
+            quote = result["indicators"]["quote"][0]
+            stamps = result.get("timestamp") or []
+        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
+            logger.warning("yahoo.bars_failed", symbol=symbol)
+            return []
+        bars: list[DailyBar] = []
+        for i, ts in enumerate(stamps):
+            values = [
+                quote.get(key, [None] * len(stamps))[i] for key in ("open", "high", "low", "close")
+            ]
+            if ts is None or any(v is None for v in values):
+                continue
+            bars.append(DailyBar(_ist_date(ts), *(float(v) for v in values)))
+        return bars
+
+
+@dataclass(frozen=True, slots=True)
+class DailyBar:
+    day: date
+    open: float
+    high: float
+    low: float
+    close: float
+
+
+def _ist_date(timestamp: int) -> date:
+    return datetime.fromtimestamp(int(timestamp), tz=_IST).date()
 
 
 _shared = YahooBatchQuotes()

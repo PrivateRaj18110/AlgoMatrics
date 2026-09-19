@@ -5,7 +5,7 @@ COPY pyproject.toml uv.lock* ./
 COPY backend backend
 COPY packages packages
 COPY agents agents
-RUN uv sync --no-dev
+RUN uv sync --no-dev --extra ai
 
 FROM python:3.13-slim AS runtime
 RUN groupadd --system app && useradd --system --gid app --home /app app \

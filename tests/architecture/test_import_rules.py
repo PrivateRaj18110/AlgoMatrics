@@ -34,6 +34,7 @@ ALLOWED_CROSS_CONTEXT = {
     ("organizations", "identity"): {"application.directory"},
     ("contact", "identity"): {"application.directory"},
     ("devices", "notifications"): {"application.service"},
+    ("market_insights", "ai"): {"application.ports"},  # optional Claude filing reader
     ("brokerage", "billing"): {"application.service"},
     ("trading", "billing"): {"application.service"},
     ("trading", "risk"): {"application.service"},
