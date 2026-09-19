@@ -4,6 +4,8 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+/* A screen big enough to show the whole operations wallboard without scrolling. */
+@custom-variant wall (@media (min-width: 1280px) and (min-height: 860px));
 
 @theme {
   --font-sans:

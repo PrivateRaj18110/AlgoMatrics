@@ -31,7 +31,13 @@ export const GLYPHS = {
   inbox: "M4 13l2.5-7h11L20 13M4 13v6h16v-6M4 13h5l1 2h4l1-2h5",
   clock: "M12 3a9 9 0 100 18 9 9 0 000-18zM12 7v5l3 2",
   signal: "M5 12.5a10 10 0 0114 0M8.5 16a5 5 0 017 0M12 19.5h.01M2 9a14.5 14.5 0 0120 0",
-  eyeSource: "M12 5c-6.5 0-10 7-10 7s3.5 7 10 7 10-7 10-7-3.5-7-10-7zM12 9v6M9 12h6",
+  cpu: "M7 7h10v10H7zM10 10h4v4h-4zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4",
+  monitor: "M3 4h18v12H3zM8 20h8M12 16v4",
+  expand: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
+  collapse: "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5",
+  close: "M6 6l12 12M18 6L6 18",
+  refresh: "M20 11a8 8 0 10-2.3 5.7M20 4v7h-7",
+  eyeSource:"M12 5c-6.5 0-10 7-10 7s3.5 7 10 7 10-7 10-7-3.5-7-10-7zM12 9v6M9 12h6",
 } as const;
 
 export type GlyphName = keyof typeof GLYPHS;

@@ -1,36 +1,45 @@
 /**
- * Operations wallboard — one screen, no scrolling, meant to be left running.
+ * Operations wallboard — System Health on one screen, meant to be left running.
  *
  * Read-only. No order, strategy, risk or broker control exists on this page, and
  * a test asserts that.
  *
- * The governing rule is that this board must never claim to know something it
- * does not. Concretely, that means several panels here are deliberately UNKNOWN
- * even though a number could be rendered:
+ * Layout, top to bottom: overall verdict and clock; the Indian market strip;
+ * the platform status matrix (API, database, Redis and every background
+ * process, plus the data sources); the execution agent's telemetry — the
+ * System Health page's metrics and charts; the fleet (execution agents and
+ * trading devices); incidents; and LLS monitoring.
  *
- * * **Database** has no health signal in the API. An HTTP 200 from an endpoint
- *   that happens to touch Postgres is not a database health check, so the panel
- *   says UNKNOWN rather than inferring one.
- * * **Process memory, queue workers, feed counts, ingestion latency** have no
- *   authoritative source. `SystemHealthPoint` will happily return
- *   `api_success_pct = 100.0` and `status = "STABLE"` for an agent that reported
- *   nothing at all — those are Pydantic defaults, not measurements — so this page
- *   reads the nullable twins (`api_success_rate`, `cpu_usage`) and treats their
- *   absence as UNKNOWN. See `preferNullable` in `@/lib/wallboard`.
- * * **Incidents** distinguish "the store answered and there are none" from "the
+ * The governing rule is that this board must never claim to know something it
+ * does not:
+ *
+ * * The database and Redis are shown healthy only on a real probe — the API's
+ *   own `SELECT 1`/`PING` for platform admins, the public readiness probe for
+ *   everyone else. An HTTP 200 from some other endpoint is never read as one.
+ * * Background processes are judged by the heartbeat each writes to Redis. A
+ *   missing heartbeat is CRITICAL; one that is late is STALE.
+ * * Agent telemetry prefers the nullable twins (`cpu_usage`, `api_success_rate`,
+ *   `signal_fill_rate`): the plain fields default to 0/100 on the server when
+ *   an agent reported nothing. See `preferNullable` in `@/lib/wallboard`.
+ * * Incidents distinguish "the store answered and there are none" from "the
  *   store did not answer". Only the first may print NO ACTIVE INCIDENTS.
+ * * The overall verdict never says HEALTHY while a required check is UNKNOWN.
+ *   Optional components that are simply not set up (no devices registered, no
+ *   LLS publisher yet) are shown, but do not hold the verdict hostage.
  *
  * Tenancy: every query goes through the existing platform hooks, which are
- * gated on an active organisation and authorised server-side. Nothing here
- * passes an organisation as a parameter, and no filtering in this file is
- * load-bearing for security.
+ * gated on an active organisation and authorised server-side.
  */
 
+import { clsx } from "clsx";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
+import { BrandMark } from "@/components/BrandMark";
+import { Glyph, type GlyphName } from "@/components/icons";
 import { Seo } from "@/components/Seo";
-
+import { ApiError, MFA_REQUIRED_CODE } from "@/lib/api";
+import { type Device, useDevices } from "@/lib/devices";
 import {
   useMarketQuotes,
   useMonitoringSources,
@@ -40,10 +49,19 @@ import {
   useOpsOverview,
   useOpsSystemHealth,
 } from "@/lib/hooks";
-import { type Device, useDevices } from "@/lib/devices";
 import { getIndianMarketDaySchedule } from "@/lib/marketSessions";
-import { pctText, type QuoteRow, useMarketPulse } from "@/lib/markets";
+import { pctText, type QuoteRow, SESSION_LABEL, useMarketPulse } from "@/lib/markets";
 import { readFreshness } from "@/lib/monitoring";
+import {
+  ageText,
+  heartbeatState,
+  pickMachine,
+  reportingMachines,
+  secondsSince,
+  useBuildInfo,
+  useDependencyProbe,
+  usePlatformHealth,
+} from "@/lib/systemHealth";
 import {
   clockLabel,
   connectionState,
@@ -52,172 +70,20 @@ import {
   lastSuccessfulUpdate,
   latestInstant,
   markStaleOnError,
-  preferNullable,
   readEstablishedCount,
-  readingText,
   rollUp,
   unknown,
   type OperationalState,
   type QuerySnapshot,
   type Reading,
 } from "@/lib/wallboard";
+import { useAuth } from "@/stores/auth";
 import type { OpsEvent, OpsMachine } from "@/types/api";
 
-/* ------------------------------ presentation ------------------------------ */
+import { Gauge, Panel, ServiceTile, Stat, StatusDot, TONE } from "./wallboard/parts";
+import { TelemetryPanel } from "./wallboard/TelemetryPanel";
 
-const STATE_STYLE: Record<OperationalState, { chip: string; bar: string }> = {
-  HEALTHY: { chip: "bg-emerald-500/15 text-emerald-300 ring-emerald-500/40", bar: "bg-emerald-400" },
-  DEGRADED: { chip: "bg-orange-500/15 text-orange-300 ring-orange-500/40", bar: "bg-orange-400" },
-  STALE: { chip: "bg-sky-500/15 text-sky-300 ring-sky-500/40", bar: "bg-sky-400" },
-  CRITICAL: { chip: "bg-rose-500/20 text-rose-300 ring-rose-500/50", bar: "bg-rose-400" },
-  // Amber, never grey-green. Not being able to say is not the same as saying it is fine.
-  UNKNOWN: { chip: "bg-amber-500/15 text-amber-300 ring-amber-500/40", bar: "bg-amber-400" },
-};
-
-/** State as text, always — colour alone must never carry the meaning. */
-function StateChip({ state, className = "" }: { state: OperationalState; className?: string }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[clamp(9px,0.65vw,13px)] font-bold tracking-widest ring-1 ${STATE_STYLE[state].chip} ${className}`}
-    >
-      {state}
-    </span>
-  );
-}
-
-function Panel({
-  title,
-  state,
-  children,
-}: {
-  title: string;
-  state?: OperationalState;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="flex min-h-0 min-w-0 flex-col rounded-lg bg-[#0d121b] p-2 ring-1 ring-slate-800">
-      <h2 className="mb-1.5 flex shrink-0 items-center justify-between gap-2 font-mono text-[clamp(9px,0.62vw,12px)] font-semibold tracking-[0.18em] text-slate-500">
-        <span className="truncate">{title}</span>
-        {state ? <StateChip state={state} /> : null}
-      </h2>
-      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
-    </section>
-  );
-}
-
-/** A large status card for row 1. */
-function StatusCard({
-  label,
-  reading,
-  format,
-}: {
-  label: string;
-  reading: Reading<string>;
-  format?: string;
-}) {
-  const style = STATE_STYLE[reading.state];
-  return (
-    <section className="flex min-w-0 flex-col justify-between rounded-lg bg-[#0d121b] p-2 ring-1 ring-slate-800">
-      <div className={`mb-1 h-0.5 w-full rounded-full ${style.bar}`} aria-hidden="true" />
-      <h2 className="truncate font-mono text-[clamp(9px,0.62vw,12px)] font-semibold tracking-[0.16em] text-slate-500">
-        {label}
-      </h2>
-      <p className="mt-1 truncate font-mono text-[clamp(13px,1.35vw,26px)] font-bold text-slate-100">
-        {reading.state === "UNKNOWN" ? "UNKNOWN" : (reading.value ?? "UNKNOWN")}
-      </p>
-      <div className="mt-1 flex items-baseline justify-between gap-2">
-        <StateChip state={reading.state} />
-        {format ? (
-          <span className="truncate font-mono text-[clamp(8px,0.55vw,11px)] text-slate-500">
-            {format}
-          </span>
-        ) : null}
-      </div>
-      {reading.detail ? (
-        <p className="mt-1 line-clamp-2 font-mono text-[clamp(8px,0.55vw,11px)] leading-tight text-slate-500">
-          {reading.detail}
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
-/** One label/value pair inside a panel. Values print UNKNOWN, never a bare 0. */
-function Metric({
-  label,
-  reading,
-  format = (value: number) => String(value),
-}: {
-  label: string;
-  reading: Reading<number | string>;
-  format?: (value: number) => string;
-}) {
-  const text =
-    reading.state === "UNKNOWN" || reading.value === null
-      ? "UNKNOWN"
-      : typeof reading.value === "number"
-        ? readingText(reading as Reading<number>, format)
-        : reading.value;
-  const tone = reading.state === "UNKNOWN" ? "text-amber-300" : "text-slate-100";
-  return (
-    <div className="flex min-w-0 items-baseline justify-between gap-2 border-b border-slate-800/60 py-[2px] last:border-b-0">
-      <dt className="truncate font-mono text-[clamp(8px,0.58vw,11px)] tracking-wide text-slate-500">
-        {label}
-      </dt>
-      <dd
-        className={`shrink-0 font-mono text-[clamp(9px,0.72vw,14px)] font-semibold ${tone}`}
-        title={reading.detail ?? undefined}
-      >
-        {text}
-      </dd>
-    </div>
-  );
-}
-
-/** One tile of the market strip. Missing data reads UNKNOWN, in amber. */
-function Ticker({ label, value, change, note }: { label: string; value: string | null; change?: number | null; note?: string }) {
-  const tone =
-    change === null || change === undefined
-      ? "text-slate-400"
-      : change > 0
-        ? "text-emerald-300"
-        : change < 0
-          ? "text-rose-300"
-          : "text-slate-300";
-  return (
-    <div className="flex min-w-0 flex-col justify-center rounded-lg bg-[#0d121b] px-2 py-1 ring-1 ring-slate-800">
-      <span className="truncate font-mono text-[clamp(8px,0.55vw,11px)] tracking-[0.16em] text-slate-500">{label}</span>
-      <span className="flex items-baseline gap-2">
-        <span className={`truncate font-mono text-[clamp(11px,1vw,20px)] font-bold ${value === null ? "text-amber-300" : "text-slate-100"}`}>
-          {value ?? "UNKNOWN"}
-        </span>
-        {change !== undefined ? (
-          <span className={`font-mono text-[clamp(8px,0.62vw,12px)] font-semibold ${tone}`}>{change === null ? "" : pctText(change)}</span>
-        ) : null}
-        {note ? <span className="truncate font-mono text-[clamp(8px,0.55vw,11px)] text-slate-500">{note}</span> : null}
-      </span>
-    </div>
-  );
-}
-
-function indexValue(quote: QuoteRow | undefined): string | null {
-  return quote?.price === null || quote?.price === undefined
-    ? null
-    : quote.price.toLocaleString("en-IN", { maximumFractionDigits: 2 });
-}
-
-const DEVICE_STATE: Record<Device["status"], { text: string; tone: string }> = {
-  online: { text: "ONLINE", tone: "text-emerald-300" },
-  offline: { text: "OFFLINE", tone: "text-rose-300" },
-  never_seen: { text: "NO REPORT", tone: "text-amber-300" },
-  revoked: { text: "REVOKED", tone: "text-slate-500" },
-};
-
-function pct(value: unknown): string {
-  return typeof value === "number" ? `${Math.round(value)}%` : "—";
-}
-
-/* -------------------------------- the page -------------------------------- */
+/* -------------------------------- helpers --------------------------------- */
 
 function snapshot(query: {
   isError: boolean;
@@ -251,26 +117,251 @@ function severityLabel(event: OpsEvent): string {
   return rank === 4 ? "CRITICAL" : rank === 3 ? "ERROR" : rank === 2 ? "WARNING" : "INFO";
 }
 
+const SEVERITY_STYLE: Record<string, string> = {
+  CRITICAL: "bg-rose-500/15 text-rose-300 ring-rose-400/40",
+  ERROR: "bg-orange-400/10 text-orange-300 ring-orange-400/35",
+  WARNING: "bg-amber-400/10 text-amber-300 ring-amber-400/30",
+  INFO: "bg-white/5 text-slate-400 ring-white/10",
+};
+
+const HEADLINE: Record<OperationalState, string> = {
+  HEALTHY: "All systems operational",
+  DEGRADED: "Degraded — some components need attention",
+  STALE: "Some signals are late",
+  CRITICAL: "Service disruption",
+  UNKNOWN: "Status incomplete — some checks have not answered",
+};
+
+const OVERALL_FRAME: Record<OperationalState, string> = {
+  HEALTHY: "bg-emerald-400/[0.07] ring-emerald-400/25",
+  DEGRADED: "bg-orange-400/[0.08] ring-orange-400/30",
+  STALE: "bg-sky-400/[0.07] ring-sky-400/25",
+  CRITICAL: "bg-rose-500/[0.12] ring-rose-400/40",
+  UNKNOWN: "bg-amber-400/[0.07] ring-amber-400/25",
+};
+
+const DEVICE_STATE: Record<Device["status"], { text: string; state: OperationalState }> = {
+  online: { text: "ONLINE", state: "HEALTHY" },
+  offline: { text: "OFFLINE", state: "CRITICAL" },
+  never_seen: { text: "NO REPORT", state: "UNKNOWN" },
+  revoked: { text: "REVOKED", state: "UNKNOWN" },
+};
+
+const IST_TIME = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Kolkata",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+const IST_DAY = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short" });
+const IST_DATE = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Kolkata",
+  weekday: "short",
+  day: "2-digit",
+  month: "short",
+});
+
+function indexValue(quote: QuoteRow | undefined): string | null {
+  return quote?.price === null || quote?.price === undefined
+    ? null
+    : quote.price.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
+/** "4s ago", "2m 10s ago" — or "never" when there is no report at all. */
+function ago(seconds: number | null): string {
+  return seconds === null ? "never" : `${ageText(seconds)} ago`;
+}
+
+/* ------------------------------ small pieces ------------------------------ */
+
+function Ticker({
+  title,
+  value,
+  change,
+  note,
+  children,
+}: {
+  title: string;
+  value: string | null;
+  change?: number | null;
+  note?: string;
+  children?: React.ReactNode;
+}) {
+  const tone =
+    change === null || change === undefined
+      ? "text-slate-400 bg-white/5"
+      : change > 0
+        ? "text-emerald-300 bg-emerald-400/10"
+        : change < 0
+          ? "text-rose-300 bg-rose-400/10"
+          : "text-slate-300 bg-white/5";
+  return (
+    <div className="flex min-w-0 flex-col justify-center gap-0.5 rounded-xl bg-white/[0.03] px-3 py-2 ring-1 ring-white/[0.07]">
+      <span className="truncate text-[clamp(9px,0.55vw,12px)] font-medium uppercase tracking-[0.14em] text-slate-500">{title}</span>
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span
+          className={clsx(
+            "truncate font-data text-[clamp(14px,1.05vw,22px)] font-semibold tabular-nums",
+            value === null ? "text-amber-200/80" : "text-slate-50",
+          )}
+        >
+          {value ?? "UNKNOWN"}
+        </span>
+        {change !== undefined && change !== null ? (
+          <span className={clsx("rounded-md px-1.5 py-px font-data text-[clamp(9px,0.58vw,12px)] font-semibold", tone)}>
+            {pctText(change)}
+          </span>
+        ) : null}
+        {note ? <span className="truncate text-[clamp(9px,0.55vw,12px)] text-slate-500">{note}</span> : null}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function HeaderButton({
+  icon,
+  children,
+  onClick,
+  title,
+}: {
+  icon: "monitor" | "expand" | "collapse";
+  children: string;
+  onClick: () => void;
+  title: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[clamp(10px,0.6vw,13px)] font-medium text-slate-300 ring-1 ring-white/10 transition-colors hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-accent-400"
+    >
+      <Glyph name={icon} className="size-3.5" />
+      {children}
+    </button>
+  );
+}
+
+/** One machine or device: identity, three utilisation gauges, status — one line. */
+function FleetRow({
+  name,
+  meta,
+  cpu,
+  ram,
+  disk,
+  status,
+  state,
+}: {
+  name: string;
+  meta: string;
+  cpu: number | null | undefined;
+  ram: number | null | undefined;
+  disk: number | null | undefined;
+  status: string;
+  state: OperationalState;
+}) {
+  return (
+    <li className="grid grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,0.8fr))_5.5rem] items-center gap-x-3 rounded-lg px-2 py-0.5 hover:bg-white/[0.02]">
+      <div className="min-w-0">
+        <p className="truncate text-[clamp(11px,0.66vw,14px)] font-medium text-slate-100">{name}</p>
+        <p className="truncate font-data text-[clamp(9px,0.52vw,11px)] text-slate-500">{meta}</p>
+      </div>
+      <Gauge name="CPU" value={cpu} />
+      <Gauge name="RAM" value={ram} />
+      <Gauge name="DISK" value={disk} />
+      <span className={clsx("flex items-center justify-end gap-1.5 font-data text-[clamp(9px,0.55vw,12px)] font-semibold tracking-[0.1em]", TONE[state].text)}>
+        <StatusDot state={state} className="size-1.5" />
+        {status}
+      </span>
+    </li>
+  );
+}
+
+function MachineRow({ machine, now }: { machine: OpsMachine; now: number }) {
+  const online = machine.status === "online";
+  const meta = [
+    `heartbeat ${ago(secondsSince(machine.last_heartbeat, now))}`,
+    machine.queue_depth === null || machine.queue_depth === undefined ? null : `queue ${machine.queue_depth}`,
+    typeof machine.internet_ms === "number" ? `net ${Math.round(machine.internet_ms)} ms` : null,
+    typeof machine.broker_ping_ms === "number" ? `broker ${Math.round(machine.broker_ping_ms)} ms` : null,
+  ].filter(Boolean);
+  return (
+    <FleetRow
+      name={machine.hostname || machine.name || machine.id}
+      meta={meta.join(" · ")}
+      cpu={machine.cpu}
+      ram={machine.ram}
+      disk={machine.disk}
+      status={online ? "ONLINE" : (machine.status ?? "UNKNOWN").toUpperCase()}
+      state={online ? "HEALTHY" : "CRITICAL"}
+    />
+  );
+}
+
+function DeviceRow({ device, now }: { device: Device; now: number }) {
+  const status = DEVICE_STATE[device.status];
+  const latency = device.health?.latency_ms;
+  return (
+    <FleetRow
+      name={device.name}
+      meta={`${device.kind} · seen ${ago(secondsSince(device.last_seen_at, now))}${typeof latency === "number" ? ` · ${Math.round(latency)} ms` : ""}`}
+      cpu={device.health?.cpu}
+      ram={device.health?.ram}
+      disk={device.health?.disk}
+      status={status.text}
+      state={status.state}
+    />
+  );
+}
+
+function SubHeading({ children, aside }: { children: string; aside?: React.ReactNode }) {
+  return (
+    <h3 className="mb-1 flex items-center justify-between gap-2 px-2 text-[clamp(9px,0.55vw,12px)] font-semibold uppercase tracking-[0.14em] text-slate-500">
+      <span>{children}</span>
+      {aside}
+    </h3>
+  );
+}
+
+/* -------------------------------- the page -------------------------------- */
+
 export function WallboardPage() {
+  const isAdmin = useAuth((state) => state.user?.is_platform_admin ?? false);
+
   const overview = useOpsOverview();
   const machines = useOpsMachines();
   const alerts = useOpsAlerts();
-  const health = useOpsSystemHealth({}, { refetchInterval: 15_000 });
   const monitoringState = useMonitoringState({ limit: 200 });
   const monitoringSources = useMonitoringSources();
   const quotes = useMarketQuotes();
   const pulse = useMarketPulse();
   const devices = useDevices();
+  const platform = usePlatformHealth(isAdmin);
+  const probe = useDependencyProbe();
+  const build = useBuildInfo();
 
-  const [now, setNow] = useState(() => new Date());
+  const agentMachines = useMemo(() => reportingMachines(machines.data), [machines.data]);
+  const [chosenMachine, setChosenMachine] = useState<string | null>(null);
+  const activeMachine = pickMachine(agentMachines, chosenMachine);
+  // The most recent snapshots whatever their age, so an agent that went quiet
+  // still shows its last known figures (labelled historical) instead of nothing.
+  const health = useOpsSystemHealth(
+    { machine_id: activeMachine || undefined, limit: 240 },
+    { refetchInterval: 15_000 },
+  );
+
+  const [now, setNow] = useState(() => Date.now());
   const [fullscreen, setFullscreen] = useState(false);
-  const [chromeHidden, setChromeHidden] = useState(false);
+  const [displayMode, setDisplayMode] = useState(false);
+  const [idle, setIdle] = useState(false);
 
   // A single interval for the wall clock, cleared on unmount. Data refresh is
   // React Query's job: it serialises its own refetches, so a slow response
   // cannot build a backlog the way a bare setInterval(fetch) would.
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 1_000);
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -282,14 +373,59 @@ export function WallboardPage() {
   }, []);
 
   const toggleFullscreen = useCallback(() => {
-    // Absence of the API is normal (iOS Safari); the display-mode toggle below
-    // still works, so this degrades rather than failing.
+    // Absence of the API is normal (iOS Safari); display mode still works, so
+    // this degrades rather than failing.
     if (document.fullscreenElement) {
       void document.exitFullscreen?.();
       return;
     }
     void document.documentElement.requestFullscreen?.().catch(() => undefined);
   }, []);
+
+  // Keyboard: F fullscreen, D display mode, Esc leaves display mode.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.("input, textarea, select, [contenteditable='true']")) return;
+      if (event.key === "f" || event.key === "F") toggleFullscreen();
+      else if (event.key === "d" || event.key === "D") setDisplayMode((value) => !value);
+      else if (event.key === "Escape") setDisplayMode(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleFullscreen]);
+
+  // Display mode: keep the screen awake and hide an idle cursor.
+  useEffect(() => {
+    if (!displayMode) return;
+    let timer = window.setTimeout(() => setIdle(true), 3_000);
+    const wake = () => {
+      setIdle(false);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setIdle(true), 3_000);
+    };
+    window.addEventListener("mousemove", wake);
+    window.addEventListener("keydown", wake);
+
+    let lock: WakeLockSentinel | null = null;
+    let released = false;
+    navigator.wakeLock
+      ?.request("screen")
+      .then((sentinel) => {
+        if (released) void sentinel.release().catch(() => undefined);
+        else lock = sentinel;
+      })
+      .catch(() => undefined);
+
+    return () => {
+      released = true;
+      window.clearTimeout(timer);
+      window.removeEventListener("mousemove", wake);
+      window.removeEventListener("keydown", wake);
+      void lock?.release().catch(() => undefined);
+    };
+  }, [displayMode]);
 
   const queries = useMemo(
     () => [
@@ -300,24 +436,107 @@ export function WallboardPage() {
       snapshot(monitoringState),
       snapshot(monitoringSources),
       snapshot(quotes),
+      snapshot(probe),
     ],
-    [overview, machines, alerts, health, monitoringState, monitoringSources, quotes],
+    [overview, machines, alerts, health, monitoringState, monitoringSources, quotes, probe],
   );
-
   const connection = connectionState(queries);
   const lastUpdate = lastSuccessfulUpdate(queries);
+  const lastUpdateAge = lastUpdate.state === "UNKNOWN" ? null : secondsSince(lastUpdate.value, now);
 
   /* --- telemetry availability: the gate that keeps zeros honest ----------- */
 
   const telemetryConfigured = overview.isSuccess && overview.data?.telemetry_configured === true;
   const awaitingTelemetry = overview.data?.awaiting_telemetry !== false;
   const telemetryEstablished = telemetryConfigured && !awaitingTelemetry;
-
   const machineRows: OpsMachine[] = useMemo(() => machines.data ?? [], [machines.data]);
 
-  /* --- row 1: primary system status -------------------------------------- */
+  /* --- platform: API, database, Redis, background processes --------------- */
 
-  const systemCard: Reading<string> = useMemo(() => {
+  const apiReading: Reading<string> =
+    connection === "DEGRADED"
+      ? known("DEGRADED", "Some requests failing", "from this browser")
+      : connection === "CONNECTED"
+        ? known("HEALTHY", probe.data ? `${probe.data.round_trip_ms} ms` : "Reachable", "round trip from this browser")
+        : unknown("no request has completed yet");
+
+  const adminUnavailable = (): string => {
+    if (!isAdmin) return "visible to platform admins";
+    if (platform.error instanceof ApiError && platform.error.code === MFA_REQUIRED_CODE) {
+      return "turn on 2FA to see this";
+    }
+    return platform.isError ? "admin health check did not answer" : "waiting for the first check";
+  };
+
+  const dependencyReading = (
+    probeName: "postgres" | "redis",
+    healthy: boolean | undefined,
+    latency: number | null | undefined,
+  ): Reading<string> => {
+    if (platform.data && healthy !== undefined) {
+      return markStaleOnError(
+        healthy
+          ? known("HEALTHY", typeof latency === "number" ? `${latency.toFixed(1)} ms` : "Reachable", "probe from the API server")
+          : known("CRITICAL", "Unreachable", "the API server's probe failed"),
+        snapshot(platform),
+      );
+    }
+    const dependency = probe.data?.dependencies.find((item) => item.name === probeName);
+    if (!dependency) return unknown(probe.isError ? "readiness probe did not answer" : "no probe has answered yet");
+    return markStaleOnError(
+      dependency.healthy
+        ? known("HEALTHY", "Reachable", "readiness probe")
+        : known("CRITICAL", "Unreachable", dependency.detail ? `probe: ${dependency.detail}` : "readiness probe failed"),
+      snapshot(probe),
+    );
+  };
+
+  const databaseReading = dependencyReading("postgres", platform.data?.database, platform.data?.database_latency_ms);
+  const redisReading = dependencyReading("redis", platform.data?.redis, platform.data?.redis_latency_ms);
+
+  const serviceReading = (name: string, extra?: string): Reading<string> => {
+    if (!platform.data) return unknown(adminUnavailable());
+    const service = platform.data.services?.find((item) => item.name === name);
+    if (!service) return unknown("not reported by this API version");
+    const state = heartbeatState(service.age_seconds, service.stale_after_seconds);
+    const suffix = extra ? ` · ${extra}` : "";
+    const reading =
+      state === "HEALTHY"
+        ? known("HEALTHY", "Running", `heartbeat ${ageText(service.age_seconds)} ago${suffix}`)
+        : state === "STALE"
+          ? known("STALE", "Overdue", `last heartbeat ${ageText(service.age_seconds)} ago${suffix}`)
+          : known("CRITICAL", "No heartbeat", `silent for 2+ min, or not started${suffix}`);
+    return markStaleOnError(reading, snapshot(platform));
+  };
+
+  /* --- data sources -------------------------------------------------------- */
+
+  const marketAsOf = latestInstant((quotes.data ?? []).map((row) => row.as_of));
+  const quotesReading: Reading<string> = useMemo(() => {
+    if (!quotes.isSuccess && !quotes.data) return unknown("market-info unavailable");
+    const count = quotes.data?.length ?? 0;
+    if (count === 0) return unknown("no instruments in universe");
+    if (marketAsOf.state === "UNKNOWN") return unknown("provider returned no market timestamp");
+    // Never LIVE because the page refreshed — this states what the provider
+    // stamped, and nothing more.
+    return known("HEALTHY", `${count} quoted`, `provider as of ${clockLabel(marketAsOf.value)}`);
+  }, [quotes.isSuccess, quotes.data, marketAsOf.state, marketAsOf.value]);
+
+  const universe = pulse.data?.universe;
+  const nseReading: Reading<string> = (() => {
+    if (!pulse.data || !universe) return unknown(pulse.isError ? "market pulse did not answer" : "waiting for market pulse");
+    if (universe.source !== "nse" || !universe.trade_date) {
+      return known("DEGRADED", "Built-in list", "no NSE pre-open capture yet");
+    }
+    const captured = `${universe.trade_date}T09:08:00+05:30`;
+    const days = secondsSince(captured, now);
+    const value = `Pre-open ${IST_DAY.format(Date.parse(captured))}`;
+    return days !== null && days > 4 * 86_400
+      ? known("STALE", value, "no newer capture in 4 days")
+      : known("HEALTHY", value, "captured 09:08 IST each trading day");
+  })();
+
+  const agentsReading: Reading<string> = useMemo(() => {
     if (!overview.isSuccess) return unknown("operations overview unavailable");
     if (!telemetryConfigured) return unknown("telemetry store not configured");
     if (awaitingTelemetry) return unknown("awaiting first telemetry");
@@ -325,55 +544,32 @@ export function WallboardPage() {
     const online = overview.data?.online_machines ?? null;
     if (total === null || online === null) return unknown("machine counts not reported");
     if (total === 0) return unknown("no machines registered");
-    if (online === total) return known("HEALTHY", `${online}/${total} ONLINE`);
-    if (online === 0) return known("CRITICAL", `0/${total} ONLINE`, "no machine is reporting");
-    return known("DEGRADED", `${online}/${total} ONLINE`);
+    if (online === total) return known("HEALTHY", `${online}/${total} online`);
+    if (online === 0) return known("CRITICAL", `0/${total} online`, "no machine is reporting");
+    return known("DEGRADED", `${online}/${total} online`);
   }, [overview.isSuccess, overview.data, telemetryConfigured, awaitingTelemetry]);
 
-  const marketAsOf = latestInstant((quotes.data ?? []).map((row) => row.as_of));
-  const marketCard: Reading<string> = useMemo(() => {
-    if (!quotes.isSuccess && !quotes.data) return unknown("market-info unavailable");
-    const count = quotes.data?.length ?? 0;
-    if (count === 0) return unknown("no instruments in universe");
-    if (marketAsOf.state === "UNKNOWN") {
-      return unknown("provider returned no market timestamp");
-    }
-    // Never LIVE because the page refreshed — this states what the provider
-    // stamped and what the exchange calendar says, and nothing more.
-    return known("HEALTHY", `${count} QUOTED`, `provider as of ${clockLabel(marketAsOf.value)}`);
-  }, [quotes.isSuccess, quotes.data, marketAsOf.state, marketAsOf.value]);
+  const fleet = useMemo(() => (devices.data ?? []).filter((device) => device.status !== "revoked"), [devices.data]);
+  const devicesReading: Reading<string> = (() => {
+    if (!devices.isSuccess) return unknown(devices.isError ? "device list did not answer" : "waiting for device list");
+    if (fleet.length === 0) return unknown("none registered");
+    const online = fleet.filter((device) => device.status === "online").length;
+    const offline = fleet.filter((device) => device.status === "offline").length;
+    if (offline > 0) return known("DEGRADED", `${online}/${fleet.length} online`, `${offline} silent for 3+ min`);
+    if (online === fleet.length) return known("HEALTHY", `${online}/${fleet.length} online`);
+    return known("STALE", `${online}/${fleet.length} online`, "awaiting first report");
+  })();
 
-  const receiverCard: Reading<string> = useMemo(() => {
-    if (!monitoringState.isSuccess && !monitoringState.data) {
-      return unknown("monitoring read API unavailable");
-    }
-    if (monitoringState.data?.configured !== true) {
-      return unknown("receiver database not configured");
-    }
+  const receiverReading: Reading<string> = useMemo(() => {
+    if (!monitoringState.isSuccess && !monitoringState.data) return unknown("monitoring read API unavailable");
+    if (monitoringState.data?.configured !== true) return unknown("receiver database not configured");
     const count = monitoringState.data?.count ?? 0;
-    if (count === 0) {
-      // Configured and empty is an established fact, not a missing one — but it
-      // is still not evidence that the receiver is healthy.
-      return unknown("configured; no messages received");
-    }
-    return known("HEALTHY", `${count} OBSERVATIONS`);
+    // Configured and empty is an established fact, but not evidence of health.
+    if (count === 0) return unknown("configured; no messages received");
+    return known("HEALTHY", `${count} observations`);
   }, [monitoringState.isSuccess, monitoringState.data]);
 
-  // The canonical example of what this board must not do: a 200 from an
-  // endpoint is not a database health check.
-  const databaseCard: Reading<string> = unknown("no database health signal is exposed by the API");
-
-  const apiCard: Reading<string> = useMemo(() => {
-    if (connection === "CONNECTED") {
-      return known("HEALTHY", "REACHABLE", "from this browser only");
-    }
-    if (connection === "DEGRADED") {
-      return known("DEGRADED", "REQUESTS FAILING", "from this browser only");
-    }
-    return unknown("no request has completed yet");
-  }, [connection]);
-
-  const pipelineCard: Reading<string> = useMemo(() => {
+  const pipelineReading: Reading<string> = useMemo(() => {
     if (!machines.isSuccess && !machines.data) return unknown("machine telemetry unavailable");
     const depth = maxNullable(machineRows.map((machine) => machine.queue_depth));
     const transports = machineRows
@@ -381,19 +577,45 @@ export function WallboardPage() {
       .filter((value): value is string => Boolean(value));
     if (depth === null && transports.length === 0) return unknown("no pipeline metric reported");
     if (depth === null) return known("HEALTHY", transports[0].toUpperCase(), "transport state only");
-    return known(depth > 0 ? "DEGRADED" : "HEALTHY", `QUEUE ${depth}`, transports[0]?.toUpperCase());
+    return known(depth > 0 ? "DEGRADED" : "HEALTHY", `Queue ${depth}`, transports[0] ? `transport ${transports[0]}` : null);
   }, [machines.isSuccess, machines.data, machineRows]);
 
-  const overall = rollUp([
-    systemCard.state,
-    marketCard.state,
-    receiverCard.state,
-    databaseCard.state,
-    apiCard.state,
-    pipelineCard.state,
-  ]);
+  const tiles: { key: string; icon: GlyphName; title: string; reading: Reading<string>; optional?: boolean }[] = [
+    { key: "api", icon: "signal", title: "API", reading: apiReading },
+    { key: "database", icon: "database", title: "Database", reading: databaseReading },
+    { key: "redis", icon: "layers", title: "Redis cache", reading: redisReading },
+    { key: "market_data", icon: "pulse", title: "Market data feed", reading: serviceReading("market_data") },
+    {
+      key: "trading_engine",
+      icon: "bolt",
+      title: "Trading engine",
+      reading: serviceReading("trading_engine", platform.data ? `${platform.data.active_runs} active runs` : undefined),
+    },
+    { key: "scheduler", icon: "clock", title: "Scheduler", reading: serviceReading("scheduler") },
+    {
+      key: "relay",
+      icon: "inbox",
+      title: "Outbox relay",
+      reading: serviceReading("relay", platform.data ? `backlog ${platform.data.outbox_backlog}` : undefined),
+    },
+    { key: "email", icon: "mail", title: "E-mail worker", reading: serviceReading("email") },
+    { key: "quotes", icon: "chart", title: "Market quotes", reading: quotesReading },
+    { key: "nse", icon: "history", title: "NSE snapshots", reading: nseReading },
+    { key: "agents", icon: "server", title: "Execution agents", reading: agentsReading, optional: true },
+    { key: "devices", icon: "monitor", title: "Trading devices", reading: devicesReading, optional: true },
+    { key: "lls", icon: "radar", title: "LLS receiver", reading: receiverReading, optional: true },
+    { key: "pipeline", icon: "list", title: "Agent upload queue", reading: pipelineReading, optional: true },
+  ];
 
-  /* --- row 3: monitoring.v1 ---------------------------------------------- */
+  // Optional components that are simply not set up are shown but not counted;
+  // a required check that has not answered keeps the verdict off HEALTHY.
+  const counted = tiles.filter((tile) => !(tile.optional && tile.reading.state === "UNKNOWN"));
+  const overall = rollUp(counted.map((tile) => tile.reading.state));
+  const healthyCount = tiles.filter((tile) => tile.reading.state === "HEALTHY").length;
+  const attentionCount = tiles.filter((tile) => ["DEGRADED", "STALE", "CRITICAL"].includes(tile.reading.state)).length;
+  const unknownCount = tiles.length - healthyCount - attentionCount;
+
+  /* --- monitoring.v1 -------------------------------------------------------- */
 
   const sourceRows = monitoringSources.data ?? [];
   const sourcesEstablished = monitoringSources.isSuccess;
@@ -416,370 +638,361 @@ export function WallboardPage() {
     return { unknownStates, staleStates, established: monitoringState.isSuccess };
   }, [monitoringState.data, monitoringState.isSuccess]);
 
-  /* --- row 5: incidents --------------------------------------------------- */
+  const latestEvidence = latestInstant(sourceRows.map((row) => row.last_seen_at));
 
-  const incidents = useMemo(() => (alerts.data ?? []).slice().sort((a, b) => severityRank(b) - severityRank(a)), [alerts.data]);
-  // An empty list only means "no incidents" when the store was actually able to
-  // answer. Unconfigured telemetry also returns [], and the two must not look
-  // the same.
+  /* --- incidents ------------------------------------------------------------ */
+
+  const incidents = useMemo(
+    () => (alerts.data ?? []).slice().sort((a, b) => severityRank(b) - severityRank(a)),
+    [alerts.data],
+  );
+  // An empty list only means "no incidents" when the store was able to answer.
+  // Unconfigured telemetry also returns [], and the two must not look the same.
   const incidentStateKnown = alerts.isSuccess && telemetryConfigured;
+  const incidentState: OperationalState = !incidentStateKnown
+    ? "UNKNOWN"
+    : incidents.length === 0
+      ? "HEALTHY"
+      : severityRank(incidents[0]) >= 4
+        ? "CRITICAL"
+        : severityRank(incidents[0]) >= 3
+          ? "DEGRADED"
+          : "STALE";
 
-  /* --- market session ----------------------------------------------------- */
+  /* --- market session ------------------------------------------------------- */
 
-  const schedule = getIndianMarketDaySchedule(now);
-  const sessionLabel =
-    schedule.type === "open"
-      ? "SCHEDULED TRADING DAY"
+  const schedule = getIndianMarketDaySchedule(new Date(now));
+  const sessionText = pulse.data?.session
+    ? SESSION_LABEL[pulse.data.session.state]
+    : schedule.type === "open"
+      ? "Trading day"
       : schedule.type === "weekend"
-        ? "CLOSED — WEEKEND"
-        : schedule.reason.toUpperCase();
+        ? "Closed — weekend"
+        : schedule.reason;
+  const sessionOpen = pulse.data?.session.state === "open" || pulse.data?.session.state === "pre_open";
 
-  const environment = monitoringState.data?.receiver_deployment_environment ?? null;
-  const build = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? null;
+  const environment = build.data?.environment ?? monitoringState.data?.receiver_deployment_environment ?? null;
+  const buildLabel = build.data
+    ? `${build.data.version}${build.data.build_sha && build.data.build_sha !== "unknown" ? ` · ${build.data.build_sha.slice(0, 7)}` : ""}`
+    : ((import.meta.env.VITE_APP_VERSION as string | undefined) ?? null);
+
+  const flow = pulse.data?.institutional_flows[0];
+  const breadth = pulse.data?.breadth;
+  const breadthTotal = breadth ? breadth.advances + breadth.declines + breadth.unchanged : 0;
+
+  const visibleAgents = agentMachines.slice(0, 3);
+  const visibleDevices = fleet.slice(0, 4);
 
   return (
     <div
-      className={`flex h-[100dvh] w-full flex-col gap-1.5 overflow-hidden bg-[#05070b] p-1.5 text-slate-200 ${
-        chromeHidden ? "fixed inset-0 z-50" : ""
-      }`}
+      className={clsx(
+        "relative isolate flex min-h-[100dvh] w-full flex-col gap-3 bg-[#05080e] p-3 text-slate-200 wall:h-[100dvh] wall:overflow-hidden",
+        displayMode && "fixed inset-0 z-50",
+        displayMode && idle && "cursor-none",
+      )}
       data-testid="wallboard"
     >
-      <Seo title="ALGOMATRIC Wallboard" noindex />
-      {/* ------------------------------ top bar ------------------------------ */}
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg bg-[#0d121b] px-3 py-1.5 ring-1 ring-slate-800">
+      <Seo title="System Health Wallboard" noindex />
+      <div aria-hidden className="am-radial am-grid pointer-events-none absolute inset-0 -z-10 opacity-80" />
+
+      {/* --------------------------------- header -------------------------------- */}
+      <header className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-3 rounded-2xl bg-[#0a1019]/85 px-4 py-2.5 ring-1 ring-white/[0.07]">
         <div className="flex items-center gap-3">
-          <h1 className="font-mono text-[clamp(12px,1.1vw,22px)] font-bold tracking-[0.2em] text-slate-100">
-            ALGOMATRIC SYSTEM HEALTH
-          </h1>
-          <StateChip state={overall} className="!text-[clamp(10px,0.85vw,16px)]" />
+          <BrandMark to="/app/dashboard" compact />
+          <div>
+            <h1 className="text-[clamp(15px,1.05vw,24px)] font-semibold tracking-tight text-white">System Health</h1>
+            <p className="text-[clamp(9px,0.52vw,11px)] font-medium uppercase tracking-[0.2em] text-slate-500">
+              ALGOMATRIC operations wallboard
+            </p>
+          </div>
         </div>
-        <dl className="flex flex-wrap items-baseline gap-x-5 gap-y-0.5 font-mono text-[clamp(8px,0.6vw,12px)]">
-          <div className="flex items-baseline gap-1.5">
-            <dt className="text-slate-500">ENVIRONMENT</dt>
-            <dd className={environment ? "text-slate-100" : "text-amber-300"}>
-              {environment ?? "UNKNOWN"}
-            </dd>
+
+        <div
+          className={clsx("flex min-w-0 items-center gap-3 rounded-xl px-3.5 py-1.5 ring-1", OVERALL_FRAME[overall])}
+          role="status"
+          aria-label="Overall status"
+        >
+          <StatusDot state={overall} className="size-3" />
+          <div className="min-w-0">
+            <p className={clsx("font-data text-[clamp(13px,0.9vw,20px)] font-bold tracking-[0.14em]", TONE[overall].text)}>{overall}</p>
+            <p className="text-[clamp(10px,0.6vw,13px)] text-slate-300 xl:truncate">
+              {HEADLINE[overall]}
+              <span className="text-slate-500">
+                {" · "}
+                {healthyCount} of {tiles.length} healthy
+                {attentionCount ? ` · ${attentionCount} need attention` : ""}
+                {unknownCount ? ` · ${unknownCount} unknown` : ""}
+              </span>
+            </p>
           </div>
-          <div className="flex items-baseline gap-1.5">
-            <dt className="text-slate-500">LAST UPDATE</dt>
-            <dd className="text-slate-100">
-              {lastUpdate.state === "UNKNOWN" ? "UNKNOWN" : clockLabel(lastUpdate.value)}
-            </dd>
+        </div>
+
+        <div className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-2">
+          <div className="flex flex-col items-end">
+            <span className="text-[clamp(9px,0.52vw,11px)] font-medium uppercase tracking-[0.16em] text-slate-500">NSE session</span>
+            <span className={clsx("flex items-center gap-1.5 text-[clamp(11px,0.68vw,14px)] font-semibold", sessionOpen ? "text-emerald-300" : "text-slate-300")}>
+              {sessionOpen ? <StatusDot state="HEALTHY" className="size-1.5" /> : null}
+              {sessionText}
+            </span>
           </div>
-          <div className="flex items-baseline gap-1.5">
-            <dt className="text-slate-500">CONNECTION</dt>
-            <dd className={connection === "CONNECTED" ? "text-emerald-300" : "text-amber-300"}>
+          <div className="flex flex-col items-end" aria-label="Indian Standard Time">
+            <span className="font-data text-[clamp(18px,1.45vw,32px)] font-semibold leading-none tabular-nums text-white">
+              {IST_TIME.format(now)}
+            </span>
+            <span className="text-[clamp(9px,0.52vw,11px)] font-medium uppercase tracking-[0.16em] text-slate-500">
+              IST · {IST_DATE.format(now)}
+            </span>
+          </div>
+          <dl className="flex flex-col items-end">
+            <dt className="sr-only">Connection</dt>
+            <dd
+              className={clsx(
+                "flex items-center gap-1.5 font-data text-[clamp(10px,0.6vw,13px)] font-semibold tracking-[0.1em]",
+                connection === "CONNECTED" ? "text-emerald-300" : "text-amber-300",
+              )}
+            >
+              <StatusDot state={connection === "CONNECTED" ? "HEALTHY" : connection === "DEGRADED" ? "DEGRADED" : "UNKNOWN"} className="size-1.5" />
               {connection === "DEGRADED" ? "CONNECTION DEGRADED" : connection}
             </dd>
+            <dt className="sr-only">Last update</dt>
+            <dd className="text-[clamp(9px,0.55vw,12px)] text-slate-500">
+              {lastUpdateAge === null ? "No update yet" : `Updated ${ageText(lastUpdateAge)} ago`} · every 15s
+            </dd>
+          </dl>
+          <div className="flex items-center gap-1.5">
+            {displayMode ? (
+              <HeaderButton icon="collapse" onClick={() => setDisplayMode(false)} title="Leave display mode (Esc)">
+                Exit display mode
+              </HeaderButton>
+            ) : (
+              <>
+                <HeaderButton icon="monitor" onClick={() => setDisplayMode(true)} title="Keep the screen awake and hide the cursor (D)">
+                  Display mode
+                </HeaderButton>
+                <HeaderButton icon={fullscreen ? "collapse" : "expand"} onClick={toggleFullscreen} title="Toggle fullscreen (F)">
+                  {fullscreen ? "Exit fullscreen" : "Fullscreen"}
+                </HeaderButton>
+              </>
+            )}
+            <Link
+              to="/app/dashboard"
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[clamp(10px,0.6vw,13px)] font-medium text-slate-400 ring-1 ring-white/10 transition-colors hover:bg-white/5 hover:text-white"
+            >
+              <Glyph name="close" className="size-3.5" />
+              Exit
+            </Link>
           </div>
-          <div className="flex items-baseline gap-1.5">
-            <dt className="text-slate-500">AUTO REFRESH</dt>
-            <dd className="text-slate-100">10–20s</dd>
-          </div>
-        </dl>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setChromeHidden((value) => !value)}
-            className="rounded px-2 py-1 font-mono text-[clamp(8px,0.6vw,12px)] tracking-widest text-slate-300 ring-1 ring-slate-700 hover:bg-slate-800"
-          >
-            {chromeHidden ? "EXIT DISPLAY MODE" : "DISPLAY MODE"}
-          </button>
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="rounded px-2 py-1 font-mono text-[clamp(8px,0.6vw,12px)] tracking-widest text-slate-300 ring-1 ring-slate-700 hover:bg-slate-800"
-          >
-            {fullscreen ? "EXIT FULLSCREEN" : "FULLSCREEN"}
-          </button>
-          <Link
-            to="/app/dashboard"
-            className="rounded px-2 py-1 font-mono text-[clamp(8px,0.6vw,12px)] tracking-widest text-slate-400 ring-1 ring-slate-700 hover:bg-slate-800"
-          >
-            EXIT
-          </Link>
         </div>
       </header>
 
-      {/* ------------------------- market strip (live) ------------------------ */}
-      <div className="grid shrink-0 grid-cols-3 gap-1.5 md:grid-cols-6" data-testid="market-strip">
+      {/* ------------------------------ market strip ----------------------------- */}
+      <div className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" data-testid="market-strip">
         {(["^NSEI", "^NSEBANK", "^BSESN"] as const).map((symbol) => {
           const quote = pulse.data?.indices.find((row) => row.symbol === symbol);
-          return (
-            <Ticker
-              key={symbol}
-              label={quote?.name ?? symbol}
-              value={indexValue(quote)}
-              change={quote?.change_pct ?? null}
-            />
-          );
+          return <Ticker key={symbol} title={quote?.name ?? symbol} value={indexValue(quote)} change={quote?.change_pct ?? null} />;
         })}
         <Ticker
-          label="INDIA VIX"
+          title="India VIX"
           value={indexValue(pulse.data?.vix)}
           change={pulse.data?.vix.change_pct ?? null}
-          note={pulse.data ? pulse.data.regime.volatility.label.toUpperCase() : undefined}
+          note={pulse.data?.regime.volatility.label}
         />
         <Ticker
-          label="F&O ADVANCE / DECLINE"
-          value={pulse.data ? `${pulse.data.breadth.advances} / ${pulse.data.breadth.declines}` : null}
-          note={pulse.data?.breadth.pct_advancing != null ? `${pulse.data.breadth.pct_advancing}% UP` : undefined}
-        />
+          title="F&O advance / decline"
+          value={breadth ? `${breadth.advances} / ${breadth.declines}` : null}
+          note={breadth?.pct_advancing != null ? `${breadth.pct_advancing}% up` : undefined}
+        >
+          {breadth && breadthTotal > 0 ? (
+            <div className="mt-1 flex h-1 overflow-hidden rounded-full bg-white/[0.06]" aria-hidden>
+              <div className="bg-emerald-400" style={{ width: `${(breadth.advances / breadthTotal) * 100}%` }} />
+              <div className="bg-slate-500" style={{ width: `${(breadth.unchanged / breadthTotal) * 100}%` }} />
+              <div className="bg-rose-400" style={{ width: `${(breadth.declines / breadthTotal) * 100}%` }} />
+            </div>
+          ) : null}
+        </Ticker>
         <Ticker
-          label="FII NET (₹ CR)"
-          value={(() => {
-            const flow = pulse.data?.institutional_flows[0];
-            return flow?.fii_net == null ? null : Math.round(flow.fii_net).toLocaleString("en-IN");
-          })()}
-          note={pulse.data?.institutional_flows[0]?.trade_date}
+          title="FII net (₹ cr)"
+          value={flow?.fii_net == null ? null : Math.round(flow.fii_net).toLocaleString("en-IN")}
+          note={flow?.trade_date ?? undefined}
         />
       </div>
 
-      {/* ------------------------- row 1: status cards ----------------------- */}
-      <div className="grid shrink-0 grid-cols-2 gap-1.5 sm:grid-cols-3 xl:grid-cols-6">
-        <StatusCard label="SYSTEM" reading={systemCard} />
-        <StatusCard label="MARKET FEEDS" reading={marketCard} />
-        <StatusCard label="MONITORING RECEIVER" reading={receiverCard} />
-        <StatusCard label="DATABASE" reading={databaseCard} />
-        <StatusCard label="API" reading={apiCard} />
-        <StatusCard label="DATA PIPELINE" reading={pipelineCard} />
-      </div>
+      {/* ------------------------- platform status matrix ------------------------ */}
+      <section aria-label="Platform services" className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 wall:grid-cols-7 2xl:grid-cols-7">
+        {tiles.map((tile) => (
+          <ServiceTile key={tile.key} icon={tile.icon} title={tile.title} reading={tile.reading} />
+        ))}
+      </section>
 
-      {/* --------------------- rows 2-4: detail panels ----------------------- */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-1.5 md:grid-cols-2 xl:grid-cols-3">
-        <Panel title="MARKET / FEED HEALTH" state={marketCard.state}>
-          <dl>
-            <Metric
-              label="SECURITIES QUOTED"
-              reading={readEstablishedCount(quotes.data?.length, quotes.isSuccess, "market-info did not answer")}
-            />
-            <Metric
-              label="LAST MARKET UPDATE"
-              reading={
-                marketAsOf.state === "UNKNOWN"
-                  ? marketAsOf
-                  : known("HEALTHY", dateTimeLabel(marketAsOf.value))
-              }
-            />
-            <Metric label="MARKET SESSION" reading={known("HEALTHY", sessionLabel)} />
-            <Metric label="FEEDS CONNECTED" reading={unknown("no feed-health API exists")} />
-            <Metric label="FEEDS DEGRADED" reading={unknown("no feed-health API exists")} />
-            <Metric label="FEED ERRORS" reading={unknown("feed error telemetry is not collected")} />
-            <Metric label="INGESTION RATE" reading={unknown("not measured by the platform")} />
-          </dl>
-        </Panel>
+      {/* --------------------------------- body ---------------------------------- */}
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-12">
+        <TelemetryPanel
+          className="min-h-[560px] xl:col-span-7 wall:min-h-0"
+          machines={agentMachines}
+          activeMachine={activeMachine}
+          onSelectMachine={setChosenMachine}
+          health={health.data}
+          isLoading={health.isLoading}
+          isError={health.isError}
+          now={now}
+        />
 
-        <Panel title="MONITORING / LLS OBSERVABILITY" state={receiverCard.state}>
-          <dl>
-            <Metric
-              label="PUBLISHER SOURCES"
-              reading={readEstablishedCount(sourceRows.length, sourcesEstablished, "monitoring sources did not answer")}
-            />
-            <Metric label="ACCEPTED" reading={sum((row) => row.accepted_count)} />
-            <Metric label="DUPLICATES" reading={sum((row) => row.duplicate_count)} />
-            <Metric label="REFUSED — SEQUENCE GAP" reading={sum((row) => row.refused_gap_count)} />
-            <Metric label="REFUSED — OLD SEQUENCE" reading={sum((row) => row.refused_old_count)} />
-            <Metric
-              label="LATEST EVIDENCE"
-              reading={(() => {
-                const latest = latestInstant(sourceRows.map((row) => row.last_seen_at));
-                return latest.state === "UNKNOWN" || !sourcesEstablished
-                  ? unknown("no accepted message recorded")
-                  : known("HEALTHY", dateTimeLabel(latest.value));
-              })()}
-            />
-            <Metric
-              label="SOURCE FRESHNESS = STALE"
-              reading={readEstablishedCount(freshnessCounts.staleStates, freshnessCounts.established, "monitoring state did not answer")}
-            />
-            <Metric
-              label="SOURCE FRESHNESS = UNKNOWN"
-              reading={readEstablishedCount(freshnessCounts.unknownStates, freshnessCounts.established, "monitoring state did not answer")}
-            />
-            <Metric label="QUARANTINED" reading={unknown("not exposed on the platform read surface")} />
-            <Metric label="INGESTION LATENCY" reading={unknown("contract defines none; not inferred")} />
-          </dl>
-        </Panel>
-
-        <Panel title="INFRASTRUCTURE" state={pipelineCard.state}>
-          <dl>
-            <Metric
-              label="CPU — PEAK ACROSS MACHINES"
-              reading={markStaleOnError(
-                preferNullable(maxNullable(machineRows.map((m) => m.cpu)), null, "not reported by any agent"),
-                snapshot(machines),
+        <div className="grid min-h-0 gap-3 xl:col-span-5 wall:grid-rows-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <Panel
+            title="Fleet"
+            icon="server"
+            state={rollUp(
+              [agentsReading.state, devicesReading.state].filter((state, index) =>
+                state !== "UNKNOWN" || (index === 0 ? agentMachines.length > 0 : fleet.length > 0),
+              ),
+            )}
+            bodyClassName="flex flex-col gap-3"
+          >
+            <div>
+              <SubHeading aside={<span className="font-data normal-case tracking-normal">{agentsReading.value ?? agentsReading.detail}</span>}>
+                Execution agents
+              </SubHeading>
+              {agentMachines.length === 0 ? (
+                <p className="px-2 text-[clamp(10px,0.6vw,13px)] text-amber-300/90">
+                  {machines.isError ? "Machine list did not answer." : "No execution agent has reported yet."}
+                </p>
+              ) : (
+                <ul className="flex flex-col">
+                  {visibleAgents.map((machine) => (
+                    <MachineRow key={machine.id} machine={machine} now={now} />
+                  ))}
+                  {agentMachines.length > visibleAgents.length ? (
+                    <li className="px-2 text-[clamp(9px,0.52vw,11px)] text-slate-500">+{agentMachines.length - visibleAgents.length} more</li>
+                  ) : null}
+                </ul>
               )}
-              format={(value) => `${value.toFixed(0)}%`}
-            />
-            <Metric
-              label="SYSTEM MEMORY — PEAK"
-              reading={preferNullable(maxNullable(machineRows.map((m) => m.ram)), null, "not reported by any agent")}
-              format={(value) => `${value.toFixed(0)}%`}
-            />
-            <Metric
-              label="DISK — PEAK"
-              reading={preferNullable(maxNullable(machineRows.map((m) => m.disk)), null, "not reported by any agent")}
-              format={(value) => `${value.toFixed(0)}%`}
-            />
-            <Metric
-              label="INTERNET LATENCY"
-              reading={preferNullable(maxNullable(machineRows.map((m) => m.internet_ms)), null, "not reported by any agent")}
-              format={(value) => `${value.toFixed(0)}ms`}
-            />
-            <Metric
-              label="API SUCCESS RATE"
-              reading={preferNullable(
-                health.data?.latest?.api_success_rate,
-                health.data?.latest?.api_success_pct,
-                "agent reported no success rate",
+            </div>
+            <div>
+              <SubHeading aside={<span className="font-data normal-case tracking-normal">{devicesReading.value ?? devicesReading.detail}</span>}>
+                Trading devices
+              </SubHeading>
+              {!devices.isSuccess ? (
+                <p className="px-2 font-data text-[clamp(10px,0.6vw,13px)] font-semibold tracking-[0.1em] text-amber-300">DEVICE STATE UNKNOWN</p>
+              ) : fleet.length === 0 ? (
+                <p className="px-2 text-[clamp(10px,0.6vw,13px)] text-slate-400">
+                  <span className="font-data font-semibold tracking-[0.1em] text-amber-300">NO DEVICES REGISTERED</span>
+                  <span className="ml-2 text-slate-500">Add one under Devices to see it here.</span>
+                </p>
+              ) : (
+                <ul className="flex flex-col">
+                  {visibleDevices.map((device) => (
+                    <DeviceRow key={device.id} device={device} now={now} />
+                  ))}
+                  {fleet.length > visibleDevices.length ? (
+                    <li className="px-2 text-[clamp(9px,0.52vw,11px)] text-slate-500">+{fleet.length - visibleDevices.length} more</li>
+                  ) : null}
+                </ul>
               )}
-              format={(value) => `${(value * 100).toFixed(1)}%`}
-            />
-            <Metric label="PROCESS MEMORY" reading={unknown("process RSS is not reported separately")} />
-            <Metric label="POSTGRESQL" reading={unknown("no database health signal is exposed")} />
-            <Metric label="DATABASE CONNECTIONS" reading={unknown("not exposed by the API")} />
-            <Metric label="WORKER STATUS" reading={unknown("not exposed by the API")} />
-          </dl>
-        </Panel>
-      </div>
+            </div>
+          </Panel>
 
-      {/* --------------------- row 5: incidents + devices --------------------- */}
-      <div className="grid shrink-0 gap-1.5 md:grid-cols-3">
-      <div className="min-w-0 md:col-span-2">
-      <Panel
-        title="INCIDENTS / ALERTS"
-        state={
-          !incidentStateKnown
-            ? "UNKNOWN"
-            : incidents.length === 0
-              ? "HEALTHY"
-              : severityRank(incidents[0]) >= 4
-                ? "CRITICAL"
-                : severityRank(incidents[0]) >= 3
-                  ? "DEGRADED"
-                  : "STALE"
-        }
-      >
-        <div className="h-full min-h-[3.5rem] overflow-hidden">
-          {!incidentStateKnown ? (
-            <p className="font-mono text-[clamp(10px,0.8vw,16px)] font-bold tracking-widest text-amber-300">
-              INCIDENT STATE UNKNOWN
-              <span className="ml-3 font-normal tracking-normal text-slate-500">
-                {alerts.isError
-                  ? "the incident store did not answer"
-                  : "telemetry store is not configured — an empty result cannot be read as “no incidents”"}
-              </span>
-            </p>
-          ) : incidents.length === 0 ? (
-            <p className="font-mono text-[clamp(10px,0.8vw,16px)] font-bold tracking-widest text-emerald-300">
-              NO ACTIVE INCIDENTS
-            </p>
-          ) : (
-            <ul className="flex h-full flex-col gap-[2px] overflow-hidden">
-              {incidents.slice(0, 6).map((event) => (
-                <li
-                  key={event.id}
-                  className="grid grid-cols-[auto_auto_1fr_auto] items-baseline gap-x-3 border-b border-slate-800/60 pb-[2px] font-mono text-[clamp(8px,0.6vw,12px)] last:border-b-0"
-                >
-                  <span className="text-slate-500">
-                    {clockLabel(event.time ?? event.received_at ?? event.event_ts)}
-                  </span>
-                  <span
-                    className={
-                      severityRank(event) >= 4
-                        ? "font-bold text-rose-300"
-                        : severityRank(event) >= 3
-                          ? "font-bold text-orange-300"
-                          : severityRank(event) >= 2
-                            ? "text-amber-300"
-                            : "text-slate-400"
-                    }
-                  >
-                    {severityLabel(event)}
-                  </span>
-                  <span className="truncate text-slate-200">{event.message ?? "UNKNOWN"}</span>
-                  <span className="truncate text-slate-500">
-                    {event.source ?? event.machine_id ?? "UNKNOWN"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </Panel>
-      </div>
-      <Panel
-        title="TRADING DEVICES"
-        state={
-          !devices.isSuccess || !devices.data || devices.data.length === 0
-            ? "UNKNOWN"
-            : devices.data.some((device) => device.status === "offline")
-              ? "DEGRADED"
-              : devices.data.every((device) => device.status === "online" || device.status === "revoked")
-                ? "HEALTHY"
-                : "STALE"
-        }
-      >
-        {!devices.isSuccess ? (
-          <p className="font-mono text-[clamp(9px,0.7vw,14px)] font-bold tracking-widest text-amber-300">
-            DEVICE STATE UNKNOWN
-          </p>
-        ) : !devices.data || devices.data.length === 0 ? (
-          <p className="font-mono text-[clamp(9px,0.7vw,14px)] tracking-widest text-amber-300">
-            NO DEVICES REGISTERED
-          </p>
-        ) : (
-          <div className="flex flex-col gap-[2px]">
-            {devices.data
-              .filter((device) => device.status !== "revoked")
-              .slice(0, 6)
-              .map((device) => (
-                <div
-                  key={device.id}
-                  className="grid grid-cols-[1fr_auto_auto] items-baseline gap-x-3 border-b border-slate-800/60 pb-[2px] font-mono text-[clamp(8px,0.6vw,12px)] last:border-b-0"
-                >
-                  <span className="truncate text-slate-200">{device.name}</span>
-                  <span className="text-slate-500">
-                    CPU {pct(device.health?.cpu)} · RAM {pct(device.health?.ram)} · DISK {pct(device.health?.disk)}
-                  </span>
-                  <span className={`font-bold ${DEVICE_STATE[device.status].tone}`}>
-                    {DEVICE_STATE[device.status].text}
-                  </span>
+          <div className="grid min-h-0 gap-3 md:grid-cols-2">
+            <Panel title="Incidents" icon="alert" state={incidentState}>
+              {!incidentStateKnown ? (
+                <div className="flex h-full flex-col justify-center gap-1 px-1">
+                  <p className="font-data text-[clamp(11px,0.72vw,15px)] font-bold tracking-[0.12em] text-amber-300">INCIDENT STATE UNKNOWN</p>
+                  <p className="text-[clamp(10px,0.58vw,12px)] text-slate-500">
+                    {alerts.isError
+                      ? "The incident store did not answer."
+                      : "Telemetry store is not configured — an empty result cannot be read as “no incidents”."}
+                  </p>
                 </div>
-              ))}
+              ) : incidents.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                  <span className="grid size-9 place-items-center rounded-full bg-emerald-400/10 ring-1 ring-emerald-400/30">
+                    <Glyph name="shield" className="size-4.5 text-emerald-300" />
+                  </span>
+                  <p className="font-data text-[clamp(11px,0.72vw,15px)] font-bold tracking-[0.12em] text-emerald-300">NO ACTIVE INCIDENTS</p>
+                </div>
+              ) : (
+                <ul className="flex flex-col gap-1">
+                  {incidents.slice(0, 8).map((event) => {
+                    const severity = severityLabel(event);
+                    return (
+                      <li
+                        key={event.id}
+                        className="grid grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-2.5 rounded-lg bg-white/[0.02] px-2 py-1.5 ring-1 ring-white/[0.04]"
+                      >
+                        <span className="font-data text-[clamp(9px,0.55vw,12px)] text-slate-500">
+                          {clockLabel(event.time ?? event.received_at ?? event.event_ts)}
+                        </span>
+                        <span className={clsx("rounded px-1.5 py-px font-data text-[clamp(8px,0.5vw,11px)] font-bold tracking-[0.1em] ring-1", SEVERITY_STYLE[severity])}>
+                          {severity}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-[clamp(10px,0.62vw,13px)] text-slate-200">{event.message ?? "UNKNOWN"}</span>
+                          <span className="block truncate font-data text-[clamp(8px,0.5vw,11px)] text-slate-500">
+                            {event.source ?? event.machine_id ?? "UNKNOWN"}
+                          </span>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Panel>
+
+            <Panel title="LLS monitoring" icon="radar" state={receiverReading.state}>
+              <dl className="grid grid-cols-2 gap-1.5">
+                <Stat
+                  title="Sources"
+                  reading={readEstablishedCount(sourceRows.length, sourcesEstablished, "monitoring sources did not answer")}
+                />
+                <Stat title="Accepted" reading={sum((row) => row.accepted_count)} format={(value) => value.toLocaleString("en-IN")} />
+                <Stat title="Duplicates" reading={sum((row) => row.duplicate_count)} />
+                <Stat title="Refused · gap" reading={sum((row) => row.refused_gap_count)} />
+                <Stat title="Refused · old" reading={sum((row) => row.refused_old_count)} />
+                <Stat
+                  title="Stale sources"
+                  reading={readEstablishedCount(freshnessCounts.staleStates, freshnessCounts.established, "monitoring state did not answer")}
+                />
+                <Stat
+                  title="Unknown freshness"
+                  reading={readEstablishedCount(freshnessCounts.unknownStates, freshnessCounts.established, "monitoring state did not answer")}
+                />
+                <Stat
+                  title="Latest evidence"
+                  reading={
+                    latestEvidence.state === "UNKNOWN" || !sourcesEstablished
+                      ? unknown("no accepted message recorded")
+                      : known("HEALTHY", clockLabel(latestEvidence.value))
+                  }
+                />
+              </dl>
+            </Panel>
           </div>
-        )}
-      </Panel>
+        </div>
       </div>
 
-      {/* ------------------------------ bottom bar --------------------------- */}
-      <footer className="flex shrink-0 flex-wrap items-baseline justify-between gap-x-5 gap-y-0.5 rounded-lg bg-[#0d121b] px-3 py-1 font-mono text-[clamp(8px,0.55vw,11px)] ring-1 ring-slate-800">
+      {/* --------------------------------- footer -------------------------------- */}
+      <footer className="flex shrink-0 flex-wrap items-baseline gap-x-6 gap-y-1 rounded-xl bg-[#0a1019]/70 px-4 py-1.5 font-data text-[clamp(9px,0.55vw,12px)] ring-1 ring-white/[0.06]">
         <span className="text-slate-500">
-          DATA AS OF{" "}
-          <span className="text-slate-200">
-            {marketAsOf.state === "UNKNOWN" ? "UNKNOWN" : dateTimeLabel(marketAsOf.value)}
-          </span>
-        </span>
-        <span className="text-slate-500">
-          SYSTEM TIME <span className="text-slate-200">{now.toLocaleTimeString(undefined, { hour12: false })}</span>
+          MARKET DATA AS OF{" "}
+          <span className="text-slate-200">{marketAsOf.state === "UNKNOWN" ? "UNKNOWN" : dateTimeLabel(marketAsOf.value)}</span>
         </span>
         <span className="text-slate-500">
           LAST SUCCESSFUL UPDATE{" "}
-          <span className="text-slate-200">
-            {lastUpdate.state === "UNKNOWN" ? "UNKNOWN" : dateTimeLabel(lastUpdate.value)}
-          </span>
+          <span className="text-slate-200">{lastUpdate.state === "UNKNOWN" ? "UNKNOWN" : dateTimeLabel(lastUpdate.value)}</span>
         </span>
         <span className="text-slate-500">
-          API <span className="text-slate-200">{connection}</span>
+          ENVIRONMENT <span className={environment ? "text-slate-200" : "text-amber-300"}>{environment ?? "UNKNOWN"}</span>
         </span>
         <span className="text-slate-500">
-          BUILD <span className={build ? "text-slate-200" : "text-amber-300"}>{build ?? "UNKNOWN"}</span>
+          BUILD <span className={buildLabel ? "text-slate-200" : "text-amber-300"}>{buildLabel ?? "UNKNOWN"}</span>
         </span>
         <span className="text-slate-500">
           TELEMETRY{" "}
           <span className={telemetryEstablished ? "text-slate-200" : "text-amber-300"}>
             {telemetryConfigured ? (awaitingTelemetry ? "AWAITING" : "ESTABLISHED") : "NOT CONFIGURED"}
           </span>
+        </span>
+        <span className="ml-auto text-slate-600" title="These are not collected by the platform, so the board does not show a number for them.">
+          NOT MEASURED: feed error counts · ingestion rate &amp; latency · quarantine · DB connection pool
         </span>
       </footer>
     </div>

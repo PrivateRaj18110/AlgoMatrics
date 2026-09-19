@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Any
@@ -41,6 +42,7 @@ from algo_platform.modules.strategies.infrastructure.models import StrategyRunMo
 from algo_platform.shared.application.scaling import ScalingConfig
 from algo_platform.shared.domain.errors import NotFoundError, ValidationFailed
 from algo_platform.shared.domain.types import TenantId, UserId, utc_now
+from algo_platform.shared.infrastructure.heartbeats import heartbeat_age, service_heartbeats
 from algo_platform.shared.infrastructure.outbox import OutboxEventModel
 from algo_platform.shared.infrastructure.scaling_reporter import ScalingReporter
 
@@ -210,6 +212,16 @@ class GrantSubscriptionRequest(BaseModel):
     note: str = Field(default="", max_length=300)
 
 
+class ServiceHeartbeatResponse(BaseModel):
+    name: str
+    label: str
+    # Seconds since the process last wrote its heartbeat; None when the key is
+    # absent (never started, or silent for longer than the key's TTL).
+    age_seconds: float | None
+    # Beyond this the process is overdue: a few of its own loop periods.
+    stale_after_seconds: int
+
+
 class SystemHealthResponse(BaseModel):
     database: bool
     redis: bool
@@ -217,6 +229,10 @@ class SystemHealthResponse(BaseModel):
     market_data_age_seconds: float | None
     engine_heartbeat_age_seconds: float | None
     active_runs: int
+    database_latency_ms: float | None = None
+    redis_latency_ms: float | None = None
+    services: list[ServiceHeartbeatResponse] = Field(default_factory=list)
+    checked_at: datetime | None = None
 
 
 class MessageResponse(BaseModel):
@@ -519,54 +535,69 @@ async def refund_payment(
 
 @router.get("/health", response_model=SystemHealthResponse)
 async def system_health(
-    admin: PlatformAdminDep, session: SessionDep, redis: RedisDep
+    admin: PlatformAdminDep, session: SessionDep, redis: RedisDep, settings: SettingsDep
 ) -> SystemHealthResponse:
     database_ok = True
+    database_ms: float | None = None
+    started = time.perf_counter()
     try:
         await session.execute(text("SELECT 1"))
+        database_ms = round((time.perf_counter() - started) * 1000, 2)
     except Exception:
         database_ok = False
-    redis_ok = await redis.ping()
 
-    backlog = int(
-        (
-            await session.execute(
-                select(func.count())
-                .select_from(OutboxEventModel)
-                .where(OutboxEventModel.published_at.is_(None))
+    redis_ms: float | None = None
+    started = time.perf_counter()
+    try:
+        redis_ok = bool(await redis.ping())
+        if redis_ok:
+            redis_ms = round((time.perf_counter() - started) * 1000, 2)
+    except Exception:
+        redis_ok = False
+
+    backlog = 0
+    active_runs = 0
+    if database_ok:
+        backlog = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(OutboxEventModel)
+                    .where(OutboxEventModel.published_at.is_(None))
+                )
+            ).scalar_one()
+        )
+        active_runs = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(StrategyRunModel)
+                    .where(StrategyRunModel.state.in_(["starting", "running", "paused"]))
+                )
+            ).scalar_one()
+        )
+
+    services: list[ServiceHeartbeatResponse] = []
+    for name, label, stale_after in service_heartbeats(settings):
+        age = await heartbeat_age(redis, f"hb:{name}") if redis_ok else None
+        services.append(
+            ServiceHeartbeatResponse(
+                name=name, label=label, age_seconds=age, stale_after_seconds=stale_after
             )
-        ).scalar_one()
-    )
-    market_age = await _heartbeat_age(redis, "hb:market_data")
-    engine_age = await _heartbeat_age(redis, "hb:trading_engine")
-    active_runs = int(
-        (
-            await session.execute(
-                select(func.count())
-                .select_from(StrategyRunModel)
-                .where(StrategyRunModel.state.in_(["starting", "running", "paused"]))
-            )
-        ).scalar_one()
-    )
+        )
+    ages = {service.name: service.age_seconds for service in services}
     return SystemHealthResponse(
         database=database_ok,
         redis=redis_ok,
         outbox_backlog=backlog,
-        market_data_age_seconds=market_age,
-        engine_heartbeat_age_seconds=engine_age,
+        market_data_age_seconds=ages.get("market_data"),
+        engine_heartbeat_age_seconds=ages.get("trading_engine"),
         active_runs=active_runs,
+        database_latency_ms=database_ms,
+        redis_latency_ms=redis_ms,
+        services=services,
+        checked_at=utc_now(),
     )
-
-
-async def _heartbeat_age(redis: RedisDep, key: str) -> float | None:
-    raw = await redis.get_str(key)
-    if raw is None:
-        return None
-    try:
-        then = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return max(0.0, (utc_now() - then).total_seconds())
 
 
 @router.get("/metrics", response_model=dict[str, int])

@@ -14,6 +14,7 @@ import {
 
 import {
   Badge,
+  buttonClass,
   Card,
   EmptyState,
   Field,
@@ -39,6 +40,7 @@ import {
 } from "@/lib/hooks";
 import { money, signed } from "@/lib/format";
 import { PlatformStatus } from "@/pages/operations/PlatformStatus";
+import { pickMachine, reportingMachines } from "@/lib/systemHealth";
 import { formatHealthAge, formatInZone, formatTradingTime, formatUtcTime } from "@/lib/time";
 import { unknownMs, unknownPercent } from "@/lib/unknown";
 
@@ -599,15 +601,7 @@ function getRangeStartTime(rangeMs: number): string {
 
 export function SystemHealthPage({ region: _region }: { region?: string } = {}) {
   const { data: machines } = useOpsMachines();
-  const validMachines = useMemo(() => {
-    if (!machines) return [];
-    return machines.filter(
-      (m) =>
-        m.id &&
-        !["mch-london", "mch-gcloud", "mch-pc"].includes(m.id) &&
-        !["London VPS", "Personal Computer"].includes(m.name)
-    );
-  }, [machines]);
+  const validMachines = useMemo(() => reportingMachines(machines), [machines]);
 
   const [selectedMid, setSelectedMid] = useState<string>("");
   const [range, setRange] = useState<HealthTimeRange>("30m");
@@ -622,18 +616,7 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
   const selectedRangeConfig =
     HEALTH_TIME_RANGES.find((r) => r.value === range) || HEALTH_TIME_RANGES[1];
 
-  const activeMid = useMemo(() => {
-    if (selectedMid && validMachines.some((m) => m.id === selectedMid)) {
-      return selectedMid;
-    }
-    const google = validMachines.find(
-      (m) =>
-        m.id === "mch-agent-google-vm-raj-quant-server" ||
-        m.name === "google-vm-raj-quant-server"
-    );
-    if (google) return google.id;
-    return validMachines[0]?.id || "";
-  }, [selectedMid, validMachines]);
+  const activeMid = pickMachine(validMachines, selectedMid);
 
   const selectedMachineObj = useMemo(() => {
     return validMachines.find((m) => m.id === activeMid);
@@ -716,6 +699,12 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
         eyebrow="Operations · Health"
         title="System Health"
         description="Live execution infrastructure and strategy health"
+        actions={
+          <Link to="/app/wallboard" className={buttonClass({ variant: "secondary", size: "sm" })}>
+            <Glyph name="monitor" className="size-4" />
+            Open wallboard
+          </Link>
+        }
       />
       <PlatformStatus />
       <TimezoneCaption />
