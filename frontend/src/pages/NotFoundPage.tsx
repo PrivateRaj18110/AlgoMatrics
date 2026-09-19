@@ -1,13 +1,15 @@
 import { Link } from "react-router";
 
+import { BrandMark } from "@/components/BrandMark";
 import { Seo } from "@/components/Seo";
 import { Button } from "@/components/ui";
 
 export function NotFoundPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-surface-50 text-center dark:bg-surface-950">
-      <Seo title="Page not found — Algo Matrics" noindex />
-      <p className="text-6xl font-bold text-accent-500">404</p>
+    <div className="am-radial flex min-h-screen flex-col items-center justify-center gap-4 bg-surface-950 px-6 text-center text-slate-100">
+      <Seo title="Page not found — ALGOMATRIC" noindex />
+      <BrandMark />
+      <p className="font-mono text-6xl font-semibold text-accent-400">404</p>
       <p className="text-lg font-medium">Page not found</p>
       <p className="max-w-sm text-sm text-slate-500">
         The page you are looking for does not exist or has moved.

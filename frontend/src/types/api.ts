@@ -676,12 +676,21 @@ export interface AuditEntry {
   sequence: number | null;
   entry_hash: string | null;
   occurred_at: string;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  geo?: {
+    country: string | null;
+    country_code: string | null;
+    region: string | null;
+    city: string | null;
+  } | null;
 }
 
 export interface AuditFilters {
   actionPrefix?: string;
   correlationId?: string;
   resourceType?: string;
+  ipAddress?: string;
   occurredFrom?: string;
   occurredTo?: string;
 }
@@ -728,6 +737,95 @@ export interface AdminUser {
   is_platform_admin: boolean;
   created_at: string;
   last_login_at: string | null;
+}
+
+/* ------------------------------- security center ------------------------------ */
+
+export interface SecurityCounts {
+  users_total: number;
+  users_active: number;
+  users_pending: number;
+  users_suspended: number;
+  active_sessions: number;
+  sign_ins_24h: number;
+  failed_24h: number;
+  blocked_24h: number;
+}
+
+export interface AccessRequest {
+  id: string;
+  email: string;
+  full_name: string;
+  email_verified: boolean;
+  requested_at: string;
+}
+
+export interface AdminPosture {
+  id: string;
+  email: string;
+  full_name: string;
+  mfa_enabled: boolean;
+}
+
+export interface SignInEvent {
+  occurred_at: string;
+  user_id: string | null;
+  email: string | null;
+  full_name: string | null;
+  mfa: boolean;
+  new_device: boolean;
+  network: string | null;
+}
+
+export interface FailedSignIn {
+  occurred_at: string;
+  blocked: boolean;
+  email: string;
+  stage: string;
+  reason: string;
+  network: string | null;
+}
+
+export interface ActiveSession {
+  id: string;
+  user_id: string;
+  email: string;
+  full_name: string;
+  user_agent: string;
+  created_at: string;
+  last_seen_at: string;
+  is_current: boolean;
+}
+
+export interface SecurityOverview {
+  generated_at: string;
+  require_mfa_for_admins: boolean;
+  counts: SecurityCounts;
+  access_requests: AccessRequest[];
+  admins: AdminPosture[];
+  recent_sign_ins: SignInEvent[];
+  failed_attempts: FailedSignIn[];
+  active_sessions: ActiveSession[];
+}
+
+export interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  topic: string;
+  message: string;
+  status: "open" | "resolved";
+  ip_address: string | null;
+  geo: { country: string | null; country_code: string | null; region: string | null; city: string | null } | null;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+export interface InvitationPreview {
+  email: string;
+  role: string;
+  organization_name: string;
+  expires_at: string;
 }
 
 export interface AdminOrganization {

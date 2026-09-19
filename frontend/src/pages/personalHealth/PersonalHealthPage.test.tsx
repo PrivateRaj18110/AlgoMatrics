@@ -1,10 +1,20 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PersonalHealthPage } from "./PersonalHealthPage";
 import { usePersonalHealth } from "@/stores/personalHealth";
+
+vi.mock("recharts", async () => {
+  const actual = await vi.importActual<typeof import("recharts")>("recharts");
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
+      <div style={{ width: 400, height: 200 }}>{children}</div>
+    ),
+  };
+});
 
 describe("PersonalHealthPage integration", () => {
   let queryClient: QueryClient;
@@ -51,8 +61,7 @@ describe("PersonalHealthPage integration", () => {
       </QueryClientProvider>,
     );
 
-    // 1. Workout Tab
-    fireEvent.click(screen.getByRole("button", { name: /Workout/i }));
+    fireEvent.click(screen.getByRole("button", { name: /💪\s*Workout/ }));
     expect(screen.getByText(/This Week's Complete Schedule/i)).toBeInTheDocument();
     expect(screen.getByText(/Weekly Cycling/i)).toBeInTheDocument();
 

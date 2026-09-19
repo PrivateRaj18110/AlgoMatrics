@@ -37,6 +37,9 @@ class AuditEntryResponse(BaseModel):
     sequence: int | None
     entry_hash: str | None
     occurred_at: datetime
+    ip_address: str | None = None
+    user_agent: str | None = None
+    geo: dict[str, Any] | None = None
 
 
 class PagedAuditResponse(BaseModel):
@@ -55,6 +58,7 @@ async def list_audit_events(
     resource_type: Annotated[str | None, Query(max_length=60)] = None,
     occurred_from: Annotated[datetime | None, Query()] = None,
     occurred_to: Annotated[datetime | None, Query()] = None,
+    ip_address: Annotated[str | None, Query(max_length=45)] = None,
 ) -> PagedAuditResponse:
     entries, total = await AuditService(session).search(
         organization_id=tenant.organization_id,
@@ -64,6 +68,7 @@ async def list_audit_events(
         resource_type=resource_type,
         occurred_from=occurred_from,
         occurred_to=occurred_to,
+        ip_address=ip_address,
         limit=page.limit,
         offset=page.offset,
     )

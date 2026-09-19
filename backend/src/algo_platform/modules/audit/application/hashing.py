@@ -41,6 +41,10 @@ class AuditFacts:
     ip_hash: str | None
     before_state: dict[str, Any] | None
     after_state: dict[str, Any] | None
+    # Who was on the other end: IP address, browser, resolved location. Added
+    # after the chain existed, so it is only serialized when present - entries
+    # written before it keep exactly the hash they were written with.
+    client: dict[str, Any] | None = None
 
 
 def _canonical(facts: AuditFacts) -> str:
@@ -60,6 +64,8 @@ def _canonical(facts: AuditFacts) -> str:
         "before_state": facts.before_state,
         "after_state": facts.after_state,
     }
+    if facts.client is not None:
+        payload["client"] = facts.client
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
 
 
@@ -76,9 +82,7 @@ class ChainedEntry:
     entry_hash: str | None
 
 
-def verify_chain(
-    entries: Iterable[ChainedEntry], *, start_prev: str = GENESIS_HASH
-) -> int | None:
+def verify_chain(entries: Iterable[ChainedEntry], *, start_prev: str = GENESIS_HASH) -> int | None:
     """Verify a contiguous, ascending run of entries.
 
     Returns the ``sequence`` of the first entry that fails verification (a

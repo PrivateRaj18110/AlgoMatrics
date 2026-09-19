@@ -12,6 +12,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
+from algo_platform.shared.infrastructure.client_context import ClientInfo, set_client
 from algo_platform.shared.infrastructure.metrics import MetricsRecorder
 from algo_platform.shared.infrastructure.prometheus import PrometheusMetrics
 
@@ -43,6 +44,14 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(
             request_id=request_id, correlation_id=correlation_id
+        )
+        # request.client is the real visitor once uvicorn has applied the trusted
+        # proxy's X-Forwarded-For (see processes/api.py).
+        set_client(
+            ClientInfo(
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("User-Agent", "")[:400] or None,
+            )
         )
 
         prometheus = self._prometheus(request)

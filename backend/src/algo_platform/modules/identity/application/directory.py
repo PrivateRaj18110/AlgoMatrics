@@ -39,6 +39,15 @@ class UserDirectory:
             )
         return summaries
 
+    async def platform_admin_emails(self) -> list[str]:
+        """Where operational notices for the platform owner go."""
+        result = await self._session.execute(
+            select(UserModel.email).where(
+                UserModel.is_platform_admin.is_(True), UserModel.status == "active"
+            )
+        )
+        return list(result.scalars().all())
+
     async def get_by_email(self, email: str) -> UserSummaryDTO | None:
         result = await self._session.execute(
             select(UserModel).where(UserModel.email == email.strip().lower())

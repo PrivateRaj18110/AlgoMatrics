@@ -4,11 +4,27 @@ import { Navigate, useLocation } from "react-router";
 import { Spinner } from "@/components/ui";
 import { useAuth } from "@/stores/auth";
 
-export function SessionLoading({ label = "Checking session..." }: { label?: string }) {
+const BOOT_LINES = [
+  ["DATA", "CONNECTED"],
+  ["STRATEGIES", "READY"],
+  ["RISK", "READY"],
+  ["EXECUTION", "READY"],
+];
+
+export function SessionLoading({ label = "INITIALIZING QUANT ENGINE..." }: { label?: string }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-surface-950 text-slate-300">
-      <Spinner className="size-8 text-accent-500" />
-      <p className="text-sm">{label}</p>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-surface-950 px-6 text-slate-300">
+      <p className="text-sm font-semibold tracking-[0.32em] text-white">ALGOMATRIC</p>
+      <p className="mt-6 font-mono text-[11px] tracking-[0.22em] text-accent-400">{label}</p>
+      <ul className="mt-8 w-full max-w-xs space-y-2 font-mono text-[11px] tracking-wide text-slate-500">
+        {BOOT_LINES.map(([key, value]) => (
+          <li key={key} className="flex justify-between border-b border-white/6 pb-1">
+            <span>{key}</span>
+            <span className="text-profit-400">{value}</span>
+          </li>
+        ))}
+      </ul>
+      <Spinner className="mt-8 size-5 text-accent-500" />
     </div>
   );
 }

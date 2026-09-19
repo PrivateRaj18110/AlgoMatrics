@@ -65,6 +65,10 @@ def upgrade() -> None:
         # above warns: the baseline creates the table from live model metadata,
         # and 0015 then raises DuplicateTableError on its own CREATE TABLE.
         "workspace_tasks",
+        "contact_messages",  # 0017
+        "market_snapshots",  # 0018
+        "devices",  # 0019
+        "device_events",  # 0019
     }
     baseline_tables = [
         table for table in Base.metadata.sorted_tables if table.name not in later_revision_tables

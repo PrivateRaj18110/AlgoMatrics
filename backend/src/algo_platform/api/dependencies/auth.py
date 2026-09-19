@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import Depends, Request
 
-from algo_platform.api.dependencies.core import JwtDep, RedisDep, SessionDep
+from algo_platform.api.dependencies.core import JwtDep, RedisDep, SessionDep, SettingsDep
 from algo_platform.modules.identity.application.auth_service import (
     SESSION_CACHE_TTL_SECONDS,
     session_cache_key,
@@ -18,7 +18,7 @@ from algo_platform.modules.identity.infrastructure.repositories import (
     SqlSessionRepository,
     SqlUserRepository,
 )
-from algo_platform.shared.domain.errors import AuthenticationFailed
+from algo_platform.shared.domain.errors import AuthenticationFailed, MfaRequired, PermissionDenied
 from algo_platform.shared.domain.types import UserId, utc_now
 from algo_platform.shared.infrastructure.security import hash_token
 
@@ -101,11 +101,27 @@ async def _authenticate_api_key(raw_key: str, session: SessionDep) -> CurrentUse
 CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]
 
 
-async def require_platform_admin(user: CurrentUserDep) -> CurrentUser:
-    if not user.is_platform_admin or user.auth_kind != "jwt":
-        from algo_platform.shared.domain.errors import PermissionDenied
+async def ensure_mfa_enabled(user: CurrentUser, session: SessionDep, settings: SettingsDep) -> None:
+    """Refuse administrative actions for accounts without two-factor auth.
 
+    Checked against the account, not the token: an MFA-enabled account cannot
+    obtain a session without passing the second factor.
+    """
+    if not settings.require_mfa_for_admins:
+        return
+    account = await SqlUserRepository(session).get(user.user_id)
+    if account is None or not account.mfa_enabled:
+        raise MfaRequired(
+            "turn on two-factor authentication (Settings → Security) to use administrator features"
+        )
+
+
+async def require_platform_admin(
+    user: CurrentUserDep, session: SessionDep, settings: SettingsDep
+) -> CurrentUser:
+    if not user.is_platform_admin or user.auth_kind != "jwt":
         raise PermissionDenied("platform administrator access required")
+    await ensure_mfa_enabled(user, session, settings)
     return user
 
 

@@ -29,6 +29,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
+import { Seo } from "@/components/Seo";
+
 import {
   useMarketQuotes,
   useMonitoringSources,
@@ -38,7 +40,9 @@ import {
   useOpsOverview,
   useOpsSystemHealth,
 } from "@/lib/hooks";
+import { type Device, useDevices } from "@/lib/devices";
 import { getIndianMarketDaySchedule } from "@/lib/marketSessions";
+import { pctText, type QuoteRow, useMarketPulse } from "@/lib/markets";
 import { readFreshness } from "@/lib/monitoring";
 import {
   clockLabel,
@@ -170,6 +174,49 @@ function Metric({
   );
 }
 
+/** One tile of the market strip. Missing data reads UNKNOWN, in amber. */
+function Ticker({ label, value, change, note }: { label: string; value: string | null; change?: number | null; note?: string }) {
+  const tone =
+    change === null || change === undefined
+      ? "text-slate-400"
+      : change > 0
+        ? "text-emerald-300"
+        : change < 0
+          ? "text-rose-300"
+          : "text-slate-300";
+  return (
+    <div className="flex min-w-0 flex-col justify-center rounded-lg bg-[#0d121b] px-2 py-1 ring-1 ring-slate-800">
+      <span className="truncate font-mono text-[clamp(8px,0.55vw,11px)] tracking-[0.16em] text-slate-500">{label}</span>
+      <span className="flex items-baseline gap-2">
+        <span className={`truncate font-mono text-[clamp(11px,1vw,20px)] font-bold ${value === null ? "text-amber-300" : "text-slate-100"}`}>
+          {value ?? "UNKNOWN"}
+        </span>
+        {change !== undefined ? (
+          <span className={`font-mono text-[clamp(8px,0.62vw,12px)] font-semibold ${tone}`}>{change === null ? "" : pctText(change)}</span>
+        ) : null}
+        {note ? <span className="truncate font-mono text-[clamp(8px,0.55vw,11px)] text-slate-500">{note}</span> : null}
+      </span>
+    </div>
+  );
+}
+
+function indexValue(quote: QuoteRow | undefined): string | null {
+  return quote?.price === null || quote?.price === undefined
+    ? null
+    : quote.price.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
+const DEVICE_STATE: Record<Device["status"], { text: string; tone: string }> = {
+  online: { text: "ONLINE", tone: "text-emerald-300" },
+  offline: { text: "OFFLINE", tone: "text-rose-300" },
+  never_seen: { text: "NO REPORT", tone: "text-amber-300" },
+  revoked: { text: "REVOKED", tone: "text-slate-500" },
+};
+
+function pct(value: unknown): string {
+  return typeof value === "number" ? `${Math.round(value)}%` : "—";
+}
+
 /* -------------------------------- the page -------------------------------- */
 
 function snapshot(query: {
@@ -212,6 +259,8 @@ export function WallboardPage() {
   const monitoringState = useMonitoringState({ limit: 200 });
   const monitoringSources = useMonitoringSources();
   const quotes = useMarketQuotes();
+  const pulse = useMarketPulse();
+  const devices = useDevices();
 
   const [now, setNow] = useState(() => new Date());
   const [fullscreen, setFullscreen] = useState(false);
@@ -395,6 +444,7 @@ export function WallboardPage() {
       }`}
       data-testid="wallboard"
     >
+      <Seo title="ALGOMATRIC Wallboard" noindex />
       {/* ------------------------------ top bar ------------------------------ */}
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg bg-[#0d121b] px-3 py-1.5 ring-1 ring-slate-800">
         <div className="flex items-center gap-3">
@@ -450,6 +500,40 @@ export function WallboardPage() {
           </Link>
         </div>
       </header>
+
+      {/* ------------------------- market strip (live) ------------------------ */}
+      <div className="grid shrink-0 grid-cols-3 gap-1.5 md:grid-cols-6" data-testid="market-strip">
+        {(["^NSEI", "^NSEBANK", "^BSESN"] as const).map((symbol) => {
+          const quote = pulse.data?.indices.find((row) => row.symbol === symbol);
+          return (
+            <Ticker
+              key={symbol}
+              label={quote?.name ?? symbol}
+              value={indexValue(quote)}
+              change={quote?.change_pct ?? null}
+            />
+          );
+        })}
+        <Ticker
+          label="INDIA VIX"
+          value={indexValue(pulse.data?.vix)}
+          change={pulse.data?.vix.change_pct ?? null}
+          note={pulse.data ? pulse.data.regime.volatility.label.toUpperCase() : undefined}
+        />
+        <Ticker
+          label="F&O ADVANCE / DECLINE"
+          value={pulse.data ? `${pulse.data.breadth.advances} / ${pulse.data.breadth.declines}` : null}
+          note={pulse.data?.breadth.pct_advancing != null ? `${pulse.data.breadth.pct_advancing}% UP` : undefined}
+        />
+        <Ticker
+          label="FII NET (₹ CR)"
+          value={(() => {
+            const flow = pulse.data?.institutional_flows[0];
+            return flow?.fii_net == null ? null : Math.round(flow.fii_net).toLocaleString("en-IN");
+          })()}
+          note={pulse.data?.institutional_flows[0]?.trade_date}
+        />
+      </div>
 
       {/* ------------------------- row 1: status cards ----------------------- */}
       <div className="grid shrink-0 grid-cols-2 gap-1.5 sm:grid-cols-3 xl:grid-cols-6">
@@ -559,7 +643,9 @@ export function WallboardPage() {
         </Panel>
       </div>
 
-      {/* ------------------------- row 5: incidents -------------------------- */}
+      {/* --------------------- row 5: incidents + devices --------------------- */}
+      <div className="grid shrink-0 gap-1.5 md:grid-cols-3">
+      <div className="min-w-0 md:col-span-2">
       <Panel
         title="INCIDENTS / ALERTS"
         state={
@@ -621,6 +707,50 @@ export function WallboardPage() {
           )}
         </div>
       </Panel>
+      </div>
+      <Panel
+        title="TRADING DEVICES"
+        state={
+          !devices.isSuccess || !devices.data || devices.data.length === 0
+            ? "UNKNOWN"
+            : devices.data.some((device) => device.status === "offline")
+              ? "DEGRADED"
+              : devices.data.every((device) => device.status === "online" || device.status === "revoked")
+                ? "HEALTHY"
+                : "STALE"
+        }
+      >
+        {!devices.isSuccess ? (
+          <p className="font-mono text-[clamp(9px,0.7vw,14px)] font-bold tracking-widest text-amber-300">
+            DEVICE STATE UNKNOWN
+          </p>
+        ) : !devices.data || devices.data.length === 0 ? (
+          <p className="font-mono text-[clamp(9px,0.7vw,14px)] tracking-widest text-amber-300">
+            NO DEVICES REGISTERED
+          </p>
+        ) : (
+          <div className="flex flex-col gap-[2px]">
+            {devices.data
+              .filter((device) => device.status !== "revoked")
+              .slice(0, 6)
+              .map((device) => (
+                <div
+                  key={device.id}
+                  className="grid grid-cols-[1fr_auto_auto] items-baseline gap-x-3 border-b border-slate-800/60 pb-[2px] font-mono text-[clamp(8px,0.6vw,12px)] last:border-b-0"
+                >
+                  <span className="truncate text-slate-200">{device.name}</span>
+                  <span className="text-slate-500">
+                    CPU {pct(device.health?.cpu)} · RAM {pct(device.health?.ram)} · DISK {pct(device.health?.disk)}
+                  </span>
+                  <span className={`font-bold ${DEVICE_STATE[device.status].tone}`}>
+                    {DEVICE_STATE[device.status].text}
+                  </span>
+                </div>
+              ))}
+          </div>
+        )}
+      </Panel>
+      </div>
 
       {/* ------------------------------ bottom bar --------------------------- */}
       <footer className="flex shrink-0 flex-wrap items-baseline justify-between gap-x-5 gap-y-0.5 rounded-lg bg-[#0d121b] px-3 py-1 font-mono text-[clamp(8px,0.55vw,11px)] ring-1 ring-slate-800">

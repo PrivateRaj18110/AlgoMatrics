@@ -26,6 +26,8 @@ from algo_platform.modules.audit.application.hashing import (
 )
 from algo_platform.modules.audit.infrastructure.models import AuditLogModel
 from algo_platform.shared.domain.types import utc_now
+from algo_platform.shared.infrastructure.client_context import current_client
+from algo_platform.shared.infrastructure.geoip import geoip
 
 # Fixed key for pg_advisory_xact_lock; serializes audit-chain appends.
 _AUDIT_ADVISORY_LOCK_KEY = 0x41444954  # "ADIT"
@@ -48,6 +50,26 @@ class AuditEntryDTO:
     sequence: int | None
     entry_hash: str | None
     occurred_at: datetime
+    ip_address: str | None = None
+    user_agent: str | None = None
+    geo: dict[str, Any] | None = None
+
+
+def _client_facts(
+    ip_address: str | None, user_agent: str | None
+) -> tuple[str | None, str | None, dict[str, Any] | None, dict[str, Any] | None]:
+    """Resolve the client for an entry: explicit values win, else the request's."""
+    request_client = current_client()
+    if ip_address is None and request_client is not None:
+        ip_address = request_client.ip_address
+    if user_agent is None and request_client is not None:
+        user_agent = request_client.user_agent
+    if ip_address is None and user_agent is None:
+        return None, None, None, None
+    location = geoip().lookup(ip_address)
+    geo = location.as_dict() if location is not None else None
+    client = {"ip_address": ip_address, "user_agent": user_agent, "geo": geo}
+    return ip_address, user_agent, geo, client
 
 
 class AuditService:
@@ -69,21 +91,28 @@ class AuditService:
         ip_hash: str | None = None,
         before_state: dict[str, Any] | None = None,
         after_state: dict[str, Any] | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> None:
         # Serialize chain appends for the remainder of the transaction.
         await self._session.execute(
             text("SELECT pg_advisory_xact_lock(:key)"), {"key": _AUDIT_ADVISORY_LOCK_KEY}
         )
         last = (
-            await self._session.execute(
-                select(AuditLogModel)
-                .order_by(AuditLogModel.sequence.desc().nullslast())
-                .limit(1)
+            (
+                await self._session.execute(
+                    select(AuditLogModel)
+                    .order_by(AuditLogModel.sequence.desc().nullslast())
+                    .limit(1)
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         prev_hash = last.entry_hash if last and last.entry_hash else GENESIS_HASH
         sequence = (last.sequence + 1) if last and last.sequence is not None else 1
         occurred_at = utc_now()
+        ip_address, user_agent, geo, client = _client_facts(ip_address, user_agent)
         facts = AuditFacts(
             sequence=sequence,
             occurred_at=occurred_at,
@@ -99,6 +128,7 @@ class AuditService:
             ip_hash=ip_hash,
             before_state=before_state,
             after_state=after_state,
+            client=client,
         )
         entry_hash = compute_entry_hash(prev_hash, facts)
         self._session.add(
@@ -113,6 +143,9 @@ class AuditService:
                 correlation_id=correlation_id,
                 session_id=session_id,
                 ip_hash=ip_hash,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                geo=geo,
                 before_state=before_state,
                 after_state=after_state,
                 sequence=sequence,
@@ -132,6 +165,7 @@ class AuditService:
         resource_type: str | None = None,
         occurred_from: datetime | None = None,
         occurred_to: datetime | None = None,
+        ip_address: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[AuditEntryDTO], int]:
@@ -153,6 +187,8 @@ class AuditService:
                 query = query.where(AuditLogModel.occurred_at >= occurred_from)
             if occurred_to is not None:
                 query = query.where(AuditLogModel.occurred_at <= occurred_to)
+            if ip_address:
+                query = query.where(AuditLogModel.ip_address == ip_address)
             return query
 
         stmt = _apply(stmt).order_by(AuditLogModel.occurred_at.desc()).limit(limit).offset(offset)
@@ -167,13 +203,17 @@ class AuditService:
         first tampered entry.
         """
         rows = (
-            await self._session.execute(
-                select(AuditLogModel)
-                .where(AuditLogModel.sequence.is_not(None))
-                .order_by(AuditLogModel.sequence.desc())
-                .limit(limit)
+            (
+                await self._session.execute(
+                    select(AuditLogModel)
+                    .where(AuditLogModel.sequence.is_not(None))
+                    .order_by(AuditLogModel.sequence.desc())
+                    .limit(limit)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         ordered = list(reversed(rows))
         if not ordered:
             return AuditIntegrityReport(checked=0, intact=True, first_bad_sequence=None)
@@ -212,7 +252,14 @@ def _to_facts(row: AuditLogModel) -> AuditFacts:
         ip_hash=row.ip_hash,
         before_state=row.before_state,
         after_state=row.after_state,
+        client=_row_client(row),
     )
+
+
+def _row_client(row: AuditLogModel) -> dict[str, Any] | None:
+    if row.ip_address is None and row.user_agent is None:
+        return None
+    return {"ip_address": row.ip_address, "user_agent": row.user_agent, "geo": row.geo}
 
 
 def _to_dto(row: AuditLogModel) -> AuditEntryDTO:
@@ -232,4 +279,7 @@ def _to_dto(row: AuditLogModel) -> AuditEntryDTO:
         sequence=row.sequence,
         entry_hash=row.entry_hash,
         occurred_at=row.occurred_at,
+        ip_address=row.ip_address,
+        user_agent=row.user_agent,
+        geo=row.geo,
     )

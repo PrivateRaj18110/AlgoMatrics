@@ -13,9 +13,18 @@ const hooks = vi.hoisted(() => ({
   useOpsOrders: vi.fn(),
   useOpsOverview: vi.fn(),
   useOpsSystemHealth: vi.fn(),
+  useMonitoringSources: vi.fn(() => ({ data: undefined })),
 }));
 
 vi.mock("@/lib/hooks", () => hooks);
+vi.mock("@/lib/markets", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/markets")>()),
+  useMarketPulse: () => ({ data: undefined, isError: false }),
+}));
+vi.mock("@/lib/devices", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/devices")>()),
+  useDevices: () => ({ data: undefined, isSuccess: false }),
+}));
 
 import {
   ClosedTradesPage,
@@ -155,7 +164,7 @@ describe("operations pages", () => {
       isLoading: false,
       isError: false,
     });
-    render(<SystemHealthPage />);
+    render(<SystemHealthPage />, { wrapper: MemoryRouter });
     expect(screen.getByText("System Health")).toBeInTheDocument();
     expect(
       screen.getByText("Live execution infrastructure and strategy health"),
@@ -228,7 +237,7 @@ describe("operations pages", () => {
       isLoading: false,
       isError: false,
     });
-    render(<SystemHealthPage />);
+    render(<SystemHealthPage />, { wrapper: MemoryRouter });
     expect(screen.getByText("System Health")).toBeInTheDocument();
     expect(
       screen.getByText("Live execution infrastructure and strategy health"),
@@ -314,7 +323,7 @@ describe("operations pages", () => {
       isLoading: false,
       isError: false,
     });
-    render(<SystemHealthPage />);
+    render(<SystemHealthPage />, { wrapper: MemoryRouter });
     expect(screen.getByText("HISTORICAL")).toBeInTheDocument();
     expect(screen.getByText("OFFLINE")).toBeInTheDocument();
     expect(screen.getByText(/Execution VM offline\./)).toBeInTheDocument();

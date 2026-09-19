@@ -9,8 +9,8 @@ from uuid import UUID
 
 from fastapi import Depends, Request
 
-from algo_platform.api.dependencies.auth import CurrentUser, CurrentUserDep
-from algo_platform.api.dependencies.core import SessionDep
+from algo_platform.api.dependencies.auth import CurrentUser, CurrentUserDep, ensure_mfa_enabled
+from algo_platform.api.dependencies.core import SessionDep, SettingsDep
 from algo_platform.modules.organizations.application.security_service import (
     OrgSecurityService,
 )
@@ -100,13 +100,25 @@ async def get_tenant_context(
 TenantDep = Annotated[TenantContext, Depends(get_tenant_context)]
 
 
+# Managing the organization itself — its settings, people and money — is an
+# administrator action and requires two-factor auth. Day-to-day permissions
+# (trading, strategies, API keys) do not.
+MFA_GATED_PERMISSIONS = frozenset(
+    {Permission.ORG_MANAGE, Permission.MEMBERS_MANAGE, Permission.BILLING_MANAGE}
+)
+
+
 def require_permission(
     *required: Permission,
-) -> Callable[[TenantContext], Coroutine[Any, Any, TenantContext]]:
-    async def dependency(tenant: TenantDep) -> TenantContext:
+) -> Callable[..., Coroutine[Any, Any, TenantContext]]:
+    async def dependency(
+        tenant: TenantDep, session: SessionDep, settings: SettingsDep
+    ) -> TenantContext:
         missing = [p for p in required if p not in tenant.permissions]
         if missing:
             raise PermissionDenied("missing permission: " + ", ".join(p.value for p in missing))
+        if MFA_GATED_PERMISSIONS.intersection(required):
+            await ensure_mfa_enabled(tenant.user, session, settings)
         return tenant
 
     return dependency

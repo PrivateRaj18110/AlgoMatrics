@@ -37,6 +37,11 @@ class AuditLogModel(Base):
     correlation_id: Mapped[str | None] = mapped_column(String(64), default=None)
     session_id: Mapped[str | None] = mapped_column(String(64), default=None)
     ip_hash: Mapped[str | None] = mapped_column(String(64), default=None)
+    # Client context (migration 0016). Plain IP + browser + resolved location;
+    # covered by the entry hash when present.
+    ip_address: Mapped[str | None] = mapped_column(String(45), default=None, index=True)
+    user_agent: Mapped[str | None] = mapped_column(String(400), default=None)
+    geo: Mapped[dict[str, Any] | None] = mapped_column(default=None)
     before_state: Mapped[dict[str, Any] | None] = mapped_column(default=None)
     after_state: Mapped[dict[str, Any] | None] = mapped_column(default=None)
     # Hash-chain columns. Nullable for backward compatibility with rows written

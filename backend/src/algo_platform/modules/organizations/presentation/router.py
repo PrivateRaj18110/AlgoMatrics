@@ -4,11 +4,12 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from algo_platform.api.dependencies.auth import CurrentUserDep
 from algo_platform.api.dependencies.core import SessionDep
+from algo_platform.api.dependencies.rate_limit import rate_limit
 from algo_platform.api.dependencies.tenant import (
     TenantContext,
     TenantDep,
@@ -81,6 +82,15 @@ class InvitationResponse(BaseModel):
 
 class AcceptInvitationRequest(BaseModel):
     token: str = Field(min_length=10, max_length=200)
+
+
+class InvitationPreviewResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    email: str
+    role: str
+    organization_name: str
+    expires_at: datetime
 
 
 class ChangeRoleRequest(BaseModel):
@@ -315,6 +325,19 @@ async def revoke_invitation(
 ) -> MessageResponse:
     await service.revoke_invitation(tenant.organization_id, invitation_id)
     return MessageResponse(message="invitation revoked")
+
+
+@router.get(
+    "/invitations/preview",
+    response_model=InvitationPreviewResponse,
+    dependencies=[Depends(rate_limit("invitation-preview", times=20, seconds=300))],
+)
+async def preview_invitation(
+    service: OrganizationServiceDep,
+    token: Annotated[str, Query(min_length=10, max_length=200)],
+) -> InvitationPreviewResponse:
+    """Public: lets an invitee without an account see what they were invited to."""
+    return InvitationPreviewResponse.model_validate(await service.preview_invitation(token))
 
 
 @router.post("/invitations/accept", response_model=OrganizationResponse)

@@ -21,7 +21,18 @@ import {
   useRankings,
   useRegime,
 } from "@/lib/hooks";
+import { Glyph } from "@/components/icons";
+import {
+  BreadthCard,
+  FlowsCard,
+  MoversCard,
+  RegimeCard,
+  SectorBars,
+} from "@/components/market/MarketWidgets";
+import { surface } from "@/components/ui";
 import { dateOnly } from "@/lib/format";
+import { marketRead, type Stance } from "@/lib/marketRead";
+import { useMarketPulse } from "@/lib/markets";
 import type { RankingRow } from "@/types/api";
 
 /**
@@ -98,7 +109,8 @@ function RegimePanel() {
       </div>
     );
   }
-  if (!regime) return null;
+  // The AI-CIO file is external; a malformed row must not take the page down.
+  if (!regime || typeof regime.label !== "string") return null;
   return (
     <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard
@@ -298,16 +310,165 @@ function NewsPanel() {
   );
 }
 
+const STANCE_STYLE: Record<Stance, string> = {
+  "Risk-on": "text-profit-600 dark:text-profit-400",
+  Neutral: "text-amber-600 dark:text-amber-300",
+  "Risk-off": "text-loss-600 dark:text-loss-400",
+};
+
+/**
+ * Live intelligence computed from real market data (/markets/pulse): a
+ * transparent stance with every contributing factor, trend and volatility
+ * regimes, breadth, sector rotation and institutional flows.
+ */
+function LiveIntelligence() {
+  const pulse = useMarketPulse();
+  if (pulse.isLoading) return <SkeletonRows rows={6} cols={4} />;
+  if (!pulse.data) {
+    return (
+      <Card className="mb-6">
+        <EmptyState
+          title="Live market data is unavailable right now"
+          body="The quote sources did not answer; this section retries every minute."
+        />
+      </Card>
+    );
+  }
+  const data = pulse.data;
+  const read = marketRead(data);
+  const calm = data.regime.volatility.label === "Calm" || data.regime.volatility.label === "Normal";
+  return (
+    <div className="mb-8 space-y-6">
+      <section className={clsx(surface, "am-glow overflow-hidden p-6")}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="font-mono text-[11px] tracking-[0.18em] text-slate-500 uppercase">
+              Market read · rule-based
+            </p>
+            <p className={clsx("mt-1 text-3xl font-semibold tracking-tight", STANCE_STYLE[read.stance])}>
+              {read.stance}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Score {read.score > 0 ? "+" : ""}
+              {read.score} from {read.factors.length} signals · refreshed every minute
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs">
+            <p className="text-slate-500">Leading sectors</p>
+            <p className="text-slate-500">Lagging sectors</p>
+            <p className="font-medium text-profit-600 dark:text-profit-400">
+              {read.leaders.join(", ") || "—"}
+            </p>
+            <p className="font-medium text-loss-600 dark:text-loss-400">
+              {read.laggards.join(", ") || "—"}
+            </p>
+          </div>
+        </div>
+        <ul className="mt-5 grid gap-2 sm:grid-cols-2">
+          {read.factors.map((factor) => (
+            <li
+              key={factor.label}
+              className="flex items-start gap-3 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-white/[0.03]"
+            >
+              <span
+                className={clsx(
+                  "mt-0.5 w-9 shrink-0 rounded-md px-1 py-0.5 text-center font-mono text-[11px] font-semibold",
+                  factor.weight > 0
+                    ? "bg-profit-500/10 text-profit-700 dark:text-profit-400"
+                    : factor.weight < 0
+                      ? "bg-loss-500/10 text-loss-700 dark:text-loss-400"
+                      : "bg-slate-500/10 text-slate-500",
+                )}
+              >
+                {factor.weight > 0 ? "+" : ""}
+                {factor.weight}
+              </span>
+              <span>
+                <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">
+                  {factor.label}
+                </span>
+                <span className="block text-xs text-slate-500 dark:text-slate-400">{factor.detail}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 text-[11px] text-slate-400">
+          A mechanical summary of trend, breadth, volatility and foreign flows, with every point
+          shown above. Context for your own decisions, not a trade signal.
+        </p>
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <RegimeCard title="NIFTY 50 trend" regime={data.regime.nifty} />
+        <RegimeCard title="NIFTY BANK trend" regime={data.regime.bank_nifty} />
+        <Card
+          title="Volatility regime"
+          subtitle="India VIX"
+          icon={<Glyph name="pulse" className="size-3.5" />}
+          actions={
+            <Badge color={calm ? "green" : "red"} dot>
+              {data.regime.volatility.label}
+            </Badge>
+          }
+        >
+          <p className="text-3xl font-semibold tracking-tight tabular-nums">
+            {data.regime.volatility.vix ?? "—"}
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            {data.regime.volatility.explanation}
+          </p>
+          <p className="mt-4 text-[11px] text-slate-400">
+            Bands: under 13 calm · 13–18 normal · 18–24 elevated · above 24 stressed.
+          </p>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <BreadthCard breadth={data.breadth} />
+        <div className="lg:col-span-2">
+          <SectorBars sectors={data.sectors} />
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <FlowsCard flows={data.institutional_flows} />
+        <MoversCard
+          title="Leadership: near 52-week highs"
+          stocks={data.near_year_high.slice(0, 8)}
+          icon="rocket"
+          showRange
+        />
+      </div>
+    </div>
+  );
+}
+
 export function MarketIntelPage() {
   const { data: status } = useMarketIntelStatus();
 
   return (
-    <div>
+    <div className="am-fade-in">
       <PageHeader
+        eyebrow="Markets · Intelligence"
         title="Market Intelligence"
-        description="AI-CIO advisory reads — regime, ranked opportunities, and news. Research and screening only, not a trade signal."
+        description="What the market is doing and why: trend, volatility, breadth, sector rotation and institutional flows from live data, plus the experimental AI-CIO model."
         actions={<Badge color="violet">Advisory · read-only</Badge>}
       />
+
+      <LiveIntelligence />
+
+      <div className="mb-3 flex items-center gap-3">
+        <h2 className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">
+          AI-CIO model
+        </h2>
+        <Badge color="amber">Experimental</Badge>
+        <span className="h-px flex-1 bg-slate-200 dark:bg-white/[0.08]" />
+      </div>
+      <p className="mb-4 max-w-3xl text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+        Output of the separate AI-CIO pipeline. In its default deployment that pipeline runs on
+        synthetic data, so treat these rankings and news as a demonstration until it is connected
+        to live feeds. The live read above does not depend on it.
+      </p>
 
       {status && !status.configured ? (
         <Card>

@@ -34,10 +34,14 @@ import {
   useUpsertFeatureFlag,
 } from "@/lib/hooks";
 import { dateOnly, dateTime, money } from "@/lib/format";
+import { MessagesInbox } from "@/pages/admin/MessagesInbox";
+import { SecurityCenter } from "@/pages/admin/SecurityCenter";
 import { toastError, toastSuccess } from "@/stores/toast";
 import type { FeatureFlag, Plan } from "@/types/api";
 
 const SECTIONS = [
+  { key: "security", label: "Security" },
+  { key: "messages", label: "Messages" },
   { key: "health", label: "System Health" },
   { key: "users", label: "Users" },
   { key: "organizations", label: "Organizations" },
@@ -58,6 +62,8 @@ export function AdminPage() {
       <div className="mb-6">
         <Tabs tabs={SECTIONS} active={section} onChange={(key) => navigate(`/app/admin/${key}`)} />
       </div>
+      {section === "security" && <SecurityCenter />}
+      {section === "messages" && <MessagesInbox />}
       {section === "health" && <HealthSection />}
       {section === "users" && <UsersSection />}
       {section === "organizations" && <OrganizationsSection />}

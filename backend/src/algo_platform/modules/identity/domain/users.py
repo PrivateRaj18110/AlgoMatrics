@@ -31,6 +31,8 @@ class UserStatus(StrEnum):
     ACTIVE = "active"
     SUSPENDED = "suspended"
     DEACTIVATED = "deactivated"
+    # Self-requested accounts wait here until the platform owner approves them.
+    PENDING_APPROVAL = "pending_approval"
 
 
 class Theme(StrEnum):
@@ -80,15 +82,50 @@ class User:
             password_hash=password_hash,
         )
 
+    @classmethod
+    def request_access(
+        cls,
+        *,
+        email: str,
+        full_name: str,
+        password_hash: str,
+        email_verified: bool = False,
+    ) -> User:
+        """A new account that cannot sign in until the platform owner approves it."""
+        user = cls.register(email=email, full_name=full_name, password_hash=password_hash)
+        user.status = UserStatus.PENDING_APPROVAL
+        if email_verified:
+            user.email_verified_at = utc_now()
+        return user
+
     @property
     def is_email_verified(self) -> bool:
         return self.email_verified_at is not None
 
+    @property
+    def is_pending_approval(self) -> bool:
+        return self.status is UserStatus.PENDING_APPROVAL
+
     def ensure_can_authenticate(self) -> None:
+        if self.status is UserStatus.PENDING_APPROVAL:
+            raise AuthenticationFailed(
+                "your account is waiting for approval by the platform owner",
+                details={"reason": "pending_approval"},
+            )
         if self.status is UserStatus.SUSPENDED:
             raise AuthenticationFailed("account is suspended")
         if self.status is UserStatus.DEACTIVATED:
             raise AuthenticationFailed("account is deactivated")
+
+    def approve(self) -> None:
+        if self.status is not UserStatus.PENDING_APPROVAL:
+            raise ConflictError("only accounts awaiting approval can be approved")
+        self.status = UserStatus.ACTIVE
+
+    def reject(self) -> None:
+        if self.status is not UserStatus.PENDING_APPROVAL:
+            raise ConflictError("only accounts awaiting approval can be rejected")
+        self.status = UserStatus.DEACTIVATED
 
     def mark_email_verified(self) -> None:
         if self.email_verified_at is not None:

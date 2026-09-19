@@ -22,20 +22,20 @@ import {
 } from "@/lib/monitoring";
 
 const STATE_CLASS: Record<string, string> = {
-  LIVE: "bg-emerald-100 text-emerald-900 ring-emerald-300",
-  FRESH: "bg-emerald-100 text-emerald-900 ring-emerald-300",
-  OBSERVED: "bg-emerald-100 text-emerald-900 ring-emerald-300",
-  STALE: "bg-orange-100 text-orange-900 ring-orange-300",
+  LIVE: "bg-emerald-100 text-emerald-900 ring-emerald-300 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-400/35",
+  FRESH: "bg-emerald-100 text-emerald-900 ring-emerald-300 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-400/35",
+  OBSERVED: "bg-emerald-100 text-emerald-900 ring-emerald-300 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-400/35",
+  STALE: "bg-orange-100 text-orange-900 ring-orange-300 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-400/35",
   // Not green. Not being able to say is not the same as saying it is fine.
-  UNKNOWN: "bg-amber-100 text-amber-900 ring-amber-300",
-  INCOMPLETE: "bg-amber-100 text-amber-900 ring-amber-300",
-  UNTRUSTED: "bg-rose-100 text-rose-900 ring-rose-300",
+  UNKNOWN: "bg-amber-100 text-amber-900 ring-amber-300 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-400/35",
+  INCOMPLETE: "bg-amber-100 text-amber-900 ring-amber-300 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-400/35",
+  UNTRUSTED: "bg-rose-100 text-rose-900 ring-rose-300 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-400/35",
 };
 
-const UNRECOGNISED = "bg-fuchsia-100 text-fuchsia-900 ring-fuchsia-400";
+const UNRECOGNISED = "bg-fuchsia-100 text-fuchsia-900 ring-fuchsia-400 dark:bg-fuchsia-500/20 dark:text-fuchsia-200 dark:ring-fuchsia-400/70";
 
 function badgeClass(state: string | null): string {
-  if (state === null) return "bg-amber-100 text-amber-900 ring-amber-300";
+  if (state === null) return "bg-amber-100 text-amber-900 ring-amber-300 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-400/35";
   if (!isRecognisedStatus(state)) return UNRECOGNISED;
   return STATE_CLASS[state] ?? UNRECOGNISED;
 }
@@ -74,7 +74,7 @@ export function FreshnessBadge({
         SOURCE DERIVED: {formatInstant(read.derivedAt)}
       </span>
       {read.source && !read.recognised ? (
-        <span className="text-[11px] text-fuchsia-700">unrecognised state, shown unmodified</span>
+        <span className="text-[11px] text-fuchsia-700 dark:text-fuchsia-300">unrecognised state, shown unmodified</span>
       ) : null}
     </span>
   );
@@ -100,8 +100,8 @@ export function EnvironmentBadge({
       className={clsx(
         "inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide ring-1",
         live
-          ? "bg-emerald-100 text-emerald-900 ring-emerald-400"
-          : "bg-violet-100 text-violet-900 ring-violet-400",
+          ? "bg-emerald-100 text-emerald-900 ring-emerald-400 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-400/35"
+          : "bg-violet-100 text-violet-900 ring-violet-400 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-400/35",
         className,
       )}
       title={environmentMeaning(sourceEnvironment)}
@@ -129,7 +129,7 @@ export function RuntimeBadges({
     return (
       <span
         className={clsx(
-          "inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-amber-900 ring-1 ring-amber-300",
+          "inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-amber-900 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-400/35",
           className,
         )}
         title="The source listed no capture identifiers for this observation."
@@ -143,7 +143,7 @@ export function RuntimeBadges({
       {runtime.map((entry, index) => (
         <span
           key={`${String(entry)}-${index}`}
-          className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-700 ring-1 ring-slate-300"
+          className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-700 ring-1 ring-slate-300 dark:bg-white/[0.05] dark:text-slate-300 dark:ring-white/15"
           title="A capture identifier reported by the source."
         >
           {String(entry)}
@@ -166,7 +166,7 @@ export function TrustBadge({
     return (
       <span
         className={clsx(
-          "inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-amber-900 ring-1 ring-amber-300",
+          "inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-amber-900 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-400/35",
           className,
         )}
         title="The source did not state a trust status for this observation."
@@ -180,7 +180,7 @@ export function TrustBadge({
     <span
       className={clsx(
         "inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide ring-1",
-        weak ? "bg-rose-100 text-rose-900 ring-rose-300" : "bg-slate-100 text-slate-700 ring-slate-300",
+        weak ? "bg-rose-100 text-rose-900 ring-rose-300 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-400/35" : "bg-slate-100 text-slate-700 ring-slate-300 dark:bg-white/[0.05] dark:text-slate-300 dark:ring-white/15",
         className,
       )}
       title="Stated by the source. Successful delivery never upgrades this."
@@ -205,7 +205,7 @@ export function CoverageBadge({
     return (
       <span
         className={clsx(
-          "inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-amber-900 ring-1 ring-amber-300",
+          "inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-amber-900 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-400/35",
           className,
         )}
         title="The source did not state coverage. No percentage is computed here."

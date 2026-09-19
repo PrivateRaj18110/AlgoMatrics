@@ -14,6 +14,19 @@ class RegisterRequest(BaseModel):
     organization_name: str | None = Field(default=None, max_length=200)
 
 
+class RequestAccessRequest(BaseModel):
+    """Ask the platform owner for an account.
+
+    With an invitation token the e-mail comes from the invitation (the link
+    already proved the address), so `email` is ignored and may be omitted.
+    """
+
+    email: EmailStr | None = None
+    password: str = Field(min_length=10, max_length=200)
+    full_name: str = Field(min_length=1, max_length=200)
+    invitation_token: str | None = Field(default=None, min_length=10, max_length=200)
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=200)

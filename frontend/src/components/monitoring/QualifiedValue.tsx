@@ -23,26 +23,26 @@ import {
 
 const STATUS_CLASS: Record<string, string> = {
   // Observed values are the only ones that get to look like plain content.
-  KNOWN: "text-slate-900",
-  OBSERVED: "text-slate-900",
+  KNOWN: "text-slate-900 dark:text-slate-100",
+  OBSERVED: "text-slate-900 dark:text-slate-100",
   // Absence-of-knowledge: something is wrong with our knowledge, not
   // necessarily with the trading system.
-  UNKNOWN: "bg-amber-100 text-amber-900 ring-1 ring-amber-300",
-  INCOMPLETE: "bg-amber-50 text-amber-800 ring-1 ring-amber-200",
+  UNKNOWN: "bg-amber-100 text-amber-900 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-400/35",
+  INCOMPLETE: "bg-amber-50 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/5 dark:text-amber-200 dark:ring-amber-500/20",
   // Time and trust problems: the number on screen may mislead.
-  STALE: "bg-orange-100 text-orange-900 ring-1 ring-orange-300",
-  UNTRUSTED: "bg-rose-100 text-rose-900 ring-1 ring-rose-300",
+  STALE: "bg-orange-100 text-orange-900 ring-1 ring-orange-300 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-400/35",
+  UNTRUSTED: "bg-rose-100 text-rose-900 ring-1 ring-rose-300 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-400/35",
   // Structural absences: nothing is wrong, the field does not apply.
-  UNSUPPORTED: "bg-slate-100 text-slate-600 ring-1 ring-slate-300",
-  NOT_APPLICABLE: "bg-slate-100 text-slate-500 ring-1 ring-slate-200",
+  UNSUPPORTED: "bg-slate-100 text-slate-600 ring-1 ring-slate-300 dark:bg-white/[0.05] dark:text-slate-300 dark:ring-white/15",
+  NOT_APPLICABLE: "bg-slate-100 text-slate-500 ring-1 ring-slate-200 dark:bg-white/[0.05] dark:text-slate-400 dark:ring-white/15",
   // Non-live provenance, never mistakable for real trading.
-  SIMULATED: "bg-violet-100 text-violet-900 ring-1 ring-violet-300",
-  SYNTHETIC_CLOCK: "bg-violet-50 text-violet-800 ring-1 ring-violet-200",
+  SIMULATED: "bg-violet-100 text-violet-900 ring-1 ring-violet-300 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-400/35",
+  SYNTHETIC_CLOCK: "bg-violet-50 text-violet-800 ring-1 ring-violet-200 dark:bg-violet-500/5 dark:text-violet-200 dark:ring-violet-500/20",
 };
 
 // An unfamiliar state is shown loudly rather than quietly — the contract
 // forbids reading it as healthy, so it must not look ordinary.
-const UNRECOGNISED_CLASS = "bg-fuchsia-100 text-fuchsia-900 ring-1 ring-fuchsia-400";
+const UNRECOGNISED_CLASS = "bg-fuchsia-100 text-fuchsia-900 ring-1 ring-fuchsia-400 dark:bg-fuchsia-500/20 dark:text-fuchsia-200 dark:ring-fuchsia-400/70";
 
 const PLAIN_STATUSES = new Set(["KNOWN", "OBSERVED"]);
 
@@ -74,7 +74,7 @@ export function QualifiedValue({ value, unit, className }: QualifiedValueProps) 
       <span
         className={clsx(
           "inline-flex items-center rounded px-1.5 py-0.5 font-mono text-xs",
-          "bg-rose-100 text-rose-900 ring-1 ring-rose-300",
+          "bg-rose-100 text-rose-900 ring-1 ring-rose-300 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-400/35",
           className,
         )}
         title="This value arrived without a status. Monitoring values must be qualified."
@@ -101,7 +101,7 @@ export function QualifiedValue({ value, unit, className }: QualifiedValueProps) 
 
   if (PLAIN_STATUSES.has(status) && hasValue) {
     return (
-      <span className={clsx("font-mono text-sm text-slate-900", className)} title={detail}>
+      <span className={clsx("font-mono text-sm text-slate-900 dark:text-slate-100", className)} title={detail}>
         {rendered}
         {unit ? <span className="ml-0.5 text-slate-500">{unit}</span> : null}
       </span>
@@ -114,7 +114,7 @@ export function QualifiedValue({ value, unit, className }: QualifiedValueProps) 
           last thing the source knew. What changes is that it no longer stands
           alone, unqualified, as if it were current fact. */}
       {hasValue ? (
-        <span className="font-mono text-sm text-slate-700">
+        <span className="font-mono text-sm text-slate-700 dark:text-slate-300">
           {rendered}
           {unit ? <span className="ml-0.5 text-slate-500">{unit}</span> : null}
         </span>

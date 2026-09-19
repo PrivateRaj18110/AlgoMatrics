@@ -69,6 +69,16 @@ class InvitationDTO:
     created_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class InvitationPreviewDTO:
+    """What an unauthenticated invitee may see: enough to decide, nothing more."""
+
+    email: str
+    role: str
+    organization_name: str
+    expires_at: datetime
+
+
 class OrganizationService:
     def __init__(
         self,
@@ -271,8 +281,9 @@ class OrganizationService:
                 text=(
                     f"You have been invited to join '{organization.name}' as {role.value}.\n\n"
                     f"Accept the invitation:\n{link}\n\n"
-                    "The invitation expires in 7 days. You need an Algo Matrics account "
-                    "registered under this e-mail address."
+                    "The invitation expires in 7 days. If you do not have an account "
+                    "yet, the link lets you create one; the platform owner approves new "
+                    "accounts before they can sign in."
                 ),
             )
         )
@@ -305,6 +316,21 @@ class OrganizationService:
             raise NotFoundError("invitation not found")
         invitation.revoke()
         await self._invitations.save(invitation)
+
+    async def preview_invitation(self, raw_token: str) -> InvitationPreviewDTO:
+        """Resolve a still-pending invitation from its link token."""
+        invitation = await self._invitations.get_by_hash(hash_token(raw_token))
+        if invitation is None or not invitation.is_pending:
+            raise NotFoundError("invitation not found or expired")
+        organization = await self._organizations.get(invitation.organization_id)
+        if organization is None:
+            raise NotFoundError("invitation not found or expired")
+        return InvitationPreviewDTO(
+            email=invitation.email,
+            role=invitation.role.value,
+            organization_name=organization.name,
+            expires_at=invitation.expires_at,
+        )
 
     async def accept_invitation(
         self, *, raw_token: str, user_id: UserId, user_email: str

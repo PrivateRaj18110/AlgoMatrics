@@ -20,9 +20,11 @@ import {
   PageHeader,
   Select,
   SkeletonRows,
+  StatCard,
   Table,
   Td,
 } from "@/components/ui";
+import { Glyph } from "@/components/icons";
 import {
   useOpsAlerts,
   useOpsAnalytics,
@@ -36,6 +38,7 @@ import {
   useOpsTrades,
 } from "@/lib/hooks";
 import { money, signed } from "@/lib/format";
+import { PlatformStatus } from "@/pages/operations/PlatformStatus";
 import { formatHealthAge, formatInZone, formatTradingTime, formatUtcTime } from "@/lib/time";
 import { unknownMs, unknownPercent } from "@/lib/unknown";
 
@@ -470,27 +473,50 @@ export function OpsOverviewStrip() {
     );
   }
   const onlineCount = data.online_machines ?? 0;
+  const hasPnl = data.total_pnl !== null && data.total_pnl !== undefined;
   return (
     <div className="mt-4 grid gap-4 sm:grid-cols-3">
-      <Card>
-        <p className="text-xs text-slate-500">Registered machines</p>
-        <p className="text-xl font-semibold">{Dash(data.machine_count)}</p>
-        <p className="mt-1 text-xs text-slate-400">
-          {onlineCount > 0 ? `${onlineCount} online` : "Execution offline"}
-        </p>
-      </Card>
-      <Card>
-        <p className="text-xs text-slate-500">Recorded closed trades</p>
-        <p className="text-xl font-semibold">{Dash(data.closed_trade_count)}</p>
-        <p className="mt-1 text-xs text-slate-400">Classified telemetry</p>
-      </Card>
-      <Card>
-        <p className="text-xs text-slate-500">Historical Engine PnL</p>
-        <p className="text-xl font-semibold">
-          {data.total_pnl === null || data.total_pnl === undefined ? "—" : signed(data.total_pnl)}
-        </p>
-        <p className="mt-1 text-xs text-slate-400">Cumulative closed trades</p>
-      </Card>
+      <StatCard
+        label="Registered machines"
+        value={Dash(data.machine_count)}
+        icon={<Glyph name="server" />}
+        tone={onlineCount > 0 ? "accent" : "neutral"}
+        sub={
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className={clsx(
+                "size-1.5 rounded-full",
+                onlineCount > 0 ? "am-live-dot bg-profit-500" : "bg-slate-400",
+              )}
+              aria-hidden
+            />
+            {onlineCount > 0 ? `${onlineCount} online` : "Execution offline"}
+          </span>
+        }
+      />
+      <StatCard
+        label="Recorded closed trades"
+        value={Dash(data.closed_trade_count)}
+        icon={<Glyph name="receipt" />}
+        tone="violet"
+        sub="Classified telemetry"
+      />
+      <StatCard
+        label="Historical Engine PnL"
+        value={hasPnl ? signed(data.total_pnl) : "—"}
+        valueClass={
+          hasPnl
+            ? (data.total_pnl ?? 0) > 0
+              ? "text-profit-600 dark:text-profit-400"
+              : (data.total_pnl ?? 0) < 0
+                ? "text-loss-600 dark:text-loss-400"
+                : undefined
+            : undefined
+        }
+        icon={<Glyph name="history" />}
+        tone={hasPnl && (data.total_pnl ?? 0) < 0 ? "loss" : "profit"}
+        sub="Cumulative closed trades"
+      />
     </div>
   );
 }
@@ -687,9 +713,11 @@ export function SystemHealthPage({ region: _region }: { region?: string } = {}) 
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Operations · Health"
         title="System Health"
         description="Live execution infrastructure and strategy health"
       />
+      <PlatformStatus />
       <TimezoneCaption />
 
       {/* Machine Selector & Time Controls */}

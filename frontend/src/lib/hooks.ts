@@ -14,6 +14,8 @@ import type { MonitoringSourceRow, MonitoringStateResponse } from "@/lib/monitor
 import type {
   AdminCoupon,
   AdminOrganization,
+  ContactMessage,
+  SecurityOverview,
   AdminUser,
   AppNotification,
   AuditEntry,
@@ -646,7 +648,8 @@ export function useUpdateNotificationPreferences() {
 /* ---------------------------------- audit ----------------------------------- */
 
 export function useAuditEvents(filters: AuditFilters = {}) {
-  const { actionPrefix, correlationId, resourceType, occurredFrom, occurredTo } = filters;
+  const { actionPrefix, correlationId, resourceType, ipAddress, occurredFrom, occurredTo } =
+    filters;
   return useQuery({
     queryKey: [
       "audit",
@@ -654,6 +657,7 @@ export function useAuditEvents(filters: AuditFilters = {}) {
       actionPrefix ?? "",
       correlationId ?? "",
       resourceType ?? "",
+      ipAddress ?? "",
       occurredFrom ?? "",
       occurredTo ?? "",
     ],
@@ -664,6 +668,7 @@ export function useAuditEvents(filters: AuditFilters = {}) {
           action_prefix: actionPrefix,
           correlation_id: correlationId,
           resource_type: resourceType,
+          ip_address: ipAddress,
           occurred_from: occurredFrom,
           occurred_to: occurredTo,
         },
@@ -790,6 +795,62 @@ export function useAdminUsers(search?: string) {
     queryKey: ["admin-users", search ?? ""],
     queryFn: () => api<AdminUser[]>("/admin/users", { query: { q: search, limit: 100 } }),
   });
+}
+
+/** Security center snapshot. Polls so a new access request shows up without a reload. */
+export function useSecurityOverview(enabled = true) {
+  return useQuery({
+    queryKey: ["security-overview"],
+    queryFn: () => api<SecurityOverview>("/admin/security/overview", { skipOrg: true }),
+    enabled,
+    refetchInterval: 30000,
+    retry: false,
+  });
+}
+
+function useSecurityAction(path: (id: string) => string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<{ message: string }>(path(id), { method: "POST", skipOrg: true }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["security-overview"] });
+      client.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+  });
+}
+
+export function useContactMessages(status: "open" | "resolved") {
+  return useQuery({
+    queryKey: ["contact-messages", status],
+    queryFn: () =>
+      api<ContactMessage[]>("/admin/contact-messages", { query: { status }, skipOrg: true }),
+    retry: false,
+  });
+}
+
+export function useResolveContactMessage() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<ContactMessage>(`/admin/contact-messages/${id}/resolve`, {
+        method: "POST",
+        skipOrg: true,
+      }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["contact-messages"] }),
+  });
+}
+
+export function useApproveAccess() {
+  return useSecurityAction((id) => `/admin/users/${id}/approve`);
+}
+
+export function useRejectAccess() {
+  return useSecurityAction((id) => `/admin/users/${id}/reject`);
+}
+
+export function useRevokeSession() {
+  return useSecurityAction((id) => `/admin/sessions/${id}/revoke`);
 }
 
 export function useAdminOrganizations() {

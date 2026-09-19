@@ -34,7 +34,7 @@ from algo_platform.shared.domain.errors import (
     RateLimited,
     ValidationFailed,
 )
-from algo_platform.shared.domain.types import DomainEvent, TenantId, UserId
+from algo_platform.shared.domain.types import DomainEvent, TenantId, UserId, utc_now
 from algo_platform.shared.infrastructure.encryption import CredentialCipher, EncryptedSecret
 from algo_platform.shared.infrastructure.jwt_service import JwtService
 from algo_platform.shared.infrastructure.outbox import enqueue_event
@@ -63,6 +63,29 @@ LOCKOUT_WINDOW_SECONDS = 15 * 60
 
 def _failed_login_key(email: str) -> str:
     return f"login:fail:{email.strip().lower()}"
+
+
+# Known-device registry for new sign-in alerts. A long-lived random cookie
+# identifies the browser; only its hash is stored, per user, in Redis. Keyed on
+# the cookie rather than IP so a phone changing networks is not a "new device".
+KNOWN_DEVICES_TTL_SECONDS = 400 * 24 * 60 * 60
+_MAX_DEVICE_TOKEN_LENGTH = 128
+
+
+def _known_devices_key(user_id: UUID) -> str:
+    return f"auth:devices:{user_id}"
+
+
+def mask_email(email: str) -> str:
+    """`raj@example.com` -> `ra***@example.com`: recognisable, not recoverable.
+
+    Used where an attempted identifier is written to the append-only audit log,
+    which cannot later be scrubbed of personal data.
+    """
+    local, _, domain = email.strip().lower().partition("@")
+    if not domain:
+        return "***"
+    return f"{local[:2]}***@{domain}"
 
 
 # Constant-time compensation hash used when the account does not exist.
@@ -150,6 +173,63 @@ class AuthService:
         logger.info("auth.user_registered", user_id=str(user.id))
         return user
 
+    async def request_access(
+        self,
+        *,
+        email: str,
+        password: str,
+        full_name: str,
+        email_verified: bool = False,
+    ) -> User | None:
+        """Create an account that stays locked until the platform owner approves it.
+
+        Returns None when the address is already registered. Callers must answer
+        both cases identically so the endpoint cannot be used to discover which
+        addresses have accounts.
+        """
+        validate_password_strength(password)
+        if await self._users.get_by_email(email) is not None:
+            logger.info("auth.access_request_for_existing_email", email_hash=hash_token(email))
+            return None
+        user = User.request_access(
+            email=email,
+            full_name=full_name,
+            password_hash=hash_password(password),
+            email_verified=email_verified,
+        )
+        await self._users.add(user)
+        await enqueue_event(
+            self._session,
+            event=DomainEvent.new(
+                event_type="identity.access_requested.v1",
+                aggregate_id=user.id,
+                tenant_id=TenantId(user.id),
+            ),
+            aggregate_type="user",
+            payload={"user_id": str(user.id)},
+        )
+        if not user.is_email_verified:
+            await self._send_verification_email(user)
+        await self._notify_admins_of_access_request(user)
+        logger.info("auth.access_requested", user_id=str(user.id))
+        return user
+
+    async def _notify_admins_of_access_request(self, user: User) -> None:
+        review = f"{self._settings.app_base_url}/app/admin/security"
+        for admin in await self._users.list_platform_admins():
+            await self._email_sender.send(
+                EmailMessage(
+                    to=admin.email,
+                    subject=f"Access request: {user.full_name}",
+                    text=(
+                        f"{user.full_name} <{user.email}> asked for an ALGOMATRIC account.\n\n"
+                        "They cannot sign in until you approve the request:\n"
+                        f"{review}\n\n"
+                        "If you do not recognise this person, reject the request."
+                    ),
+                )
+            )
+
     async def _send_verification_email(self, user: User) -> None:
         raw = generate_opaque_token(32)
         await self._email_tokens.invalidate_for_user(user.id, EmailTokenPurpose.VERIFY_EMAIL)
@@ -227,7 +307,13 @@ class AuthService:
         await self._redis.delete(_failed_login_key(email))
 
     async def login(
-        self, *, email: str, password: str, user_agent: str, ip: str | None
+        self,
+        *,
+        email: str,
+        password: str,
+        user_agent: str,
+        ip: str | None,
+        device_token: str | None = None,
     ) -> LoginResultDTO:
         await self._ensure_not_locked_out(email)
         user = await self._users.get_by_email(email)
@@ -253,11 +339,19 @@ class AuthService:
                 ttl_seconds=MFA_CHALLENGE_TTL_SECONDS,
             )
             return LoginResultDTO(kind="mfa_required", mfa_token=challenge)
-        tokens = await self._establish_session(user, user_agent=user_agent, ip=ip)
+        tokens = await self._establish_session(
+            user, user_agent=user_agent, ip=ip, device_token=device_token
+        )
         return LoginResultDTO(kind="tokens", tokens=tokens)
 
     async def complete_mfa_login(
-        self, *, mfa_token: str, code: str, user_agent: str, ip: str | None
+        self,
+        *,
+        mfa_token: str,
+        code: str,
+        user_agent: str,
+        ip: str | None,
+        device_token: str | None = None,
     ) -> IssuedTokensDTO:
         key = f"mfa:challenge:{hash_token(mfa_token)}"
         user_id_raw = await self._redis.get_str(key)
@@ -271,7 +365,9 @@ class AuthService:
         if not Totp(secret).verify(code):
             raise AuthenticationFailed("incorrect authentication code")
         await self._redis.delete(key)
-        return await self._establish_session(user, user_agent=user_agent, ip=ip)
+        return await self._establish_session(
+            user, user_agent=user_agent, ip=ip, device_token=device_token
+        )
 
     def _decrypt_mfa_secret(self, user: User) -> str:
         if not user.mfa_secret_ciphertext or not user.mfa_secret_wrapped_dek:
@@ -286,8 +382,62 @@ class AuthService:
         )
         return secret.decode("utf-8")
 
+    async def _recognise_device(
+        self, user: User, *, device_token: str | None, user_agent: str
+    ) -> tuple[str, bool]:
+        """Return the browser's device token and whether to raise a new-device alert."""
+        token = (
+            device_token
+            if device_token and len(device_token) <= _MAX_DEVICE_TOKEN_LENGTH
+            else generate_opaque_token(24)
+        )
+        key = _known_devices_key(user.id)
+        fingerprint = hash_token(token)
+        try:
+            known = await self._redis.hgetall_json(key)
+            is_new = fingerprint not in known
+            if is_new:
+                await self._redis.hset_json(
+                    key,
+                    fingerprint,
+                    {"first_seen": utc_now().isoformat(), "user_agent": user_agent[:200]},
+                )
+            await self._redis.expire(key, KNOWN_DEVICES_TTL_SECONDS)
+        except Exception:
+            # Alerting is advisory; it must never be the reason a sign-in fails.
+            logger.warning("auth.device_tracking_unavailable", user_id=str(user.id))
+            return token, False
+        # The first tracked sign-in has nothing to compare against. Alerting on it
+        # would e-mail every existing user the day this ships.
+        return token, is_new and bool(known)
+
+    async def _send_new_device_alert(self, user: User, *, user_agent: str, ip: str | None) -> None:
+        when = utc_now().strftime("%Y-%m-%d %H:%M UTC")
+        await self._email_sender.send(
+            EmailMessage(
+                to=user.email,
+                subject="New sign-in to your ALGOMATRIC account",
+                text=(
+                    f"Hi {user.full_name},\n\n"
+                    "Your account was just signed in from a browser or device we have "
+                    "not seen before.\n\n"
+                    f"Time: {when}\n"
+                    f"Browser: {user_agent[:200] or 'unknown'}\n"
+                    f"IP address: {ip or 'unknown'}\n\n"
+                    "If this was you, there is nothing to do.\n"
+                    "If it was not, reset your password now and sign out other sessions "
+                    f"under Settings -> Security:\n{self._settings.app_base_url}/forgot-password"
+                ),
+            )
+        )
+
     async def _establish_session(
-        self, user: User, *, user_agent: str, ip: str | None
+        self,
+        user: User,
+        *,
+        user_agent: str,
+        ip: str | None,
+        device_token: str | None = None,
     ) -> IssuedTokensDTO:
         auth_session = AuthSession.start(
             user_id=user.id, user_agent=user_agent, ip_hash=hash_ip(ip)
@@ -314,6 +464,12 @@ class AuthService:
         await self._redis.set_str(
             session_cache_key(auth_session.id), "1", ttl_seconds=SESSION_CACHE_TTL_SECONDS
         )
+        device, new_device = await self._recognise_device(
+            user, device_token=device_token, user_agent=user_agent
+        )
+        if new_device:
+            await self._send_new_device_alert(user, user_agent=user_agent, ip=ip)
+            logger.info("auth.new_device_sign_in", user_id=str(user.id))
         return IssuedTokensDTO(
             access_token=access.token,
             access_expires_at=access.expires_at,
@@ -321,6 +477,8 @@ class AuthService:
             refresh_expires_at=refresh.expires_at,
             session_id=auth_session.id,
             user=user_profile_dto(user),
+            device_token=device,
+            new_device=new_device,
         )
 
     # -- refresh rotation ---------------------------------------------------

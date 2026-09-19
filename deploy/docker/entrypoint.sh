@@ -42,6 +42,9 @@ case "${command}" in
     alembic -c backend/alembic.ini upgrade head
     echo "[entrypoint] seeding reference data…"
     python scripts/seed.py
+    # Monthly-refreshed GeoIP database for audit locations. Never fatal: the
+    # platform runs fine without it, locations are just left empty.
+    python scripts/fetch_geoip.py /app/var/geoip/dbip-city-lite.mmdb || true
     ;;
   seed)
     wait_for_db

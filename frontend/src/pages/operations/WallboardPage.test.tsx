@@ -14,6 +14,16 @@ const hooks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/hooks", () => hooks);
 
+const live = vi.hoisted(() => ({ useMarketPulse: vi.fn(), useDevices: vi.fn() }));
+vi.mock("@/lib/markets", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/markets")>()),
+  useMarketPulse: live.useMarketPulse,
+}));
+vi.mock("@/lib/devices", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/devices")>()),
+  useDevices: live.useDevices,
+}));
+
 import { WallboardPage } from "@/pages/operations/WallboardPage";
 
 const UPDATED = 1_757_760_000_000;
@@ -24,6 +34,11 @@ function ok<T>(data: T, over: Record<string, unknown> = {}) {
 function failed(over: Record<string, unknown> = {}) {
   return { data: undefined, isLoading: false, isError: true, isSuccess: false, dataUpdatedAt: 0, ...over };
 }
+
+beforeEach(() => {
+  live.useMarketPulse.mockReturnValue({ data: undefined, isSuccess: false, isError: false });
+  live.useDevices.mockReturnValue({ data: undefined, isSuccess: false, isError: false });
+});
 
 /** A wallboard where every component is reporting well. */
 function healthy() {
@@ -358,6 +373,52 @@ describe("operations wallboard", () => {
     expect(screen.getByText("INCIDENT STATE UNKNOWN")).toBeInTheDocument();
     // Nothing has ever succeeded, so there is no last update to claim.
     expect(screen.getByText("LAST UPDATE").nextElementSibling).toHaveTextContent("UNKNOWN");
+  });
+
+  it("shows the live market strip, and UNKNOWN when it has no data", () => {
+    view();
+    const strip = screen.getByTestId("market-strip");
+    expect(within(strip).getAllByText("UNKNOWN").length).toBeGreaterThan(0);
+
+    live.useMarketPulse.mockReturnValue({
+      isSuccess: true,
+      data: {
+        indices: [{ symbol: "^NSEI", name: "NIFTY 50", price: 23346.4, change_pct: 0.55 }],
+        vix: { symbol: "^INDIAVIX", name: "INDIA VIX", price: 11.39, change_pct: -13.6 },
+        breadth: { advances: 145, declines: 60, pct_advancing: 69 },
+        regime: { volatility: { label: "Calm" } },
+        institutional_flows: [{ trade_date: "2026-09-18", fii_net: 599.54 }],
+      },
+    });
+    view();
+    const strips = screen.getAllByTestId("market-strip");
+    const latest = strips[strips.length - 1];
+    expect(within(latest).getByText("23,346.4")).toBeInTheDocument();
+    expect(within(latest).getByText("145 / 60")).toBeInTheDocument();
+    expect(within(latest).getByText("600")).toBeInTheDocument();
+  });
+
+  it("marks the device fleet DEGRADED when a device goes silent", () => {
+    live.useDevices.mockReturnValue({
+      isSuccess: true,
+      data: [
+        { id: "d1", name: "VPS Mumbai 1", status: "online", health: { cpu: 38, ram: 71, disk: 54 } },
+        { id: "d2", name: "MT5 Desk", status: "offline", health: null },
+      ],
+    });
+    view();
+    const panel = screen.getByText("TRADING DEVICES").closest("section")!;
+    expect(within(panel).getByText("DEGRADED")).toBeInTheDocument();
+    expect(within(panel).getByText("OFFLINE")).toBeInTheDocument();
+    expect(within(panel).getByText(/CPU 38%/)).toBeInTheDocument();
+  });
+
+  it("does not call an empty fleet healthy", () => {
+    live.useDevices.mockReturnValue({ isSuccess: true, data: [] });
+    view();
+    const panel = screen.getByText("TRADING DEVICES").closest("section")!;
+    expect(within(panel).getByText("NO DEVICES REGISTERED")).toBeInTheDocument();
+    expect(within(panel).queryByText("HEALTHY")).not.toBeInTheDocument();
   });
 
   it("offers no trading control of any kind", () => {

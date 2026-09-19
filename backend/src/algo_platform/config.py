@@ -89,6 +89,22 @@ class Settings(BaseSettings):
     # HSTS is only emitted in staging/production where TLS is guaranteed.
     security_headers_enabled: bool = True
 
+    # Platform-admin endpoints and org management (settings, members, billing)
+    # refuse accounts without two-factor auth. MFA setup itself stays reachable,
+    # so this cannot lock anyone out of turning it on.
+    require_mfa_for_admins: bool = True
+
+    # Proxies whose X-Forwarded-For uvicorn believes. Without this every request
+    # appears to come from nginx: rate limits become global, the IP allowlist
+    # cannot work, and the audit log records the proxy instead of the visitor.
+    # Loopback + Docker's private ranges; a direct hit on the published port from
+    # the internet keeps its own address and cannot spoof the header.
+    trusted_proxy_ips: str = "127.0.0.1,::1,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16"
+
+    # Offline GeoIP database for audit locations (scripts/fetch_geoip.py). Unset
+    # or missing file = locations are simply not recorded.
+    geoip_database_path: str | None = None
+
     # Public frontend origin used to build e-mail verification / password reset links.
     app_base_url: str = "http://localhost:5173"
 

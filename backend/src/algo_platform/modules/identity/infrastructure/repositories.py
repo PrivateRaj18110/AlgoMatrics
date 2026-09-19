@@ -122,6 +122,15 @@ class SqlUserRepository:
         _apply_user(model, user)
         await self._session.flush()
 
+    async def list_platform_admins(self) -> list[User]:
+        result = await self._session.execute(
+            select(UserModel).where(
+                UserModel.is_platform_admin.is_(True),
+                UserModel.status == UserStatus.ACTIVE.value,
+            )
+        )
+        return [_user_to_entity(model) for model in result.scalars().all()]
+
 
 class SqlSessionRepository:
     def __init__(self, session: AsyncSession) -> None:

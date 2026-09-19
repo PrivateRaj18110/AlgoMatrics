@@ -5,6 +5,10 @@ import type { Tokens } from "@/types/api";
 
 const BASE = "/api/v1";
 
+/** Server refused an administrator action because the account has no 2FA. */
+export const MFA_REQUIRED_CODE = "mfa_required";
+export const MFA_REQUIRED_EVENT = "am:mfa-required";
+
 export class ApiError extends Error {
   status: number;
   code: string;
@@ -136,6 +140,11 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       errors = problem.errors;
     } catch {
       // non-JSON error body
+    }
+    if (code === MFA_REQUIRED_CODE && typeof window !== "undefined") {
+      // One place notices; the app shell turns it into a "set up 2FA" banner
+      // instead of every admin screen inventing its own error text.
+      window.dispatchEvent(new CustomEvent(MFA_REQUIRED_EVENT, { detail }));
     }
     throw new ApiError(response.status, code, detail, errors);
   }

@@ -8,6 +8,7 @@ execution command is pushed to the engine stream afterwards.
 from __future__ import annotations
 
 import secrets
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -57,6 +58,43 @@ from algo_platform.shared.infrastructure.redis_gateway import RedisGateway
 logger = structlog.get_logger(__name__)
 
 LAST_PRICES_KEY = "md:last"
+# Same horizon operations uses for "live" telemetry freshness.
+LIVE_LAST_PRICE_MAX_AGE_SECONDS = 60
+
+
+def last_price_from_tick(tick: object) -> Decimal | None:
+    """Extract a last trade price from a market-data tick payload."""
+    if not isinstance(tick, dict):
+        return None
+    raw = tick.get("last")
+    if raw in (None, ""):
+        return None
+    try:
+        return Decimal(str(raw))
+    except ArithmeticError:
+        return None
+
+
+def live_last_price_from_tick(tick: object, *, now: datetime | None = None) -> Decimal:
+    """Fail closed: live orders need a last price with a fresh timestamp."""
+    last = last_price_from_tick(tick)
+    if last is None:
+        raise ConflictError("market data unavailable; live order blocked")
+    if not isinstance(tick, dict):
+        raise ConflictError("market data unavailable; live order blocked")
+    raw_ts = tick.get("timestamp")
+    if raw_ts in (None, ""):
+        raise ConflictError("market data timestamp missing; live order blocked")
+    try:
+        parsed = datetime.fromisoformat(str(raw_ts).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ConflictError("market data timestamp invalid; live order blocked") from exc
+    if parsed.tzinfo is None:
+        raise ConflictError("market data timestamp invalid; live order blocked")
+    age = ((now or utc_now()) - parsed).total_seconds()
+    if age > LIVE_LAST_PRICE_MAX_AGE_SECONDS or age < -5:
+        raise ConflictError("market data stale; live order blocked")
+    return last
 
 
 def daily_pnl_key(account_id: AccountId) -> str:
@@ -146,7 +184,11 @@ class OrderService:
 
         limits = await self._billing.current_limits(organization_id)
         orders_today = await self._billing.orders_placed_today(organization_id)
-        estimated_price = await self._estimate_price(instrument_id, limit_price)
+        estimated_price = await self._estimate_price(
+            instrument_id,
+            limit_price,
+            fail_closed=account.mode.value == "live",
+        )
         realized_today = await self._realized_pnl_today(account_id)
         open_positions = await self._positions.count_open_for_account(account_id)
         exposure = await self._positions.gross_exposure_for_account(account_id)
@@ -245,12 +287,21 @@ class OrderService:
             ),
         )
 
-    async def _estimate_price(self, instrument_id: UUID, limit_price: Decimal | None) -> Decimal:
+    async def _estimate_price(
+        self,
+        instrument_id: UUID,
+        limit_price: Decimal | None,
+        *,
+        fail_closed: bool = False,
+    ) -> Decimal:
         if limit_price is not None:
             return limit_price
         tick = await self._redis.hget_json(LAST_PRICES_KEY, str(instrument_id))
-        if tick is not None and tick.get("last"):
-            return Decimal(str(tick["last"]))
+        if fail_closed:
+            return live_last_price_from_tick(tick)
+        last = last_price_from_tick(tick)
+        if last is not None:
+            return last
         instrument = await self._instruments.get(instrument_id)
         if instrument is None:
             raise ValidationFailed("cannot estimate a price for an unknown instrument")

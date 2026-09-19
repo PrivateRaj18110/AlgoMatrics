@@ -1,99 +1,96 @@
-import { useDeferredValue, useState } from "react";
+import { Link } from "react-router";
 
+import { Glyph } from "@/components/icons";
 import {
-  Card,
-  EmptyState,
-  Input,
-  PageHeader,
-  SkeletonRows,
-  StatCard,
-  Table,
-  Td,
-} from "@/components/ui";
-import { useMarketIndices, useMarketQuotes } from "@/lib/hooks";
-import { money, pnlClass, signed, toNumber } from "@/lib/format";
+  BreadthCard,
+  FlowsCard,
+  GlobalCues,
+  IndexStrip,
+  MoversCard,
+  SectorBars,
+  SessionBadge,
+} from "@/components/market/MarketWidgets";
+import { Card, EmptyState, PageHeader, Skeleton, buttonClass } from "@/components/ui";
+import { clockLabel } from "@/lib/wallboard";
+import { useMarketPulse } from "@/lib/markets";
 
 /**
- * Indian market information: headline NSE/BSE indices and delayed NSE spot
- * quotes from a free public source. Indian market only — no forex.
+ * Market update: the Indian market right now — indices, India VIX, global
+ * cues, breadth and sectors across the whole NSE F&O universe, the day's
+ * movers and institutional flows. All live data (NSE + Yahoo, delayed); the
+ * page shows when it last refreshed and never fills gaps with made-up values.
  */
 export function MarketPage() {
-  const { data: indices } = useMarketIndices();
-  const { data: quotes, isLoading: quotesLoading } = useMarketQuotes();
-  const [filter, setFilter] = useState("");
-  const deferredFilter = useDeferredValue(filter);
-
-  const visible = (quotes ?? []).filter(
-    (quote) =>
-      !deferredFilter ||
-      quote.symbol.toLowerCase().includes(deferredFilter.toLowerCase()) ||
-      quote.name.toLowerCase().includes(deferredFilter.toLowerCase()),
-  );
+  const pulse = useMarketPulse();
+  const data = pulse.data;
 
   return (
-    <div>
+    <div className="am-fade-in">
       <PageHeader
-        title="Market"
-        description="Indian market snapshot — indices and delayed NSE quotes (refreshes every minute)"
+        eyebrow="Markets · Live"
+        title="Market update"
+        description="Indices, global cues, breadth, sectors, movers and institutional flows across the NSE F&O universe. Refreshes every minute."
         actions={
-          <Input
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            placeholder="Filter symbols…"
-            aria-label="Filter symbols"
-            className="w-48"
-          />
+          <>
+            {data ? <SessionBadge session={data.session} /> : null}
+            {pulse.dataUpdatedAt ? (
+              <span className="text-xs text-slate-500">
+                Updated {clockLabel(new Date(pulse.dataUpdatedAt).toISOString())}
+              </span>
+            ) : null}
+            <Link to="/app/pre-market" className={buttonClass({ variant: "secondary", size: "sm" })}>
+              <Glyph name="clock" className="size-3.5" />
+              Pre-market
+            </Link>
+          </>
         }
       />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {(indices ?? []).map((index) => {
-          const changePct = index.change_pct ? toNumber(index.change_pct) : null;
-          return (
-            <StatCard
-              key={index.yahoo_symbol}
-              label={index.name}
-              value={index.price ? money(index.price) : "—"}
-              valueClass={changePct !== null ? pnlClass(changePct) : undefined}
-              sub={
-                changePct !== null
-                  ? `${signed(toNumber(index.change ?? "0"))} (${changePct.toFixed(2)}%)`
-                  : "unavailable"
-              }
-            />
-          );
-        })}
-      </div>
-
-      <Card>
-        {quotesLoading && !quotes ? (
-          <SkeletonRows rows={8} cols={5} />
-        ) : visible.length === 0 ? (
+      {pulse.isLoading ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          {Array.from({ length: 7 }).map((_, index) => (
+            <Skeleton key={index} className="h-32 rounded-2xl" />
+          ))}
+        </div>
+      ) : !data ? (
+        <Card>
           <EmptyState
-            title="No quotes available"
-            body="Quotes come from a free public source and may be briefly unavailable."
+            icon={<Glyph name="alert" className="size-5" />}
+            title="Market data is unavailable right now"
+            body="The quote sources did not answer. This page shows nothing rather than stale or invented numbers; it will retry automatically."
           />
-        ) : (
-          <Table headers={["Symbol", "Name", "Price", "Change", "Change %"]}>
-            {visible.map((quote) => {
-              const changePct = quote.change_pct ? toNumber(quote.change_pct) : null;
-              return (
-                <tr key={quote.yahoo_symbol}>
-                  <Td className="font-medium">{quote.symbol}</Td>
-                  <Td className="text-slate-500 dark:text-slate-400">{quote.name}</Td>
-                  <Td className="tabular-nums">{quote.price ? money(quote.price) : "—"}</Td>
-                  <Td className={`tabular-nums ${changePct !== null ? pnlClass(changePct) : ""}`}>
-                    {quote.change ? signed(toNumber(quote.change)) : "—"}
-                  </Td>
-                  <Td className={`tabular-nums ${changePct !== null ? pnlClass(changePct) : ""}`}>
-                    {changePct !== null ? `${changePct.toFixed(2)}%` : "—"}
-                  </Td>
-                </tr>
-              );
-            })}
-          </Table>
-        )}
-      </Card>
+        </Card>
+      ) : (
+        <div className="space-y-6">
+          <IndexStrip pulse={data} />
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            <BreadthCard breadth={data.breadth} />
+            <FlowsCard flows={data.institutional_flows} />
+            <GlobalCues cues={data.global} />
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <SectorBars sectors={data.sectors} />
+            </div>
+            <MoversCard title="Near 52-week highs" stocks={data.near_year_high.slice(0, 8)} icon="rocket" showRange />
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <MoversCard title="Top gainers · F&O" stocks={data.gainers} icon="trendUp" />
+            <MoversCard title="Top losers · F&O" stocks={data.losers} icon="trendDown" />
+          </div>
+
+          <p className="text-center text-[11px] text-slate-400 dark:text-slate-500">
+            Delayed quotes from Yahoo Finance; F&O list, market caps and FII/DII from NSE.{" "}
+            {data.universe.source === "nse"
+              ? `F&O list as of ${data.universe.trade_date}.`
+              : "F&O list is the built-in one until the first NSE snapshot."}{" "}
+            Session status follows the clock; exchange holidays are not shown.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

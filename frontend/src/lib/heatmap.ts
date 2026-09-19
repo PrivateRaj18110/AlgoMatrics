@@ -6,16 +6,10 @@
  * without rendering anything.
  *
  * A note on sizing, because it is a data-integrity question rather than a
- * cosmetic one. A market heat map conventionally encodes market capitalisation
- * or index weight as rectangle area. **This platform exposes neither.** There is
- * no `market_cap`, `index_weight`, `free_float` or equivalent anywhere in the
- * instruments model, the market-info provider or the market-intel rankings.
- * Rather than synthesise a weight from price or turnover — which would encode a
- * quantity nobody measured and which a viewer would read as capitalisation —
- * every tile is given weight 1 and the page says so on its face.
- *
- * {@link squarify} still takes a weight per input so that the day the backend
- * gains an authoritative sizing field, only the caller changes.
+ * cosmetic one. Area conventionally encodes market capitalisation. The F&O
+ * heat map takes it from NSE's own pre-open snapshot; when that field is absent
+ * every tile gets weight 1 and the page says so, rather than deriving a weight
+ * from price or turnover that a viewer would misread as capitalisation.
  */
 
 export interface TreemapInput {

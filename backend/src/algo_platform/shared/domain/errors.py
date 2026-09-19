@@ -39,6 +39,16 @@ class PermissionDenied(DomainError):
     code: ClassVar[str] = "permission_denied"
 
 
+class MfaRequired(PermissionDenied):
+    """The action is allowed for this role, but only once two-factor auth is on.
+
+    A distinct code so clients can send the user to MFA setup instead of
+    showing a generic "forbidden".
+    """
+
+    code: ClassVar[str] = "mfa_required"
+
+
 class RateLimited(DomainError):
     code: ClassVar[str] = "rate_limited"
 

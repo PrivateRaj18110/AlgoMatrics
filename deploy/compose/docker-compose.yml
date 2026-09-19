@@ -19,6 +19,9 @@ x-backend-env: &backend-env
     # engine (shadow gate) consume it; other backend services ignore it. Set here
     # (not via .env) because this is the fixed in-container path.
     AICIO_DUCKDB_PATH: /data/aicio.duckdb
+    # Offline GeoIP for audit-log locations; fetched into the app_var volume by
+    # the migrate step (scripts/fetch_geoip.py). Missing file = no locations.
+    GEOIP_DATABASE_PATH: /app/var/geoip/dbip-city-lite.mmdb
   read_only: true
   tmpfs:
     - /tmp

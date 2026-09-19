@@ -18,18 +18,42 @@ import { useToasts } from "@/stores/toast";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "success";
 
+// Primary is dark text on the bright accent: ~9:1 contrast, where white on the
+// darker accent only managed ~3.5:1. Matches the marketing site's CTA.
 const buttonStyles: Record<ButtonVariant, string> = {
   primary:
-    "bg-accent-600 text-white hover:bg-accent-500 focus-visible:outline-accent-500 disabled:bg-accent-600/50",
+    "bg-accent-500 text-surface-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_1px_2px_rgba(0,0,0,0.2)] hover:bg-accent-400 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_8px_24px_-6px_rgba(34,184,212,0.45)] focus-visible:outline-accent-500 disabled:bg-accent-500/50",
   secondary:
-    "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-surface-700 dark:bg-surface-850 dark:text-slate-200 dark:hover:bg-surface-800",
+    "border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:shadow-none dark:hover:border-white/20 dark:hover:bg-white/[0.07]",
   ghost:
-    "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-surface-800 dark:hover:text-white",
+    "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-white",
   danger:
-    "bg-loss-600 text-white hover:bg-loss-500 focus-visible:outline-loss-500 disabled:bg-loss-600/50",
+    "bg-loss-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15)] hover:bg-loss-500 focus-visible:outline-loss-500 disabled:bg-loss-600/50",
   success:
-    "bg-profit-600 text-white hover:bg-profit-500 focus-visible:outline-profit-500 disabled:bg-profit-600/50",
+    "bg-profit-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15)] hover:bg-profit-500 focus-visible:outline-profit-500 disabled:bg-profit-600/50",
 };
+
+const buttonBase =
+  "inline-flex items-center justify-center gap-2 rounded-lg font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-px active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0";
+
+const buttonSizes = {
+  sm: "h-8 px-3 text-xs",
+  md: "h-9 px-4 text-sm",
+  lg: "h-11 px-5 text-sm",
+} as const;
+
+/** Button styling for a router `<Link>`, so links never have to nest a `<button>`. */
+export function buttonClass({
+  variant = "primary",
+  size = "md",
+  className,
+}: {
+  variant?: ButtonVariant;
+  size?: keyof typeof buttonSizes;
+  className?: string;
+} = {}): string {
+  return clsx(buttonBase, buttonSizes[size], buttonStyles[variant], className);
+}
 
 export function Button({
   children,
@@ -50,14 +74,7 @@ export function Button({
     <button
       type={type}
       disabled={disabled || loading}
-      className={clsx(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-70",
-        size === "sm" && "px-2.5 py-1.5 text-xs",
-        size === "md" && "px-3.5 py-2 text-sm",
-        size === "lg" && "px-5 py-2.5 text-sm",
-        buttonStyles[variant],
-        className,
-      )}
+      className={buttonClass({ variant, size, className })}
       {...rest}
     >
       {loading && <Spinner className="size-3.5" />}
@@ -69,7 +86,7 @@ export function Button({
 /* ---------------------------------- Inputs --------------------------------- */
 
 const fieldBase =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30 disabled:opacity-60 dark:border-surface-700 dark:bg-surface-900 dark:text-slate-100";
+  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-[inset_0_1px_1px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-slate-400 hover:border-slate-300 focus:border-accent-500 focus:outline-none focus:ring-4 focus:ring-accent-500/15 disabled:opacity-60 dark:border-white/10 dark:bg-surface-950/60 dark:text-slate-100 dark:shadow-none dark:placeholder:text-slate-500 dark:hover:border-white/20 dark:focus:border-accent-400 dark:focus:bg-surface-950";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...rest }, ref) {
@@ -109,13 +126,15 @@ export function Field({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-xs font-medium tracking-wide text-slate-600 uppercase dark:text-slate-400">
+      <span className="text-[13px] font-medium text-slate-700 dark:text-slate-300">
         {label}
         {required && <span className="text-loss-500"> *</span>}
       </span>
       {children}
-      {hint && !error && <span className="block text-xs text-slate-400">{hint}</span>}
-      {error && <span className="block text-xs text-loss-500">{error}</span>}
+      {hint && !error && (
+        <span className="block text-xs text-slate-500 dark:text-slate-400">{hint}</span>
+      )}
+      {error && <span className="block text-xs font-medium text-loss-500">{error}</span>}
     </label>
   );
 }
@@ -156,53 +175,120 @@ export function Switch({
 
 /* --------------------------------- Surfaces --------------------------------- */
 
+// One surface recipe for every panel in the console, so pages read as one system.
+export const surface =
+  "rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_32px_-18px_rgba(15,23,42,0.18)] dark:border-white/[0.07] dark:bg-surface-900/70 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.035),0_24px_48px_-28px_rgba(0,0,0,0.7)]";
+
 export function Card({
   children,
   className,
   title,
+  subtitle,
+  icon,
   actions,
+  bodyClassName,
 }: {
   children: ReactNode;
   className?: string;
   title?: ReactNode;
+  subtitle?: ReactNode;
+  icon?: ReactNode;
   actions?: ReactNode;
+  bodyClassName?: string;
 }) {
   return (
-    <section
-      className={clsx(
-        "rounded-xl border border-slate-200 bg-white shadow-sm dark:border-surface-800 dark:bg-surface-900",
-        className,
-      )}
-    >
+    <section className={clsx(surface, "transition-colors", className)}>
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-surface-800">
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
+        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5 dark:border-white/[0.06]">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {icon && (
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent-500/10 text-accent-600 ring-1 ring-accent-500/20 ring-inset dark:text-accent-300">
+                {icon}
+              </span>
+            )}
+            <div className="min-w-0">
+              <h3 className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {title}
+              </h3>
+              {subtitle && (
+                <p className="truncate text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>
+              )}
+            </div>
+          </div>
           {actions}
         </header>
       )}
-      <div className="p-4">{children}</div>
+      <div className={clsx("p-5", bodyClassName)}>{children}</div>
     </section>
   );
 }
+
+type Tone = "accent" | "profit" | "loss" | "amber" | "violet" | "neutral";
+
+const toneChip: Record<Tone, string> = {
+  accent: "bg-accent-500/10 text-accent-600 ring-accent-500/20 dark:text-accent-300",
+  profit: "bg-profit-500/10 text-profit-600 ring-profit-500/20 dark:text-profit-400",
+  loss: "bg-loss-500/10 text-loss-600 ring-loss-500/20 dark:text-loss-400",
+  amber: "bg-amber-500/10 text-amber-600 ring-amber-500/20 dark:text-amber-400",
+  violet: "bg-violet-500/10 text-violet-600 ring-violet-500/20 dark:text-violet-300",
+  neutral: "bg-slate-500/10 text-slate-600 ring-slate-500/20 dark:text-slate-300",
+};
+
+const toneGlow: Record<Tone, string> = {
+  accent: "rgba(34, 184, 212, 0.13)",
+  profit: "rgba(34, 197, 94, 0.12)",
+  loss: "rgba(244, 63, 94, 0.12)",
+  amber: "rgba(245, 158, 11, 0.12)",
+  violet: "rgba(139, 92, 246, 0.12)",
+  neutral: "rgba(148, 163, 184, 0.08)",
+};
 
 export function StatCard({
   label,
   value,
   sub,
   valueClass,
+  icon,
+  tone = "neutral",
+  footer,
 }: {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
   valueClass?: string;
+  icon?: ReactNode;
+  tone?: Tone;
+  footer?: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-surface-800 dark:bg-surface-900">
-      <p className="text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">
-        {label}
+    <div
+      className={clsx(surface, "am-glow relative overflow-hidden p-5")}
+      style={{ "--am-glow": toneGlow[tone] } as React.CSSProperties}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
+        {icon && (
+          <span
+            className={clsx(
+              "flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset",
+              toneChip[tone],
+            )}
+            aria-hidden
+          >
+            {icon}
+          </span>
+        )}
+      </div>
+      <p
+        className={clsx(
+          "mt-2 text-[1.625rem] leading-tight font-semibold tracking-tight tabular-nums",
+          valueClass ?? "text-slate-900 dark:text-white",
+        )}
+      >
+        {value}
       </p>
-      <p className={clsx("mt-1.5 text-2xl font-semibold tabular-nums", valueClass)}>{value}</p>
-      {sub && <p className="mt-1 text-xs text-slate-400">{sub}</p>}
+      {sub && <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">{sub}</p>}
+      {footer}
     </div>
   );
 }
@@ -211,20 +297,31 @@ export function PageHeader({
   title,
   description,
   actions,
+  eyebrow,
 }: {
-  title: string;
-  description?: string;
+  title: ReactNode;
+  description?: ReactNode;
   actions?: ReactNode;
+  eyebrow?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">{title}</h1>
+    <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+      <div className="min-w-0">
+        {eyebrow && (
+          <p className="mb-1.5 font-mono text-[11px] font-medium tracking-[0.18em] text-accent-600 uppercase dark:text-accent-400">
+            {eyebrow}
+          </p>
+        )}
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
+          {title}
+        </h1>
         {description && (
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>
+          <p className="mt-1.5 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+            {description}
+          </p>
         )}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }
@@ -232,31 +329,44 @@ export function PageHeader({
 /* ---------------------------------- Badge ----------------------------------- */
 
 const badgePalette: Record<string, string> = {
-  slate: "bg-slate-100 text-slate-700 dark:bg-surface-800 dark:text-slate-300",
-  green: "bg-profit-500/15 text-profit-600 dark:text-profit-400",
-  red: "bg-loss-500/15 text-loss-600 dark:text-loss-400",
-  amber: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-  blue: "bg-accent-500/15 text-accent-600 dark:text-accent-300",
-  violet: "bg-violet-500/15 text-violet-600 dark:text-violet-400",
+  slate:
+    "bg-slate-100 text-slate-700 ring-slate-200 dark:bg-white/[0.06] dark:text-slate-300 dark:ring-white/10",
+  green: "bg-profit-500/10 text-profit-700 ring-profit-500/25 dark:text-profit-400",
+  red: "bg-loss-500/10 text-loss-700 ring-loss-500/25 dark:text-loss-400",
+  amber: "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:text-amber-400",
+  blue: "bg-accent-500/10 text-accent-700 ring-accent-500/25 dark:text-accent-300",
+  violet: "bg-violet-500/10 text-violet-700 ring-violet-500/25 dark:text-violet-300",
+};
+
+const badgeDot: Record<string, string> = {
+  slate: "bg-slate-400",
+  green: "bg-profit-500",
+  red: "bg-loss-500",
+  amber: "bg-amber-500",
+  blue: "bg-accent-500",
+  violet: "bg-violet-500",
 };
 
 export function Badge({
   children,
   color = "slate",
   className,
+  dot,
 }: {
   children: ReactNode;
   color?: keyof typeof badgePalette;
   className?: string;
+  dot?: boolean;
 }) {
   return (
     <span
       className={clsx(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
         badgePalette[color],
         className,
       )}
     >
+      {dot && <span className={clsx("size-1.5 rounded-full", badgeDot[color])} aria-hidden />}
       {children}
     </span>
   );
@@ -301,7 +411,7 @@ export function Table({
     <div className="overflow-x-auto">
       <table className="w-full min-w-max text-left text-sm">
         <thead>
-          <tr className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase dark:border-surface-800 dark:text-slate-400">
+          <tr className="border-b border-slate-100 text-[11px] tracking-wider text-slate-500 uppercase dark:border-white/[0.06] dark:text-slate-500">
             {headers.map((header, index) => (
               <th key={index} className={clsx("font-medium", dense ? "px-2 py-2" : "px-3 py-2.5")}>
                 {header}
@@ -309,7 +419,9 @@ export function Table({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 dark:divide-surface-800/60">{children}</tbody>
+        <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04] [&>tr]:transition-colors [&>tr:hover]:bg-slate-50/80 dark:[&>tr:hover]:bg-white/[0.025]">
+          {children}
+        </tbody>
       </table>
     </div>
   );
@@ -360,7 +472,7 @@ export function Spinner({ className }: { className?: string }) {
 export function Skeleton({ className }: { className?: string }) {
   return (
     <div
-      className={clsx("animate-pulse rounded-md bg-slate-200 dark:bg-surface-800", className)}
+      className={clsx("animate-pulse rounded-md bg-slate-200/80 dark:bg-white/[0.06]", className)}
     />
   );
 }
@@ -383,24 +495,30 @@ export function EmptyState({
   title,
   body,
   action,
+  icon,
 }: {
   title: string;
   body?: string;
   action?: ReactNode;
+  icon?: ReactNode;
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-      <div className="flex size-10 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-surface-800">
-        <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor">
-          <path
-            strokeLinecap="round"
-            strokeWidth="1.5"
-            d="M20 13V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6m16 0v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4m16 0h-5l-1.5 2h-3L9 13H4"
-          />
-        </svg>
+      <div className="relative mb-1 flex size-12 items-center justify-center rounded-2xl bg-gradient-to-b from-slate-50 to-slate-100 text-slate-400 ring-1 ring-slate-200 ring-inset dark:from-white/[0.06] dark:to-white/[0.02] dark:text-slate-400 dark:ring-white/10">
+        {icon ?? (
+          <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" aria-hidden>
+            <path
+              strokeLinecap="round"
+              strokeWidth="1.5"
+              d="M20 13V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6m16 0v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4m16 0h-5l-1.5 2h-3L9 13H4"
+            />
+          </svg>
+        )}
       </div>
-      <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{title}</p>
-      {body && <p className="max-w-sm text-xs text-slate-500 dark:text-slate-400">{body}</p>}
+      <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{title}</p>
+      {body && (
+        <p className="max-w-sm text-xs leading-relaxed text-slate-500 dark:text-slate-400">{body}</p>
+      )}
       {action && <div className="mt-2">{action}</div>}
     </div>
   );
@@ -433,7 +551,7 @@ export function Modal({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm sm:items-center"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -443,17 +561,17 @@ export function Modal({
     >
       <div
         className={clsx(
-          "my-8 w-full rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900",
+          "am-fade-in my-8 w-full rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-surface-900",
           wide ? "max-w-3xl" : "max-w-lg",
         )}
       >
-        <header className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5 dark:border-surface-800">
+        <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/[0.06]">
           <h2 className="text-sm font-semibold">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close dialog"
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-surface-800"
+            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/[0.06] dark:hover:text-slate-200"
           >
             <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor">
               <path strokeLinecap="round" strokeWidth="2" d="M6 6l12 12M18 6L6 18" />
@@ -514,7 +632,7 @@ export function Tabs({
   return (
     <div
       role="tablist"
-      className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 dark:border-surface-800 dark:bg-surface-900"
+      className="inline-flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-100/80 p-1 dark:border-white/[0.07] dark:bg-white/[0.03]"
     >
       {tabs.map((tab) => (
         <button
@@ -523,9 +641,9 @@ export function Tabs({
           aria-selected={active === tab.key}
           onClick={() => onChange(tab.key)}
           className={clsx(
-            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
             active === tab.key
-              ? "bg-white text-slate-900 shadow-sm dark:bg-surface-800 dark:text-white"
+              ? "bg-white text-slate-900 shadow-sm dark:bg-white/[0.09] dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
               : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
           )}
         >
@@ -547,7 +665,7 @@ export function Toaster() {
           key={toast.id}
           role="status"
           className={clsx(
-            "pointer-events-auto rounded-lg border p-3 shadow-lg backdrop-blur",
+            "am-fade-in pointer-events-auto rounded-xl border p-3 shadow-lg backdrop-blur-md",
             toast.kind === "success" &&
               "border-profit-500/40 bg-profit-500/10 text-profit-700 dark:text-profit-400",
             toast.kind === "error" &&

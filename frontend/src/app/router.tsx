@@ -22,6 +22,8 @@ import { MarketPage } from "@/pages/MarketPage";
 import { MarketSectionPage } from "@/pages/markets/MarketSectionPage";
 import { MarketplacePage } from "@/pages/MarketplacePage";
 import { LoginPage } from "@/pages/auth/LoginPage";
+import { RequestAccessPage } from "@/pages/auth/RequestAccessPage";
+import { ContactPage } from "@/pages/auth/ContactPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { NotificationsPage } from "@/pages/NotificationsPage";
 import { PersonalHealthPage } from "@/pages/personalHealth/PersonalHealthPage";
@@ -47,8 +49,11 @@ import {
   TelemetryAlertsPage,
 } from "@/pages/operations/OperationsPages";
 import { MonitoringPage } from "@/pages/operations/MonitoringPage";
+import { DevicesPage } from "@/pages/operations/DevicesPage";
 import { WallboardPage } from "@/pages/operations/WallboardPage";
 import { HeatmapPage } from "@/pages/markets/HeatmapPage";
+import { PremarketPage } from "@/pages/markets/PremarketPage";
+import { MarketingPage } from "@/pages/marketing/MarketingPage";
 
 export function InternationalRootRedirect() {
   return (
@@ -73,11 +78,7 @@ export function InternationalRouteHandler() {
 export const router: RouteObject[] = [
   {
     path: "/",
-    element: (
-      <RequireAnonymous>
-        <LoginPage />
-      </RequireAnonymous>
-    ),
+    element: <MarketingPage />,
   },
   {
     path: "/login",
@@ -87,20 +88,27 @@ export const router: RouteObject[] = [
       </RequireAnonymous>
     ),
   },
-  { path: "/register", element: <Navigate to="/login" replace /> },
+  // Accounts are requested, then approved by the platform owner; there is no
+  // self-service signup that grants access on its own.
+  {
+    path: "/request-access",
+    element: (
+      <RequireAnonymous>
+        <RequestAccessPage />
+      </RequireAnonymous>
+    ),
+  },
+  { path: "/register", element: <Navigate to="/request-access" replace /> },
+  // Public for everyone, signed in or not.
+  { path: "/contact", element: <ContactPage /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
   { path: "/reset-password", element: <ResetPasswordPage /> },
   { path: "/verify-email", element: <VerifyEmailPage /> },
   { path: "/ops", element: <OpsRedirect /> },
   { path: "/ops/*", element: <OpsRedirect /> },
-  {
-    path: "/invitations/accept",
-    element: (
-      <RequireAuth>
-        <AcceptInvitationPage />
-      </RequireAuth>
-    ),
-  },
+  // Not behind RequireAuth: an invitee without an account creates one here.
+  // The page accepts directly when a session already exists.
+  { path: "/invitations/accept", element: <AcceptInvitationPage /> },
   // Operations wallboard. Intentionally NOT a child of AppLayout: it is a
   // full-screen kiosk view meant to be left running on a TV or iPad, and the
   // sidebar would eat the screen it needs. RequireAuth still wraps it, so the
@@ -139,6 +147,7 @@ export const router: RouteObject[] = [
       // Distinct from /app/system-health, which shows the Raj agent telemetry:
       // two independent protocols, presented separately on purpose.
       { path: "/app/lls-monitoring", element: <MonitoringPage /> },
+      { path: "/app/devices", element: <DevicesPage /> },
       { path: "/app/events", element: <EventsPage /> },
       { path: "/app/closed-trades", element: <ClosedTradesPage /> },
       { path: "/app/execution", element: <EngineOrdersPage /> },
@@ -153,6 +162,7 @@ export const router: RouteObject[] = [
       { path: "/app/market", element: <Navigate to="/app/market-update" replace /> },
       { path: "/app/market-update", element: <MarketPage /> },
       { path: "/app/heatmap", element: <HeatmapPage /> },
+      { path: "/app/pre-market", element: <PremarketPage /> },
       { path: "/app/market-intel", element: <Navigate to="/app/market-intelligence" replace /> },
       { path: "/app/market-intelligence", element: <MarketIntelPage /> },
       { path: "/app/orders", element: <Navigate to="/app/trading/orders" replace /> },

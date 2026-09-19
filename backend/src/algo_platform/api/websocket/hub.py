@@ -35,6 +35,18 @@ _ALLOWED_STATIC_CHANNELS = {
 _MAX_SUBSCRIPTIONS = 30
 _SEND_QUEUE_SIZE = 200
 _HEARTBEAT_SECONDS = 20.0
+_MAX_MESSAGE_BYTES = 8192
+
+
+def websocket_origin_allowed(origin: str | None, allowed: list[str]) -> bool:
+    """Browser Origin, when present, must match the CORS allowlist."""
+    if origin is None or origin == "":
+        return True
+    return origin in allowed
+
+
+def inbound_payload_too_large(raw: str, limit: int = _MAX_MESSAGE_BYTES) -> bool:
+    return len(raw.encode("utf-8")) > limit
 
 
 def _redis_channel(channel: str, organization_id: UUID) -> str | None:
@@ -55,6 +67,11 @@ async def websocket_endpoint(
     websocket: WebSocket, ticket: str = Query(min_length=10, max_length=200)
 ) -> None:
     redis: RedisGateway = websocket.app.state.redis
+    settings = getattr(websocket.app.state, "settings", None)
+    allowed_origins = list(getattr(settings, "cors_origins", []) or [])
+    if not websocket_origin_allowed(websocket.headers.get("origin"), allowed_origins):
+        await websocket.close(code=4403, reason="origin not allowed")
+        return
     ticket_key = f"ws:ticket:{hash_token(ticket)}"
     payload = await redis.get_json(ticket_key)
     if payload is None:
@@ -116,6 +133,9 @@ async def websocket_endpoint(
     try:
         while True:
             raw = await websocket.receive_text()
+            if inbound_payload_too_large(raw):
+                await websocket.close(code=1009, reason="message too large")
+                return
             if prometheus is not None:
                 prometheus.ws_messages_total.labels(direction="inbound").inc()
             try:

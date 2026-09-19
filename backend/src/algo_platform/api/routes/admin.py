@@ -593,10 +593,12 @@ async def admin_audit_events(
     page: PageDep,
     organization_id: Annotated[UUID | None, Query()] = None,
     action_prefix: Annotated[str | None, Query(max_length=60)] = None,
+    ip_address: Annotated[str | None, Query(max_length=45)] = None,
 ) -> dict[str, Any]:
     entries, total = await AuditService(session).search(
         organization_id=organization_id,
         action_prefix=action_prefix,
+        ip_address=ip_address,
         limit=page.limit,
         offset=page.offset,
     )
@@ -615,6 +617,10 @@ async def admin_audit_events(
                 "sequence": e.sequence,
                 "entry_hash": e.entry_hash,
                 "occurred_at": e.occurred_at.isoformat(),
+                "ip_address": e.ip_address,
+                "user_agent": e.user_agent,
+                "geo": e.geo,
+                "after_state": e.after_state,
             }
             for e in entries
         ],

@@ -32,6 +32,8 @@ FORBIDDEN_IN_DOMAIN = {
 # projections over another context's tables are listed explicitly.
 ALLOWED_CROSS_CONTEXT = {
     ("organizations", "identity"): {"application.directory"},
+    ("contact", "identity"): {"application.directory"},
+    ("devices", "notifications"): {"application.service"},
     ("brokerage", "billing"): {"application.service"},
     ("trading", "billing"): {"application.service"},
     ("trading", "risk"): {"application.service"},

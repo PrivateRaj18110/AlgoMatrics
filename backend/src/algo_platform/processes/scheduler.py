@@ -17,10 +17,12 @@ from sqlalchemy import delete, update
 
 from algo_platform.config import get_settings
 from algo_platform.modules.billing.application.service import SubscriptionService
+from algo_platform.modules.devices.application.service import DeviceService
 from algo_platform.modules.identity.infrastructure.models import (
     EmailTokenModel,
     RefreshTokenModel,
 )
+from algo_platform.modules.market_insights.application.service import MarketInsightsService
 from algo_platform.shared.domain.types import utc_now
 from algo_platform.shared.infrastructure.database import (
     create_engine,
@@ -76,6 +78,17 @@ async def run() -> None:
                     await session.commit()
             except Exception:
                 logger.exception("scheduler.tick_failed")
+            # NSE daily snapshots (pre-open ~09:08 IST, FII/DII in the evening).
+            # Separate transaction: a market-data hiccup must not undo billing work.
+            try:
+                async with session_factory() as session:
+                    await MarketInsightsService(session).scheduled_tick(redis)
+                    # Device trades/logs/alerts are kept for 30 days; pruning hourly is plenty.
+                    if utc_now().minute == 0:
+                        await DeviceService(session).prune()
+                    await session.commit()
+            except Exception:
+                logger.exception("scheduler.market_tick_failed")
             await redis.set_str(HEARTBEAT_KEY, utc_now().isoformat(), ttl_seconds=300)
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(

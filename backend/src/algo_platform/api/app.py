@@ -35,6 +35,7 @@ from algo_platform.shared.application.production_readiness import (
 from algo_platform.shared.infrastructure.database import create_engine, create_session_factory
 from algo_platform.shared.infrastructure.email import create_email_sender
 from algo_platform.shared.infrastructure.encryption import CredentialCipher
+from algo_platform.shared.infrastructure.geoip import configure_geoip
 from algo_platform.shared.infrastructure.jwt_service import JwtService
 from algo_platform.shared.infrastructure.metrics import MetricsRecorder
 from algo_platform.shared.infrastructure.metrics_sampler import run_infra_sampler
@@ -86,6 +87,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         secrets = SecretsResolver(build_secrets_provider(resolved), resolved)
         app.state.settings = resolved
         app.state.secrets = secrets
+        # Offline IP -> city lookups for the audit log; a no-op when unset.
+        configure_geoip(resolved.geoip_database_path)
         app.state.engine = engine
         app.state.session_factory = create_session_factory(engine)
         app.state.redis = redis
@@ -209,6 +212,7 @@ def build_payment_providers(
 
 def _include_routers(app: FastAPI) -> None:
     from algo_platform.api.routes.admin import router as admin_router
+    from algo_platform.api.routes.admin_security import router as admin_security_router
     from algo_platform.api.routes.audit import router as audit_router
     from algo_platform.api.routes.rate_limits import router as rate_limits_router
     from algo_platform.api.websocket.hub import router as ws_router
@@ -222,6 +226,8 @@ def _include_routers(app: FastAPI) -> None:
     from algo_platform.modules.brokerage.presentation.router import (
         router as brokerage_router,
     )
+    from algo_platform.modules.contact.presentation.router import router as contact_router
+    from algo_platform.modules.devices.presentation.router import router as devices_router
     from algo_platform.modules.feature_flags.presentation.router import (
         admin_router as feature_flags_admin_router,
     )
@@ -245,6 +251,9 @@ def _include_routers(app: FastAPI) -> None:
     )
     from algo_platform.modules.instruments.presentation.router import (
         router as market_data_router,
+    )
+    from algo_platform.modules.market_insights.presentation.router import (
+        router as market_insights_router,
     )
     from algo_platform.modules.market_intel.presentation.router import (
         router as market_intel_router,
@@ -299,6 +308,9 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(notifications_router, prefix=prefix)
     app.include_router(operations_router, prefix=prefix)
     app.include_router(workspace_router, prefix=prefix)
+    app.include_router(contact_router, prefix=prefix)
+    app.include_router(market_insights_router, prefix=prefix)
+    app.include_router(devices_router, prefix=prefix)
     app.include_router(mobile_router, prefix=prefix)
     app.include_router(brokerage_router, prefix=prefix)
     app.include_router(market_data_router, prefix=prefix)
@@ -318,6 +330,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(feature_flags_admin_router, prefix=prefix)
     app.include_router(rate_limits_router, prefix=prefix)
     app.include_router(admin_router, prefix=prefix)
+    app.include_router(admin_security_router, prefix=prefix)
     app.include_router(ws_router, prefix=prefix)
 
 

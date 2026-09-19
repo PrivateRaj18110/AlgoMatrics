@@ -27,6 +27,9 @@ import algo_platform.modules.risk.infrastructure.models
 import algo_platform.modules.strategies.infrastructure.models
 import algo_platform.modules.trading.infrastructure.models
 import algo_platform.modules.workspace.infrastructure.models
+import algo_platform.modules.contact.infrastructure.models
+import algo_platform.modules.market_insights.infrastructure.models
+import algo_platform.modules.devices.infrastructure.models
 import algo_platform.shared.infrastructure.email_outbox
 import algo_platform.shared.infrastructure.outbox  # noqa: F401
 from algo_platform.shared.infrastructure.database import Base

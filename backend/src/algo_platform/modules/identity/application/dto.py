@@ -32,6 +32,10 @@ class IssuedTokensDTO:
     refresh_expires_at: datetime
     session_id: UUID
     user: UserProfileDTO
+    # Long-lived browser identifier (raw; only its hash is stored). Set on fresh
+    # sign-ins so the router can (re)issue the device cookie; None on refresh.
+    device_token: str | None = None
+    new_device: bool = False
 
 
 @dataclass(frozen=True, slots=True)

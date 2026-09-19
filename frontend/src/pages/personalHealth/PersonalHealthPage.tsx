@@ -30,7 +30,11 @@ export function PersonalHealthPage() {
   return (
     <div className="space-y-6">
       {/* Top Tab Navigation Bar */}
-      <div className="flex items-center gap-1.5 overflow-x-auto border-b border-slate-200 pb-2 dark:border-surface-800">
+      <div
+        className="flex items-center gap-1.5 overflow-x-auto border-b border-slate-200 pb-2 dark:border-surface-800"
+        role="tablist"
+        aria-label="Personal health sections"
+      >
         {TABS.map((tab) => (
           <button
             key={tab.id}
